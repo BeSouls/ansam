@@ -1,0 +1,160 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Enrôlement jour J – Smartphones Android Enterprise</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+@page { size: 21cm 29.7cm; margin: 2.2cm 2.5cm; }
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #222; }
+h1 { font-size: 16pt; color: #1F4E79; margin-top: 18pt; border-bottom: 1px solid #1F4E79; padding-bottom: 2pt; }
+h2 { font-size: 13pt; color: #2E75B6; margin-top: 12pt; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt 0; }
+th { background: #1F4E79; color: #fff; text-align: left; padding: 4pt 6pt; border: 1px solid #BFBFBF; }
+td { padding: 4pt 6pt; border: 1px solid #BFBFBF; vertical-align: top; }
+code { font-family: Consolas, monospace; font-size: 10pt; color: #833C0B; }
+.note td { background: #DEEAF6; border: 1px solid #9DC3E6; }
+.warn td { background: #FFF2CC; border: 1px solid #FFD966; }
+.ph td { background: #F2F2F2; border: 2px dashed #7F7F7F; text-align: center; color: #595959; font-style: italic; height: 90pt; vertical-align: middle; }
+.cover-title { font-size: 26pt; color: #1F4E79; font-weight: bold; margin-top: 80pt; }
+.cover-sub { font-size: 14pt; color: #404040; border-bottom: 2px solid #1F4E79; padding-bottom: 8pt; margin-bottom: 24pt; }
+</style>
+</head>
+<body>
+
+<p class="cover-title">Enrôlement jour J – Smartphones Android Enterprise</p>
+<p class="cover-sub">Procédure technique : Temporary Access Pass, enrôlement, contrôles et tests</p>
+<table>
+<tr><th style="width:30%">Élément</th><th>Valeur</th></tr>
+<tr><td>Public</td><td>Technicien·ne IT réalisant l'enrôlement</td></tr>
+<tr><td>Prérequis</td><td>Préparation Intune terminée (voir « Préparation Intune – Smartphones Android Enterprise »)</td></tr>
+<tr><td>Référence de mise en œuvre</td><td>Fondation Saint-Jacques – 2 × Samsung Galaxy XCover 7 Enterprise – compte soins9</td></tr>
+<tr><td>Version / date</td><td>1.0 – 28.09.2026</td></tr>
+</table>
+
+<br style="page-break-before:always" clear="all">
+
+<h1>1. Matériel et prérequis</h1>
+<table>
+<tr><th style="width:8%">✔</th><th>Élément</th></tr>
+<tr><td>☐</td><td>Smartphones chargés (&gt; 50 %), <b>neufs ou réinitialisés</b>, carte <b>SIM insérée</b></td></tr>
+<tr><td>☐</td><td>Accès Wi-Fi (SSID + mot de passe) avec accès Internet</td></tr>
+<tr><td>☐</td><td>QR code du profil <b>Android Fully Managed - Smartphones</b> (écran PC ou imprimé)</td></tr>
+<tr><td>☐</td><td>Compte <code>soins9@&lt;domaine&gt;</code> créé, licence attribuée <b>depuis au moins 15 min</b></td></tr>
+<tr><td>☐</td><td>Accès admin à Entra (création du TAP) et à Intune (contrôles)</td></tr>
+<tr><td>☐</td><td>Liens / QR de provisionnement <b>3CX</b> pour chaque extension</td></tr>
+<tr><td>☐</td><td>Fiche d'inventaire (IMEI, n° de série, n° SIM, extension 3CX)</td></tr>
+</table>
+
+<h1>2. Temporary Access Pass (TAP)</h1>
+<h2>2.1 À quoi ça sert ?</h2>
+<p>Le <b>Temporary Access Pass</b> est un code temporaire, limité dans le temps, délivré par un administrateur dans Entra ID. Il remplace le mot de passe <b>et</b> satisfait la MFA lors de la connexion.</p>
+<ul>
+<li>Permet de <b>se connecter la première fois</b> sur le téléphone sans que la MFA soit déjà configurée. Sans lui, on tourne en rond : la MFA doit justement être installée sur ce téléphone.</li>
+<li>Permet d'<b>enregistrer Microsoft Authenticator</b> (méthode MFA) pendant l'enrôlement.</li>
+<li>Évite de manipuler ou transmettre le <b>mot de passe réel</b> du compte.</li>
+<li>Expire automatiquement (durée paramétrable) : risque limité s'il est vu ou noté.</li>
+<li>Sert aussi en <b>dépannage</b> (téléphone perdu, Authenticator réinstallé) pour réenregistrer une méthode MFA.</li>
+</ul>
+<h2>2.2 Vérifier que le TAP est activé dans le tenant</h2>
+<ol>
+<li><b>entra.microsoft.com &gt; Protection &gt; Authentication methods &gt; Policies &gt; Temporary Access Pass</b>.</li>
+<li><b>Enable</b> : <i>On</i> – Target : un groupe restreint (ex. comptes de service) ou <i>All users</i> selon la politique du client.</li>
+<li>Paramètres conseillés : durée par défaut 8 h, <b>One-time use : No</b> (permet d'enrôler plusieurs appareils avec le même TAP).</li>
+</ol>
+<table class="ph"><tr><td>[Insérer capture : Entra &gt; Authentication methods &gt; Policies &gt; Temporary Access Pass]</td></tr></table>
+<h2>2.3 Créer le TAP pour le compte</h2>
+<ol>
+<li><b>Entra &gt; Users &gt; soins9 &gt; Authentication methods &gt; + Add authentication method</b>.</li>
+<li>Choisir <b>Temporary Access Pass</b>, durée <b>8 heures</b>, usage unique <b>Non</b>.</li>
+<li><b>Add</b>, puis <b>noter immédiatement</b> le code : il ne sera plus affiché.</li>
+</ol>
+<table class="ph"><tr><td>[Insérer capture : création du Temporary Access Pass pour soins9]</td></tr></table>
+<table class="warn"><tr><td><b>⚠️ Bonnes pratiques TAP</b><br>Ne pas envoyer le TAP par e-mail au compte concerné ; le transmettre oralement ou par un canal séparé.<br>Supprimer le TAP après l'enrôlement des appareils (Authentication methods &gt; TAP &gt; Delete) s'il n'a pas expiré.</td></tr></table>
+
+<h1>3. Enrôlement d'un smartphone</h1>
+<p>Enrôler <b>un seul appareil</b> d'abord, contrôler (section 4), puis enrôler les suivants.</p>
+<table>
+<tr><th style="width:6%">#</th><th style="width:44%">Action sur le téléphone</th><th>Détail / attendu</th></tr>
+<tr><td>1</td><td>Allumer, rester sur l'écran de bienvenue</td><td>Ne pas choisir la langue tout de suite</td></tr>
+<tr><td>2</td><td><b>Taper 6 fois</b> au même endroit de l'écran de bienvenue</td><td>Le lecteur de QR code s'ouvre (intégré depuis Android 9)</td></tr>
+<tr><td>3</td><td>Se connecter au <b>Wi-Fi</b> si demandé</td><td>Réseau avec accès Internet</td></tr>
+<tr><td>4</td><td>Scanner le <b>QR code smartphones</b></td><td>Vérifier que c'est le bon profil (pas celui des tablettes)</td></tr>
+<tr><td>5</td><td>Accepter les conditions (Google / Chrome)</td><td>« Accepter et continuer »</td></tr>
+<tr><td>6</td><td>Attendre l'installation de <b>Microsoft Intune</b></td><td>Quelques minutes, ne pas redémarrer</td></tr>
+<tr><td>7</td><td>Connexion : <code>soins9@&lt;domaine&gt;</code> puis le <b>TAP</b></td><td>Le TAP remplace mot de passe + MFA</td></tr>
+<tr><td>8</td><td>Enregistrer <b>Authenticator</b> si proposé</td><td>Sur ce téléphone</td></tr>
+<tr><td>9</td><td>Définir le <b>code PIN (6 chiffres)</b></td><td>Imposé par la conformité – le noter pour le client</td></tr>
+<tr><td>10</td><td>« Installer les applications professionnelles » &gt; Suivant &gt; Terminé</td><td>Les apps requises s'installent en arrière-plan</td></tr>
+<tr><td>11</td><td>Ignorer le compte Samsung</td><td>Inutile</td></tr>
+</table>
+<table class="ph"><tr><td>[Insérer photo : écran « Configurons votre appareil professionnel » – Accepter et continuer]</td></tr></table>
+<table class="ph"><tr><td>[Insérer photo : écran de scan du QR code]</td></tr></table>
+<table class="warn"><tr><td><b>⚠️ Points d'attention</b><br><b>Ne pas redémarrer</b> pendant l'enrôlement : l'appareil pourrait ne pas s'inscrire correctement.<br>La réinitialisation d'usine est <b>bloquée par stratégie</b> une fois l'appareil géré : en cas d'échec, faire <b>Intune &gt; appareil &gt; Wipe</b> puis recommencer.<br>Si le lecteur QR ne s'ouvre pas : vérifier qu'on est bien sur le <b>tout premier écran</b> après réinitialisation ; sinon réinitialiser.</td></tr></table>
+
+<h1>4. Contrôles côté Intune (15 à 30 min après)</h1>
+<p><b>Devices &gt; Android &gt; Android devices</b> &gt; appareil <code>soins9-TEL-xxxx</code> :</p>
+<table>
+<tr><th style="width:6%">✔</th><th style="width:24%">Onglet</th><th>Attendu</th></tr>
+<tr><td>☐</td><td>Overview</td><td>Nom conforme au modèle, utilisateur principal soins9, <b>Compliant</b>, <i>Android (fully managed)</i></td></tr>
+<tr><td>☐</td><td>Group membership</td><td><code>All Android Managed Devices</code> <b>et</b> <code>All Android Managed Smartphones</code></td></tr>
+<tr><td>☐</td><td>Device configuration</td><td>Restrictions, Postpone updates, <b>KSP</b> : <i>Succeeded</i></td></tr>
+<tr><td>☐</td><td>Device compliance</td><td><i>Compliant</i></td></tr>
+<tr><td>☐</td><td>App configuration</td><td>Outlook, Edge, <b>3CX</b> : <i>Succeeded</i></td></tr>
+<tr><td>☐</td><td>Managed apps</td><td>3CX, Authenticator, Word, Excel, PowerPoint, Outlook, OneDrive, Edge, Acrobat, Teams, TCL Connect installées ; apps exclues absentes</td></tr>
+</table>
+<table class="ph"><tr><td>[Insérer capture : fiche de l'appareil – Overview]</td></tr></table>
+<table class="ph"><tr><td>[Insérer capture : fiche de l'appareil – Group membership]</td></tr></table>
+<table class="note"><tr><td><b>💡 Forcer la synchronisation</b><br>Fiche de l'appareil &gt; <b>Sync</b>, ou sur le téléphone : app <b>Intune</b> &gt; Paramètres &gt; Synchroniser.</td></tr></table>
+
+<h1>5. Contrôles et réglages sur le téléphone</h1>
+<ul>
+<li><b>Paramètres &gt; Applications &gt; 3CX &gt; Autorisations</b> : micro, téléphone, contacts, notifications accordés.</li>
+<li><b>3CX &gt; Batterie</b> : « Non restreinte » (effet du KSP).</li>
+<li><b>3CX &gt; Notifications plein écran</b> (Android 14+) : autorisé, sinon l'appel entrant n'apparaît qu'en bannière.</li>
+<li>Mode avion désactivé, données mobiles actives, SIM détectée (barres de réseau).</li>
+</ul>
+
+<h1>6. Provisionnement 3CX et tests</h1>
+<ol>
+<li>Console 3CX &gt; Utilisateurs &gt; extension concernée &gt; <b>renvoyer l'e-mail de bienvenue</b> / afficher le QR de provisionnement.</li>
+<li>Ouvrir 3CX sur le téléphone &gt; scanner le QR de l'extension.</li>
+<li>Noter quelle extension est associée à quel téléphone (IMEI / nom Intune).</li>
+</ol>
+<table>
+<tr><th style="width:6%">✔</th><th>Test</th><th style="width:25%">Résultat</th></tr>
+<tr><td>☐</td><td>Appel 3CX entrant – écran déverrouillé</td><td></td></tr>
+<tr><td>☐</td><td>Appel 3CX entrant – écran verrouillé, veille &gt; 10 min</td><td></td></tr>
+<tr><td>☐</td><td>Appel 3CX sortant + qualité audio (micro, écouteur, haut-parleur)</td><td></td></tr>
+<tr><td>☐</td><td>Appel GSM entrant et sortant</td><td></td></tr>
+<tr><td>☐</td><td>SMS envoyé et reçu</td><td></td></tr>
+<tr><td>☐</td><td>Wi-Fi puis 4G/5G (Wi-Fi coupé)</td><td></td></tr>
+<tr><td>☐</td><td>Authenticator : notification lors d'une connexion test de soins9</td><td></td></tr>
+<tr><td>☐</td><td>Ouverture d'un document Word/Excel et d'un PDF</td><td></td></tr>
+<tr><td>☐</td><td>TCL Connect : lancement / fonctionnement</td><td></td></tr>
+</table>
+
+<h1>7. Sécurité MFA du compte de service</h1>
+<p>Si Authenticator sur un seul téléphone est l'<b>unique</b> méthode MFA de soins9, la perte de ce téléphone bloque le compte. Recommandations :</p>
+<ul>
+<li>Enregistrer Authenticator sur <b>les deux</b> smartphones, ou ajouter un <b>numéro SMS</b> (SIM d'un des appareils) comme méthode secondaire.</li>
+<li>En cas de perte : Intune &gt; <b>Lock</b> / <b>Wipe</b> ; Entra &gt; soins9 &gt; <b>Revoke sessions</b> ; supprimer la méthode Authenticator concernée ; créer un nouveau TAP.</li>
+</ul>
+
+<h1>8. Clôture</h1>
+<ul>
+<li>Inventaire : nom Intune, n° de série, IMEI, n° SIM, extension 3CX → <b>Jira Assets / CMDB</b>.</li>
+<li>Supprimer le TAP s'il est encore valide.</li>
+<li>Remettre au client : téléphones + <b>code PIN</b> + guide utilisateur + contacts support.</li>
+<li>Faire confirmer la réception, compléter le ticket et le passer en résolu.</li>
+</ul>
+<h2>Dépannage rapide</h2>
+<table>
+<tr><th style="width:35%">Symptôme</th><th>Cause probable / action</th></tr>
+<tr><td>Le lecteur QR ne s'ouvre pas</td><td>Pas sur le 1er écran, ou appareil déjà configuré → réinitialiser</td></tr>
+<tr><td>Échec d'inscription / appareil non autorisé</td><td>Licence Intune absente ou pas encore propagée ; limite d'appareils atteinte</td></tr>
+<tr><td>Apps non installées</td><td>Appareil pas encore dans le groupe dynamique (attendre / Sync) ; app non approuvée</td></tr>
+<tr><td>Appels 3CX non reçus en veille</td><td>KSP non appliqué, batterie « Optimisée », notifications plein écran refusées</td></tr>
+<tr><td>Non conforme</td><td>PIN non défini, Play Integrity, synchronisation en attente</td></tr>
+</table>
+</body>
+</html>

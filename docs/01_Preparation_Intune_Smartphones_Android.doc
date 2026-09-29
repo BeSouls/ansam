@@ -1,0 +1,186 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Préparation Intune – Smartphones Android Enterprise</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+@page { size: 21cm 29.7cm; margin: 2.2cm 2.5cm; }
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #222; }
+h1 { font-size: 16pt; color: #1F4E79; margin-top: 18pt; border-bottom: 1px solid #1F4E79; padding-bottom: 2pt; }
+h2 { font-size: 13pt; color: #2E75B6; margin-top: 12pt; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt 0; }
+th { background: #1F4E79; color: #fff; text-align: left; padding: 4pt 6pt; border: 1px solid #BFBFBF; }
+td { padding: 4pt 6pt; border: 1px solid #BFBFBF; vertical-align: top; }
+code { font-family: Consolas, monospace; font-size: 10pt; color: #833C0B; }
+.note td { background: #DEEAF6; border: 1px solid #9DC3E6; }
+.warn td { background: #FFF2CC; border: 1px solid #FFD966; }
+.ph td { background: #F2F2F2; border: 2px dashed #7F7F7F; text-align: center; color: #595959; font-style: italic; height: 90pt; vertical-align: middle; }
+.cover-title { font-size: 26pt; color: #1F4E79; font-weight: bold; margin-top: 80pt; }
+.cover-sub { font-size: 14pt; color: #404040; border-bottom: 2px solid #1F4E79; padding-bottom: 8pt; margin-bottom: 24pt; }
+</style>
+</head>
+<body>
+
+<p class="cover-title">Préparation Intune – Smartphones Android Enterprise</p>
+<p class="cover-sub">Guide technique : création du profil d'enrôlement et de la configuration smartphone (réutilisable pour d'autres clients)</p>
+<table>
+<tr><th style="width:30%">Élément</th><th>Valeur</th></tr>
+<tr><td>Public</td><td>Technicien·ne IT / administrateur·rice Intune</td></tr>
+<tr><td>Plateforme</td><td>Microsoft Intune – Android Enterprise, mode entièrement géré (fully managed / COBO)</td></tr>
+<tr><td>Référence de mise en œuvre</td><td>Fondation Saint-Jacques – 2 × Samsung Galaxy XCover 7 Enterprise</td></tr>
+<tr><td>Version / date</td><td>1.0 – 28.09.2026</td></tr>
+</table>
+
+<br style="page-break-before:always" clear="all">
+
+<h1>1. Objectif et principe</h1>
+<p>Ce guide décrit la préparation complète d'un tenant Microsoft Intune pour enrôler des smartphones Android en mode <b>entièrement géré (fully managed)</b>, avec une configuration <b>séparée des tablettes</b> ou des autres appareils Android existants.</p>
+<ul>
+<li>Les <b>stratégies communes</b> déjà en place (conformité, restrictions, Outlook, Edge…) continuent de s'appliquer à tous les Android via leurs affectations existantes (souvent « All devices »).</li>
+<li>Un <b>profil d'enrôlement dédié</b> aux smartphones (son propre QR code) et un <b>groupe dynamique</b> basé sur ce profil permettent de cibler uniquement les smartphones.</li>
+<li>Les <b>apps et configurations propres au mobile</b> (3CX, Knox…) sont affectées à ce groupe, et les apps non souhaitées en sont <b>exclues</b>.</li>
+</ul>
+<table>
+<tr><th>Élément créé</th><th>Nom (exemple FSJ)</th><th>Rôle</th></tr>
+<tr><td>Compte de service</td><td><code>soins9@&lt;domaine&gt;</code></td><td>Utilisateur principal des smartphones</td></tr>
+<tr><td>Groupe dynamique d'appareils</td><td><code>All Android Managed Smartphones</code></td><td>Cible de toutes les configs mobiles</td></tr>
+<tr><td>Profil d'enrôlement</td><td><code>Android Fully Managed - Smartphones</code></td><td>QR code dédié + nommage automatique</td></tr>
+<tr><td>Config d'app</td><td><code>3CX - Permissions - Smartphones</code></td><td>Permissions pré-accordées à 3CX</td></tr>
+<tr><td>Profil OEMConfig</td><td><code>KSP - Smartphones Samsung</code></td><td>Exemption batterie 3CX (Samsung)</td></tr>
+</table>
+
+<h1>2. Prérequis</h1>
+<ul>
+<li>Droits <b>Intune Administrator</b> (ou Global Admin) et accès aux centres d'administration Microsoft 365 / Entra.</li>
+<li><b>Managed Google Play</b> lié au tenant (Intune &gt; Tenant administration &gt; Connectors and tokens &gt; Managed Google Play).</li>
+<li>Licence utilisateur incluant <b>Intune</b> : Microsoft 365 <b>Business Premium</b> (recommandé, inclut aussi Entra ID P1) ou Business Basic/Standard <b>+ Intune Plan 1</b>. Business Basic seule <b>ne permet pas</b> l'enrôlement.</li>
+<li>Liste des apps à déployer validée avec le client (et package exact de chaque app métier).</li>
+</ul>
+<table class="warn"><tr><td><b>⚠️ Limite d'appareils par utilisateur</b><br>Par défaut, Intune limite à <b>5 appareils par utilisateur</b> (Devices &gt; Enrollment &gt; Device limit restrictions, max. 15). Un compte dédié (ex. soins9) évite de saturer un compte existant.</td></tr></table>
+
+<h1>3. Analyse de l'existant (à faire chez chaque client)</h1>
+<p>Avant de créer quoi que ce soit, partir d'un appareil Android déjà enrôlé (ex. une tablette) pour voir ce qui s'applique :</p>
+<ol>
+<li><b>Devices &gt; Android &gt; Android devices</b> &gt; ouvrir un appareil existant.</li>
+<li><b>Overview</b> : noter le mode (<i>Android (fully managed)</i>, <i>dedicated</i>…) et l'utilisateur principal.</li>
+<li>Onglets <b>Device configuration</b>, <b>Device compliance</b>, <b>App configuration</b>, <b>Managed apps</b>, <b>Group membership</b> : lister les stratégies et groupes.</li>
+<li>Pour chaque stratégie : <b>Properties &gt; Assignments</b> → noter si elle cible <i>All devices</i>, <i>All users</i> ou un groupe spécifique.</li>
+<li><b>Devices &gt; Android &gt; Enrollment &gt; Corporate-owned, fully managed user devices</b> : noter le profil existant et l'expiration du token.</li>
+</ol>
+<table class="ph"><tr><td>[Insérer capture : fiche d'un appareil existant &gt; Device configuration]</td></tr></table>
+<table class="ph"><tr><td>[Insérer capture : fiche d'un appareil existant &gt; Group membership]</td></tr></table>
+<table class="note"><tr><td><b>💡 À retenir</b><br>Tout ce qui est affecté à <b>All devices / All users</b> s'appliquera aussi aux nouveaux smartphones : c'est souhaité pour la sécurité (conformité, restrictions), mais il faudra <b>exclure</b> les apps inutiles sur mobile (section 7).<br>Vérifier dans les restrictions existantes que <b>appels, SMS et données mobiles ne sont pas bloqués</b> (souvent invisible sur des tablettes Wi-Fi).</td></tr></table>
+
+<h1>4. Compte utilisateur et licence</h1>
+<ol>
+<li><b>Admin Microsoft 365 &gt; Utilisateurs actifs &gt; Ajouter un utilisateur</b> : ex. <code>soins9@&lt;domaine&gt;</code>, nom affiché selon la convention du client (ex. <code>FSJsoins9</code>).</li>
+<li><b>Emplacement d'utilisation : Suisse</b> (obligatoire pour attribuer une licence).</li>
+<li>Attribuer la <b>même licence</b> que les comptes équivalents existants (vérifier qu'elle inclut Intune).</li>
+<li>Ajouter le compte aux <b>mêmes groupes</b> que les comptes équivalents (accès conditionnel, licences par groupe…).</li>
+<li>Le <b>Temporary Access Pass</b> est créé le jour de l'enrôlement (voir le guide « Enrôlement jour J »).</li>
+</ol>
+
+<h1>5. Groupe dynamique « smartphones »</h1>
+<ol>
+<li><b>Groups &gt; New group</b> – Type : <b>Security</b> – Nom : <code>All Android Managed Smartphones</code>.</li>
+<li><b>Membership type : Dynamic Device</b> (aucun propriétaire requis).</li>
+<li><b>Add dynamic query</b> &gt; <i>Edit</i>, coller la règle ci-dessous, puis <b>Save</b> et <b>Create</b>.</li>
+</ol>
+<p><code>(device.enrollmentProfileName -eq "Android Fully Managed - Smartphones")</code></p>
+<table class="ph"><tr><td>[Insérer capture : Groups &gt; New group – Dynamic Device + règle]</td></tr></table>
+<table class="note"><tr><td><b>💡 Pourquoi baser la règle sur le profil d'enrôlement ?</b><br>Tout téléphone enrôlé avec le QR code smartphones entre automatiquement dans le groupe, <b>quel que soit le modèle</b> (pas besoin de modifier la règle lors d'achats futurs).<br>Le texte doit être <b>strictement identique</b> au nom du profil d'enrôlement : ne plus renommer le profil ensuite (ou mettre la règle à jour en même temps).<br>Alternative par modèle : <code>(device.deviceModel -startsWith "SM-G556")</code> (XCover 7), à adapter à chaque nouveau modèle.</td></tr></table>
+<table class="warn"><tr><td><b>⚠️ Option « Device groups » (enrollment time grouping)</b><br>Le profil d'enrôlement propose d'ajouter l'appareil à un groupe <b>statique</b> dès l'enrôlement. Cela exige que le service principal <b>Intune Provisioning Client</b> (AppId f1346770-5b25-470b-88bd-d5744ab7952c) soit <b>propriétaire</b> du groupe ; il n'existe pas toujours dans le tenant. Le groupe dynamique ci-dessus évite ce prérequis.</td></tr></table>
+
+<h1>6. Profil d'enrôlement smartphones</h1>
+<ol>
+<li><b>Devices &gt; Android &gt; Enrollment &gt; Corporate-owned, fully managed user devices &gt; Create profile</b>.</li>
+<li><b>Name</b> : <code>Android Fully Managed - Smartphones</code>.</li>
+<li><b>Token type</b> : <i>Corporate-owned, fully managed</i> (pas « via staging »).</li>
+<li><b>Apply device name template : Yes</b> – modèle générique : <code>{{UPNPREFIX}}-TEL-{{SERIALLAST4DIGITS}}</code> (ex. soins9-TEL-4F2A).</li>
+<li><b>Device group</b> : laisser vide (le groupe dynamique s'en charge).</li>
+<li><b>Review + create</b>, puis ouvrir le profil &gt; <b>Token</b> pour afficher le QR code.</li>
+</ol>
+<table class="ph"><tr><td>[Insérer capture : Create profile – Basics (nom, token type, modèle de nom)]</td></tr></table>
+<table class="warn"><tr><td><b>⚠️ Sécurité du QR code / token</b><br>Le QR code contient le <b>token d'enrôlement</b> du tenant : quiconque le possède peut inscrire un appareil. Ne pas le publier ni l'envoyer à un générateur de QR en ligne. Le token « fully managed » par défaut n'expire pas ; en cas de fuite : <b>Token &gt; Revoke token</b>, puis régénérer.<br>L'<b>export</b> du token donne un JSON (contenu du QR). Pour obtenir une image : capture de la page Token, ou génération locale (ex. Python <code>qrcode</code>).</td></tr></table>
+
+<h1>7. Applications (Managed Google Play)</h1>
+<h2>7.1 Ajouter une app manquante</h2>
+<ol>
+<li><b>Apps &gt; Android &gt; + Create &gt; Managed Google Play app</b>.</li>
+<li>Rechercher l'app (vérifier l'<b>éditeur</b>), <b>Select &gt; Approve</b> en choisissant « <b>Keep approved when app requests new permissions</b> ».</li>
+<li><b>Sync</b>, puis attendre 1 à 5 min que l'app apparaisse.</li>
+</ol>
+<table>
+<tr><th>App</th><th>Package</th><th>Remarque</th></tr>
+<tr><td>3CX</td><td><code>com.tcx.sipphone14</code></td><td>Éditeur 3CX</td></tr>
+<tr><td>Microsoft Authenticator</td><td><code>com.azure.authenticator</code></td><td>Installé d'office en fully managed</td></tr>
+<tr><td>Word / Excel / PowerPoint</td><td><code>com.microsoft.office.word</code> / <code>.excel</code> / <code>.powerpoint</code></td><td>Édition gratuite &lt; 10,1" avec compte pro</td></tr>
+<tr><td>Outlook / OneDrive / Teams</td><td><code>com.microsoft.office.outlook</code> / <code>com.microsoft.skydrive</code> / <code>com.microsoft.teams</code></td><td></td></tr>
+<tr><td>Microsoft Edge</td><td><code>com.microsoft.emmx</code></td><td>Config d'app Edge souvent déjà en place</td></tr>
+<tr><td>Adobe Acrobat Reader</td><td><code>com.adobe.reader</code></td><td>Lecteur PDF</td></tr>
+<tr><td>Knox Service Plugin</td><td><code>com.samsung.android.knox.kpu</code></td><td>Samsung uniquement (OEMConfig)</td></tr>
+</table>
+<h2>7.2 Inclure les apps au groupe smartphones</h2>
+<p>Pour chaque app voulue : <b>Properties &gt; Assignments &gt; Edit &gt; Required &gt; + Add group</b> → <code>All Android Managed Smartphones</code>. Conserver les affectations existantes.</p>
+<table class="ph"><tr><td>[Insérer capture : Edit application – Required : All devices + All Android Managed Smartphones]</td></tr></table>
+<h2>7.3 Exclure les apps non souhaitées</h2>
+<p>Pour chaque app affectée à <b>All devices</b> qui n'a pas sa place sur mobile (navigateurs tiers, outils tablettes…) : <b>Assignments &gt; Edit &gt; Required &gt; + Add group</b> → groupe smartphones, puis basculer <b>Included → Excluded</b>.</p>
+<table class="warn"><tr><td><b>⚠️ Règles d'exclusion Intune</b><br>L'exclusion d'un <b>groupe d'appareils</b> fonctionne quand l'app cible <i>All devices</i> ou un groupe d'appareils. Si l'app cible <i>All users</i> / un groupe d'utilisateurs, utiliser plutôt un <b>filtre d'affectation</b> (Apps &gt; Assignment filters, règle <code>device.enrollmentProfileName -eq "…"</code>, mode <i>Exclude</i>).<br>Ne jamais inclure <b>et</b> exclure le même groupe sur une même app : l'exclusion l'emporte.<br>Une app affectée à un groupe spécifique (ex. groupe de dépannage) n'a pas besoin d'exclusion.</td></tr></table>
+
+<h1>8. Configuration d'app 3CX (permissions)</h1>
+<ol>
+<li><b>Apps &gt; Configuration &gt; + Create &gt; Managed devices</b>.</li>
+<li>Nom : <code>3CX - Permissions - Smartphones</code> – Platform : <b>Android Enterprise</b> – Profile type : <i>Fully Managed, Dedicated, and Corporate-Owned Work Profile Only</i> – Targeted app : <b>3CX</b>.</li>
+<li><b>Settings &gt; Permissions &gt; + Add</b>, puis mettre chaque permission en <b>Auto grant</b> (tableau ci-dessous).</li>
+<li><i>Configuration settings format</i> : laisser vide (le provisionnement 3CX se fait par QR dans l'app).</li>
+<li><b>Assignments</b> → <code>All Android Managed Smartphones</code> &gt; <b>Create</b>.</li>
+</ol>
+<table>
+<tr><th>Permission</th><th>Accorder ?</th><th>Justification</th></tr>
+<tr><td>Record audio</td><td>✅ Auto grant</td><td>Micro pour les appels</td></tr>
+<tr><td>Phone state (read), Make phone calls</td><td>✅ Auto grant</td><td>Gestion des appels</td></tr>
+<tr><td>Contacts (read)</td><td>✅ Auto grant</td><td>Annuaire</td></tr>
+<tr><td>Post notifications</td><td>✅ Auto grant</td><td>Notification d'appel entrant (Android 13+)</td></tr>
+<tr><td>Bluetooth connect, Nearby devices</td><td>✅ Auto grant</td><td>Casques / oreillettes</td></tr>
+<tr><td>SMS (send/receive/read), Call log</td><td>❌ Non</td><td>Inutile pour 3CX – moindre privilège</td></tr>
+</table>
+<table class="ph"><tr><td>[Insérer capture : Create app configuration policy – Permissions 3CX]</td></tr></table>
+
+<h1>9. Knox Service Plugin (Samsung) – exemption batterie</h1>
+<p>Sans exemption, Android/Samsung peut mettre 3CX en veille et <b>les appels entrants n'arrivent plus</b>. Intune n'a pas de réglage natif : on passe par l'OEMConfig Samsung.</p>
+<ol>
+<li>Ajouter l'app <b>Knox Service Plugin</b> (éditeur Samsung Electronics) depuis Managed Google Play, l'affecter en <b>Required</b> au groupe smartphones.</li>
+<li><b>Devices &gt; Configuration &gt; + Create &gt; New policy</b> – Platform : <b>Android Enterprise</b> – Profile type : <b>Templates</b> &gt; <b>OEMConfig</b> (section <i>Fully Managed, Dedicated, and Corporate-Owned Work Profile</i>).</li>
+<li>Nom : <code>KSP - Smartphones Samsung</code> – OEMConfig app : <b>Knox Service Plugin</b>.</li>
+<li>Configuration designer : <b>Profile name</b> renseigné, <b>Debug mode</b> = false.</li>
+<li><b>Device-wide policies (…DO…)</b> &gt; <b>Enable device policy controls = true</b>.</li>
+<li><b>Application management policies</b> &gt; <b>Enable application management controls = true</b> &gt; <b>Battery optimization allowlist</b> = <code>com.tcx.sipphone14</code>. Ne rien remplir d'autre.</li>
+<li><b>Assignments</b> → groupe smartphones &gt; <b>Create</b>.</li>
+</ol>
+<table class="ph"><tr><td>[Insérer capture : Knox Service Plugin – Application management policies – Battery optimization allowlist]</td></tr></table>
+<table class="note"><tr><td><b>💡 Licence Knox</b><br>Certains réglages KSP exigent une licence Knox (KPE Premium / Knox Suite). L'édition <b>Enterprise</b> des Samsung l'inclut en principe ; en cas d'erreur de licence, renseigner la clé dans le champ <b>License key</b> du KSP.</td></tr></table>
+
+<h1>10. Stratégies communes (référence FSJ)</h1>
+<table>
+<tr><th>Stratégie</th><th>Contenu clé</th><th>Impact smartphone</th></tr>
+<tr><td>Android Device Restrictions</td><td>PIN numérique 6, verrouillage 5 min, reset usine bloqué, Play Store limité aux apps approuvées, MAJ auto apps : jamais</td><td>Communiquer le PIN ; reset via Intune Wipe</td></tr>
+<tr><td>Postpone System Updates</td><td>Gel des MAJ système 15.01 → 15.03</td><td>Aucun hors période</td></tr>
+<tr><td>Android device is protected (conformité)</td><td>Play Integrity, PIN requis</td><td>Doit être « Compliant »</td></tr>
+<tr><td>Config Outlook / Edge</td><td>Compte pro auto, favoris BESA</td><td>Hérité automatiquement</td></tr>
+</table>
+
+<h1>11. Checklist de préparation</h1>
+<table>
+<tr><th style="width:8%">✔</th><th>Étape</th></tr>
+<tr><td>☐</td><td>Existant analysé (stratégies, groupes, affectations, restrictions téléphonie)</td></tr>
+<tr><td>☐</td><td>Compte de service créé + licence avec Intune + groupes</td></tr>
+<tr><td>☐</td><td>Groupe dynamique smartphones créé (règle enrollmentProfileName)</td></tr>
+<tr><td>☐</td><td>Profil d'enrôlement smartphones + modèle de nom + QR code</td></tr>
+<tr><td>☐</td><td>Apps ajoutées/approuvées et affectées Required au groupe</td></tr>
+<tr><td>☐</td><td>Apps non souhaitées exclues du groupe</td></tr>
+<tr><td>☐</td><td>Config d'app 3CX (permissions) affectée</td></tr>
+<tr><td>☐</td><td>KSP (exemption batterie) affecté</td></tr>
+<tr><td>☐</td><td>Documentation jour J + guide client préparés</td></tr>
+</table>
+</body>
+</html>

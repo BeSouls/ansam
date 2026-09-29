@@ -1,0 +1,125 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Mise en service de votre smartphone professionnel</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+@page { size: 21cm 29.7cm; margin: 2.2cm 2.5cm; }
+body { font-family: Calibri, Arial, sans-serif; font-size: 12pt; color: #222; }
+h1 { font-size: 16pt; color: #1F4E79; margin-top: 16pt; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt 0; }
+th { background: #1F4E79; color: #fff; text-align: left; padding: 4pt 6pt; border: 1px solid #BFBFBF; }
+td { padding: 4pt 6pt; border: 1px solid #BFBFBF; vertical-align: top; }
+.ok td { background: #E2EFDA; border: 1px solid #A9D08E; }
+.note td { background: #DEEAF6; border: 1px solid #9DC3E6; }
+.warn td { background: #FFF2CC; border: 1px solid #FFD966; }
+.ph td { background: #F2F2F2; border: 2px dashed #7F7F7F; text-align: center; color: #595959; font-style: italic; height: 120pt; vertical-align: middle; }
+.qr { width: 8cm; margin-left: auto; margin-right: auto; }
+.qr td { border: 4px double #1F4E79; height: 8cm; text-align: center; vertical-align: middle; color: #1F4E79; }
+.title { font-size: 24pt; color: #1F4E79; font-weight: bold; margin-top: 40pt; }
+.sub { font-size: 14pt; color: #404040; border-bottom: 2px solid #1F4E79; padding-bottom: 8pt; margin-bottom: 18pt; }
+</style>
+</head>
+<body>
+
+<p class="title">Mise en service de votre smartphone professionnel</p>
+<p class="sub">Guide pas à pas – Samsung Galaxy XCover 7</p>
+
+<p>Ce guide vous accompagne pour installer votre smartphone professionnel. Comptez <b>environ 20 minutes</b>. Suivez les étapes dans l'ordre, sans redémarrer le téléphone.</p>
+
+<table class="ok"><tr><td>
+<b>✅ Avant de commencer, vous avez besoin de :</b>
+<ul>
+<li>Le <b>téléphone chargé</b> (au moins 50 %) avec sa <b>carte SIM</b> insérée.</li>
+<li>Le <b>nom et le mot de passe du Wi-Fi</b> de l'établissement.</li>
+<li>Le <b>QR code</b> de la page suivante.</li>
+<li>L'<b>identifiant</b> et le <b>code temporaire</b> fournis par le support informatique :</li>
+</ul>
+<p>Identifiant : ____________________________________________</p>
+<p>Code temporaire : ______________________ &nbsp; valable jusqu'au : ____ / ____ à ____ h</p>
+</td></tr></table>
+
+<br style="page-break-before:always" clear="all">
+
+<h1>Le QR code à scanner</h1>
+<p>C'est ce code que le téléphone vous demandera de photographier à l'étape 3.</p>
+<table class="qr"><tr><td>
+<p style="font-size:18pt"><b>COLLER ICI</b></p>
+<p>le QR code d'enrôlement</p>
+<p style="font-size:9pt;color:#595959"><i>(profil « Android Fully Managed - Smartphones »)</i></p>
+</td></tr></table>
+<table class="warn"><tr><td><b>⚠️ Important</b><br>Ce QR code est <b>confidentiel</b> : il permet d'ajouter un téléphone à l'établissement. Ne le partagez pas et ne le photographiez pas avec un autre appareil.</td></tr></table>
+
+<br style="page-break-before:always" clear="all">
+
+<h1>Étape 1 – Allumer le téléphone</h1>
+<p>Maintenez le <b>bouton de mise en marche</b> (côté droit) jusqu'à l'apparition du logo Samsung. Attendez l'écran de <b>bienvenue</b>.</p>
+<table class="ph"><tr><td>[Photo : écran de bienvenue du Samsung XCover 7]</td></tr></table>
+
+<h1>Étape 2 – Ouvrir le lecteur de QR code</h1>
+<p>Sur l'écran de bienvenue, <b>tapez 6 fois rapidement au même endroit</b> (au milieu de l'écran). Un message propose de scanner un QR code.</p>
+<p>Si le téléphone le demande, <b>connectez-vous au Wi-Fi</b> de l'établissement.</p>
+<table class="ph"><tr><td>[Photo : lecteur de QR code ouvert après les 6 appuis]</td></tr></table>
+
+<h1>Étape 3 – Scanner le QR code</h1>
+<p>Placez le QR code de ce guide <b>face à l'appareil photo</b>. Le téléphone le reconnaît automatiquement.</p>
+<table class="ph"><tr><td>[Photo : écran de scan du QR code]</td></tr></table>
+
+<h1>Étape 4 – Accepter les conditions</h1>
+<p>Le téléphone indique qu'il s'agit d'un <b>appareil professionnel géré par votre établissement</b>. Appuyez sur <b>Accepter et continuer</b>, puis acceptez les conditions suivantes si elles s'affichent.</p>
+<p>Le téléphone installe l'application <b>Microsoft Intune</b>. Patientez quelques minutes <b>sans éteindre</b> le téléphone.</p>
+<table class="ph"><tr><td>[Photo : écran « Configurons votre appareil professionnel » – Accepter et continuer]</td></tr></table>
+
+<h1>Étape 5 – Se connecter</h1>
+<ol>
+<li>Saisissez l'<b>identifiant</b> fourni (ex. soins9@…) puis <b>Suivant</b>.</li>
+<li>Saisissez le <b>code temporaire</b> fourni par le support, puis <b>Se connecter</b>.</li>
+<li>Si l'application <b>Microsoft Authenticator</b> vous demande de vous enregistrer, suivez les instructions à l'écran.</li>
+</ol>
+<table class="ph"><tr><td>[Photo : écran de connexion Microsoft sur le téléphone]</td></tr></table>
+
+<h1>Étape 6 – Choisir le code de déverrouillage</h1>
+<p>Le téléphone demande de créer un <b>code PIN de 6 chiffres</b>. Choisissez-le, confirmez-le et <b>transmettez-le à votre responsable</b> : il sera nécessaire pour utiliser le téléphone.</p>
+<table class="ph"><tr><td>[Photo : écran de création du code PIN]</td></tr></table>
+
+<h1>Étape 7 – Installation des applications</h1>
+<p>Appuyez sur <b>Installer</b> / <b>Suivant</b> lorsque le téléphone propose d'installer les applications professionnelles, puis sur <b>Terminé</b>. Les applications arrivent <b>automatiquement</b> dans les minutes qui suivent :</p>
+<table>
+<tr><th style="width:40%">Application</th><th>À quoi elle sert</th></tr>
+<tr><td>3CX</td><td>Téléphone interne de l'établissement (numéro fixe)</td></tr>
+<tr><td>Microsoft Authenticator</td><td>Validation des connexions (double authentification)</td></tr>
+<tr><td>Word, Excel, PowerPoint, Outlook, OneDrive, Teams</td><td>Outils bureautiques et messagerie</td></tr>
+<tr><td>Edge</td><td>Navigateur internet (avec les favoris de l'établissement)</td></tr>
+<tr><td>Adobe Acrobat Reader</td><td>Lecture des documents PDF</td></tr>
+<tr><td>TCL Connect</td><td>Application demandée par l'établissement</td></tr>
+</table>
+<p>Si le téléphone propose de créer un <b>compte Samsung</b>, appuyez sur <b>Ignorer</b>.</p>
+
+<h1>Étape 8 – Vérifier que tout fonctionne</h1>
+<table>
+<tr><th style="width:8%">✔</th><th>Vérification</th></tr>
+<tr><td>☐</td><td>Les applications ci-dessus sont visibles sur l'écran d'accueil (patienter jusqu'à 30 min)</td></tr>
+<tr><td>☐</td><td>Un appel et un SMS « normaux » fonctionnent</td></tr>
+<tr><td>☐</td><td>3CX : un appel reçu sonne, même écran verrouillé</td></tr>
+<tr><td>☐</td><td>Un document Word et un PDF s'ouvrent</td></tr>
+</table>
+
+<h1>En cas de problème</h1>
+<table>
+<tr><th style="width:38%">Situation</th><th>Que faire ?</th></tr>
+<tr><td>Le lecteur de QR code ne s'ouvre pas</td><td>Vérifiez que vous êtes bien sur le tout premier écran après l'allumage, puis tapez à nouveau 6 fois.</td></tr>
+<tr><td>Le code temporaire est refusé</td><td>Il est peut-être expiré : contactez le support pour en obtenir un nouveau.</td></tr>
+<tr><td>Les applications n'apparaissent pas</td><td>Laissez le téléphone allumé et connecté au Wi-Fi pendant 30 minutes.</td></tr>
+<tr><td>Téléphone perdu ou volé</td><td>Prévenez <b>immédiatement</b> le support : il peut être bloqué et effacé à distance.</td></tr>
+</table>
+
+<table class="ok"><tr><td>
+<b>📞 Support informatique</b>
+<p>Téléphone : ______________________</p>
+<p>E-mail : _________________________</p>
+<p>Horaires : _______________________</p>
+</td></tr></table>
+
+<table class="note"><tr><td><b>💡 Bon à savoir</b><br>Ce téléphone est <b>géré par l'établissement</b> : certaines fonctions sont limitées (réinitialisation, installation d'applications non autorisées) pour protéger les données.<br>Ne réinitialisez jamais le téléphone vous-même : passez par le support.</td></tr></table>
+</body>
+</html>
