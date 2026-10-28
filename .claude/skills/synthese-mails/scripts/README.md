@@ -22,7 +22,9 @@ qu'Outlook affiche déjà.
   version classique, qu'on retrouve en désactivant le bouton « Nouvel
   Outlook » en haut à droite.
 - **Claude Code** installé et connecté : lancer `claude` une fois dans un
-  terminal et se connecter.
+  terminal et se connecter. Si l'installeur signale que
+  `%USERPROFILE%\.local\bin` n'est pas dans le PATH, le lanceur le trouve
+  quand même.
 - Ce repo cloné sur le PC, par exemple dans `C:\Users\<toi>\ansam`.
 
 ## Étapes
@@ -53,10 +55,18 @@ Options utiles :
 | Export / Lancer | `-Mailbox "prenom.nom@ansam.group"` | Si la boîte ANSAM n'est pas le compte par défaut d'Outlook (nom tel qu'affiché dans le volet des dossiers) |
 | Export | `-IncludeDeletedItems` | Inclut les Éléments supprimés |
 | Export | `-KeepDays 7` | Durée de conservation des exports (14 jours par défaut) |
+| Export | `-SyncTimeoutSeconds 0` | Pas d'attente de synchronisation (par défaut : jusqu'à 10 min, au moins 3 min après le démarrage d'Outlook) |
 | Installer | `-At '06:45'` | Change l'heure de la tâche |
 
 ## Si ça coince
 
+- **`0x80080005` (CO_E_SERVER_EXEC_FAILURE)** : l'Outlook ouvert ne répond
+  pas aux scripts. Fermer complètement Outlook (aucun `OUTLOOK.EXE` restant
+  dans le Gestionnaire des tâches), le rouvrir, relancer.
+- **Dossiers ou Éléments envoyés manquants** : Outlook venait de démarrer et
+  n'avait pas fini de se synchroniser. L'export attend désormais la
+  synchronisation ; `sync.status` vaut `timeout` dans le JSON si elle n'a
+  pas été confirmée.
 - **Message d'Outlook « un programme tente d'accéder à des adresses
   e-mail »** : Outlook juge l'antivirus non reconnu. L'informatique peut
   l'autoriser (Centre de gestion de la confidentialité → Accès par

@@ -27,7 +27,8 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
    `importance`, `categories`, `flag` (suivi Outlook et échéance),
    `lastAction` (réponse ou transfert déjà fait depuis ce mail),
    `attachments`, `body` (sans l'historique cité), et `conversationId` pour
-   regrouper les messages d'un même fil.
+   regrouper les messages d'un même fil. En tête de fichier, `sync` indique
+   si la boîte était synchronisée au moment de l'export.
 2. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
    session : lire la même boîte directement.
 
@@ -51,6 +52,13 @@ signaler en fin de synthèse.
    - Reconstituer chaque fil (`conversationId`) avec ses messages envoyés
      avant de le classer : si mon dernier message est postérieur au leur, ou
      si `lastAction` indique une réponse, rien n'attend de moi.
+   - Fusionner les fils qui portent la **même clé de ticket** dans l'objet
+     (`ASD-26463`, `ZENIT-1057`…) ou le même objet une fois retirés `RE:`,
+     `TR:`, `Fwd:` et la ponctuation : Outlook coupe une conversation dès
+     qu'un tiret ou un préfixe change.
+   - Si `sync.status` de l'export n'est pas `stable`, l'export peut être
+     incomplet (dossiers pas encore synchronisés) : le dire dans les points
+     d'attention.
 
 2. **Écarter le bruit** : newsletters, notifications automatiques sans
    action, accusés de lecture, invitations déjà acceptées, alertes système

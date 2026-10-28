@@ -18,11 +18,23 @@ param(
     [string]$WorkDir = (Join-Path $env:USERPROFILE 'SyntheseMails'),
     [int]$Days = 14,
     [string]$Mailbox,
-    [string]$RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path,
-    [string]$ClaudeExe = 'claude'
+    # Par défaut : la racine de ce repo.
+    [string]$RepoDir,
+    # Par défaut : « claude » du PATH, sinon l'installation native
+    # (%USERPROFILE%\.local\bin), que l'installeur n'ajoute pas toujours au PATH.
+    [string]$ClaudeExe
 )
 
 $ErrorActionPreference = 'Stop'
+# $PSScriptRoot est vide dans les valeurs par défaut du param() sous Windows PowerShell 5.1.
+if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path }
+if (-not $ClaudeExe) {
+    $command = Get-Command claude -ErrorAction SilentlyContinue
+    $nativeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+    if ($command) { $ClaudeExe = $command.Source }
+    elseif (Test-Path $nativeExe) { $ClaudeExe = $nativeExe }
+    else { throw "Claude Code introuvable : installe-le (irm https://claude.ai/install.ps1 | iex) ou précise -ClaudeExe." }
+}
 $today = '{0:yyyy-MM-dd}' -f (Get-Date)
 $exportDir = Join-Path $WorkDir 'exports'
 $synthesisDir = Join-Path $WorkDir 'syntheses'
@@ -43,7 +55,7 @@ try {
     Push-Location $RepoDir
     try {
         $synthesis = & $ClaudeExe -p $prompt --add-dir $exportDir --allowedTools 'Read,Grep,Glob,Skill'
-        if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE)." }
+        if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
     } finally {
         Pop-Location
     }

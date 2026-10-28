@@ -11,6 +11,12 @@
     ouvertes. Exclus : Brouillons, Boîte d'envoi, Courrier indésirable,
     Problèmes de synchronisation, et par défaut Éléments supprimés.
 
+    Avant l'export, le script lance un envoi/réception et attend que la
+    boîte soit synchronisée (nombre d'éléments stable, Outlook ouvert depuis
+    au moins 3 minutes) : juste après le démarrage d'Outlook, des dossiers
+    entiers, Éléments envoyés compris, peuvent encore manquer au cache local.
+    -SyncTimeoutSeconds 0 supprime cette attente.
+
     Le script écrit un fichier mails-AAAA-MM-JJ.json dans -OutputDir et
     renvoie son chemin. Les exports de plus de -KeepDays jours sont effacés.
 
@@ -20,6 +26,7 @@
     .\Export-OutlookMails.ps1
     .\Export-OutlookMails.ps1 -Days 30 -IncludeDeletedItems
     .\Export-OutlookMails.ps1 -Mailbox "prenom.nom@ansam.group"
+    .\Export-OutlookMails.ps1 -SyncTimeoutSeconds 0   # Outlook déjà à jour, pas d'attente
 #>
 [CmdletBinding()]
 param(
@@ -33,6 +40,8 @@ param(
     [int]$MaxBodyChars = 2000,
     # Durée de conservation des exports, qui contiennent des données sensibles.
     [int]$KeepDays = 14,
+    # Attente maximale de la synchronisation d'Outlook, en secondes (0 = aucune).
+    [int]$SyncTimeoutSeconds = 600,
     [switch]$IncludeDeletedItems
 )
 
@@ -163,9 +172,52 @@ function Export-Folder($folder) {
     foreach ($subFolder in $folder.Folders) { Export-Folder $subFolder }
 }
 
+function Get-ItemCount($folder) {
+    $total = 0
+    try { $total = $folder.Items.Count } catch { }
+    foreach ($subFolder in $folder.Folders) { $total += Get-ItemCount $subFolder }
+    $total
+}
+
+# Le cache local se remplit pendant les premières minutes d'Outlook : on
+# attend qu'il ait au moins 3 minutes et que le nombre d'éléments ne bouge
+# plus sur deux relevés consécutifs.
+function Wait-OutlookSync($root) {
+    $start = Get-Date
+    $deadline = $start.AddSeconds($SyncTimeoutSeconds)
+    try { $namespace.SendAndReceive($false) } catch { }
+    $previous = -1
+    $stablePolls = 0
+    while ($true) {
+        $current = Get-ItemCount $root
+        if ($current -eq $previous) { $stablePolls++ } else { $stablePolls = 0; $previous = $current }
+
+        $outlookStart = (Get-Process OUTLOOK -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1).StartTime
+        $oldEnough = $outlookStart -and ((Get-Date) - $outlookStart).TotalSeconds -ge 180
+        if ($stablePolls -ge 2 -and $oldEnough) { $status = 'stable'; break }
+        if ((Get-Date) -ge $deadline) {
+            $status = 'timeout'
+            Write-Warning "Synchronisation d'Outlook non confirmée après $SyncTimeoutSeconds s : l'export peut être incomplet."
+            break
+        }
+        Start-Sleep -Seconds 20
+    }
+    [ordered]@{
+        status           = $status
+        waitedSeconds    = [int]((Get-Date) - $start).TotalSeconds
+        outlookStartedAt = Format-Date $outlookStart
+    }
+}
+
 # --- Boîte principale -------------------------------------------------------
 
-$outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
+try {
+    $outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
+} catch {
+    throw ("Outlook ne répond pas (souvent une instance bloquée) : ferme complètement Outlook, " +
+           "vérifie qu'il ne reste aucun OUTLOOK.EXE dans le Gestionnaire des tâches, rouvre-le et relance. " +
+           "Détail : $($_.Exception.Message)")
+}
 $namespace = $outlook.GetNamespace('MAPI')
 
 if ($Mailbox) {
@@ -187,6 +239,9 @@ $since = (Get-Date).Date.AddDays(-$Days)
 $sinceUtc = $since.ToUniversalTime().ToString('yyyy-MM-dd HH:mm', $invariant)
 $filter = "@SQL=(""urn:schemas:httpmail:datereceived"" >= '$sinceUtc' OR ""urn:schemas:httpmail:date"" >= '$sinceUtc')"
 
+$sync = [ordered]@{ status = 'skipped'; waitedSeconds = 0; outlookStartedAt = $null }
+if ($SyncTimeoutSeconds -gt 0) { $sync = Wait-OutlookSync $store.GetRootFolder() }
+
 $messages = New-Object System.Collections.Generic.List[object]
 $folderStats = New-Object System.Collections.Generic.List[object]
 Export-Folder $store.GetRootFolder()
@@ -199,6 +254,7 @@ $export = [ordered]@{
     exportedAt   = Format-Date (Get-Date)
     mailbox      = $store.DisplayName
     since        = Format-Date $since
+    sync         = $sync
     folders      = $folderStats
     messageCount = $messages.Count
     messages     = $messages
