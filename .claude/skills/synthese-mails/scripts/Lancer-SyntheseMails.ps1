@@ -1,56 +1,152 @@
 ﻿<#
 .SYNOPSIS
-    Exporte les mails Outlook puis fait rédiger la synthèse matinale par
-    Claude Code, en local.
+    Produit la synthèse matinale des mails et me l'envoie par mail.
 
 .DESCRIPTION
-    1. Export-OutlookMails.ps1 : export JSON de la boîte principale.
-    2. claude -p (Claude Code en mode non interactif), lancé depuis ce repo
-       pour que le skill synthese-mails soit chargé, en lecture seule.
-    3. Synthèse écrite dans <WorkDir>\syntheses\AAAA-MM-JJ.md, journal dans
-       <WorkDir>\logs.
+    1. Lit la configuration (<WorkDir>\config.json, réglée dans la page de
+       Configurer-SyntheseMails.cmd) : jours d'envoi, absences, fenêtre.
+       Pas de synthèse un jour non prévu ou pendant une absence ; au retour,
+       une seule synthèse couvre toute la période depuis la dernière.
+    2. Export-OutlookMails.ps1 : export de la boîte principale.
+    3. Export-ContexteAnsam.ps1 : fiches clients et tickets AnsamDiag.
+    4. claude -p (Claude Code non interactif, lecture seule) depuis ce repo,
+       pour que le skill synthese-mails soit chargé.
+    5. Synthèse gardée dans <WorkDir>\syntheses\AAAA-MM-JJ.md et envoyée par
+       mail à ma propre adresse via Outlook. En cas d'échec, un mail
+       « Synthèse mails – échec » le signale. Journal dans <WorkDir>\logs.
 
     Prérequis : Outlook classique ouvert ou ouvrable, Claude Code installé et
     connecté (lancer « claude » une fois à la main).
+
+.EXAMPLE
+    .\Lancer-SyntheseMails.ps1              # comme la tâche planifiée
+    .\Lancer-SyntheseMails.ps1 -Force       # même un jour non prévu ou déjà traité
+    .\Lancer-SyntheseMails.ps1 -Force -PasDeMail
 #>
 [CmdletBinding()]
 param(
     [string]$WorkDir = (Join-Path $env:USERPROFILE 'SyntheseMails'),
-    [int]$Days = 14,
     [string]$Mailbox,
-    [string]$RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path,
-    [string]$ClaudeExe = 'claude'
+    # Par défaut : la racine de ce repo.
+    [string]$RepoDir,
+    # Par défaut : « claude » du PATH, sinon l'installation native
+    # (%USERPROFILE%\.local\bin), que l'installeur n'ajoute pas toujours au PATH.
+    [string]$ClaudeExe,
+    # Lance même un jour non prévu, pendant une absence ou déjà traité.
+    [switch]$Force,
+    # N'envoie pas le mail (la synthèse est seulement enregistrée).
+    [switch]$PasDeMail
 )
 
 $ErrorActionPreference = 'Stop'
-$today = '{0:yyyy-MM-dd}' -f (Get-Date)
+. (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
+
+# $PSScriptRoot est vide dans les valeurs par défaut du param() sous Windows PowerShell 5.1.
+if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path }
+if (-not $ClaudeExe) {
+    $command = Get-Command claude -ErrorAction SilentlyContinue
+    $nativeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+    if ($command) { $ClaudeExe = $command.Source }
+    elseif (Test-Path $nativeExe) { $ClaudeExe = $nativeExe }
+    else { throw "Claude Code introuvable : installe-le (irm https://claude.ai/install.ps1 | iex) ou précise -ClaudeExe." }
+}
+
+function Send-SelfMail([string]$Subject, [string]$HtmlBody, [string]$Address) {
+    $outlook = New-Object -ComObject Outlook.Application
+    if (-not $Address) {
+        $Address = $outlook.Session.CurrentUser.AddressEntry.GetExchangeUser().PrimarySmtpAddress
+    }
+    if (-not $Address) { throw 'Adresse de la boîte introuvable : mail non envoyé.' }
+    $mail = $outlook.CreateItem(0)   # olMailItem
+    $mail.To = $Address              # toujours ma propre adresse, jamais un tiers
+    $mail.Subject = $Subject
+    $mail.HTMLBody = $HtmlBody
+    $mail.Send()
+    Write-Host "Synthèse envoyée à $Address."
+}
+
+$start = Get-Date
+$today = '{0:yyyy-MM-dd}' -f $start
 $exportDir = Join-Path $WorkDir 'exports'
 $synthesisDir = Join-Path $WorkDir 'syntheses'
 $logDir = Join-Path $WorkDir 'logs'
 New-Item -ItemType Directory -Force -Path $exportDir, $synthesisDir, $logDir | Out-Null
 
+$config = Get-SmConfig $WorkDir
+$etat = Get-SmEtat $WorkDir
+$plan = Get-SmPlan $config $etat $start
+
 Start-Transcript -Path (Join-Path $logDir "$today.log") -Append | Out-Null
+$address = $null
 try {
-    $exportArgs = @{ Days = $Days; OutputDir = $exportDir }
+    if (-not $plan.lancer) {
+        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; return }
+        Write-Host "Lancement forcé malgré : $($plan.raison)"
+        if (-not $plan.depuis) { $plan.depuis = $start.Date.AddDays(-1).AddHours(7) }
+    }
+
+    $exportArgs = @{ Days = $plan.jours; OutputDir = $exportDir }
     if ($Mailbox) { $exportArgs.Mailbox = $Mailbox }
     $exportFile = & (Join-Path $PSScriptRoot 'Export-OutlookMails.ps1') @exportArgs | Select-Object -Last 1
+    $threadFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-fils.txt'
+    $address = (Read-SmJson $exportFile).address
 
-    $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM " +
-              "à partir de l'export local $exportFile. Réponds uniquement avec la synthèse en Markdown."
+    $contextFile = Join-Path $WorkDir 'contexte-ansam.json'
+    & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ExportFile $exportFile `
+        -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
+
+    $since = $plan.depuis.ToString('dd.MM.yyyy HH:mm')
+    $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
+              "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile. " +
+              "Nouveautés depuis la dernière synthèse : $since."
+    $absences = @($plan.absences)
+    if ($absences.Count) {
+        $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
+        $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
+    }
+    $prompt += " Réponds uniquement avec la synthèse en Markdown."
 
     # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
     Push-Location $RepoDir
     try {
-        $synthesis = & $ClaudeExe -p $prompt --add-dir $exportDir --allowedTools 'Read,Grep,Glob,Skill'
-        if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE)." }
+        $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
+        if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
     } finally {
         Pop-Location
     }
 
+    # La synthèse commence au premier titre ; tout préambule éventuel est retiré.
+    $markdown = $synthesis -join "`n"
+    $titleAt = [regex]::Match($markdown, '(?m)^# ')
+    if ($titleAt.Success) { $markdown = $markdown.Substring($titleAt.Index) }
     $synthesisFile = Join-Path $synthesisDir "$today.md"
-    [IO.File]::WriteAllText($synthesisFile, ($synthesis -join "`n"), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($synthesisFile, $markdown, (New-Object Text.UTF8Encoding($false)))
     Write-Host "Synthèse prête : $synthesisFile"
+
+    if ($config.envoiMail -and -not $PasDeMail) {
+        $subject = ((($markdown -split "`n")[0]) -replace '^#\s*', '').Trim()
+        if ($subject -notlike 'Synthèse mails – *') { $subject = "Synthèse mails – $($start.ToString('dd.MM.yyyy'))" }
+        Send-SelfMail $subject (ConvertTo-SmHtml $markdown) $address
+    }
+
+    $etat = [ordered]@{
+        derniereSynthese = $start.ToString('o')
+        dernierMode      = $(if ($absences.Count) { 'retour' } else { 'quotidien' })
+        dernierFichier   = $synthesisFile
+    }
+    Save-SmEtat $etat $WorkDir
+} catch {
+    Write-Warning "Échec : $($_.Exception.Message)"
+    if ($config.envoiMail -and -not $PasDeMail) {
+        try {
+            $body = "<p>La synthèse du $($start.ToString('dd.MM.yyyy')) n'a pas pu être produite.</p>" +
+                    "<p><b>Erreur :</b> $([Net.WebUtility]::HtmlEncode($_.Exception.Message))</p>" +
+                    "<p>Journal : <code>$(Join-Path $logDir "$today.log")</code></p>"
+            Send-SelfMail "Synthèse mails – échec du $($start.ToString('dd.MM.yyyy'))" $body $address
+        } catch { Write-Warning "Mail d'échec non envoyé : $($_.Exception.Message)" }
+    }
+    throw
 } finally {
     Stop-Transcript | Out-Null
 }

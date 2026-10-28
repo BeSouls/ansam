@@ -11,8 +11,17 @@
     ouvertes. Exclus : Brouillons, Boîte d'envoi, Courrier indésirable,
     Problèmes de synchronisation, et par défaut Éléments supprimés.
 
-    Le script écrit un fichier mails-AAAA-MM-JJ.json dans -OutputDir et
-    renvoie son chemin. Les exports de plus de -KeepDays jours sont effacés.
+    Avant l'export, le script lance un envoi/réception et attend que la
+    boîte soit synchronisée (nombre d'éléments stable, Outlook ouvert depuis
+    au moins 3 minutes) : juste après le démarrage d'Outlook, des dossiers
+    entiers, Éléments envoyés compris, peuvent encore manquer au cache local.
+    -SyncTimeoutSeconds 0 supprime cette attente.
+
+    Le script écrit mails-AAAA-MM-JJ.json (détail complet) et
+    mails-AAAA-MM-JJ-fils.txt (vue compacte par fil) dans -OutputDir et
+    renvoie le chemin du JSON. Les exports de plus de -KeepDays jours sont
+    effacés. Les synthèses déjà envoyées (« Synthèse mails – … ») sont
+    exclues.
 
     Ne fonctionne pas avec le « nouvel Outlook » (pas d'accès COM).
 
@@ -20,6 +29,7 @@
     .\Export-OutlookMails.ps1
     .\Export-OutlookMails.ps1 -Days 30 -IncludeDeletedItems
     .\Export-OutlookMails.ps1 -Mailbox "prenom.nom@ansam.group"
+    .\Export-OutlookMails.ps1 -SyncTimeoutSeconds 0   # Outlook déjà à jour, pas d'attente
 #>
 [CmdletBinding()]
 param(
@@ -30,9 +40,11 @@ param(
     # le compte par défaut.
     [string]$Mailbox,
     # Longueur maximale du corps conservé (après retrait de l'historique cité).
-    [int]$MaxBodyChars = 2000,
+    [int]$MaxBodyChars = 1500,
     # Durée de conservation des exports, qui contiennent des données sensibles.
     [int]$KeepDays = 14,
+    # Attente maximale de la synchronisation d'Outlook, en secondes (0 = aucune).
+    [int]$SyncTimeoutSeconds = 600,
     [switch]$IncludeDeletedItems
 )
 
@@ -85,7 +97,10 @@ function Get-CleanBody($item) {
     $body = [string]$item.Body
     $quote = [regex]::Match($body, '(?m)^\s*(_{20,}|-{3,}\s*(Original Message|Message d.origine)|(De|From)\s*:\s)')
     if ($quote.Success -and $quote.Index -gt 0) { $body = $body.Substring(0, $quote.Index) }
-    $body = ($body -replace "`r", '' -replace "(`n\s*){3,}", "`n`n").Trim()
+    # Liens Safelinks / images (souvent plus longs que le texte) et bandeaux d'avertissement.
+    $body = $body -replace '<(https?|mailto):[^>\s]*>', '' -replace '(?m)^.*Pourquoi c.est important\s*$', '' `
+                  -replace '(?m)^\s*Attention\s*: Email externe\.\s*$', ''
+    $body = ($body -replace "`r", '' -replace "[ `t]+`n", "`n" -replace "(`n\s*){3,}", "`n`n").Trim()
     if ($body.Length -gt $MaxBodyChars) { $body = $body.Substring(0, $MaxBodyChars) + "`n[... tronqué]" }
     $body
 }
@@ -150,6 +165,7 @@ function Export-Folder($folder) {
         foreach ($item in $folder.Items.Restrict($filter)) {
             if ($item.Class -ne 43) { continue }   # MailItem
             if ($item.MessageClass -like 'IPM.Note.Microsoft.Conversation*') { continue }   # historique Teams/Skype
+            if ($item.Subject -like 'Synthèse mails – *') { continue }   # nos propres synthèses
             try {
                 $messages.Add((Convert-Mail $item $path))
                 $count++
@@ -163,9 +179,52 @@ function Export-Folder($folder) {
     foreach ($subFolder in $folder.Folders) { Export-Folder $subFolder }
 }
 
+function Get-ItemCount($folder) {
+    $total = 0
+    try { $total = $folder.Items.Count } catch { }
+    foreach ($subFolder in $folder.Folders) { $total += Get-ItemCount $subFolder }
+    $total
+}
+
+# Le cache local se remplit pendant les premières minutes d'Outlook : on
+# attend qu'il ait au moins 3 minutes et que le nombre d'éléments ne bouge
+# plus sur deux relevés consécutifs.
+function Wait-OutlookSync($root) {
+    $start = Get-Date
+    $deadline = $start.AddSeconds($SyncTimeoutSeconds)
+    try { $namespace.SendAndReceive($false) } catch { }
+    $previous = -1
+    $stablePolls = 0
+    while ($true) {
+        $current = Get-ItemCount $root
+        if ($current -eq $previous) { $stablePolls++ } else { $stablePolls = 0; $previous = $current }
+
+        $outlookStart = (Get-Process OUTLOOK -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1).StartTime
+        $oldEnough = $outlookStart -and ((Get-Date) - $outlookStart).TotalSeconds -ge 180
+        if ($stablePolls -ge 2 -and $oldEnough) { $status = 'stable'; break }
+        if ((Get-Date) -ge $deadline) {
+            $status = 'timeout'
+            Write-Warning "Synchronisation d'Outlook non confirmée après $SyncTimeoutSeconds s : l'export peut être incomplet."
+            break
+        }
+        Start-Sleep -Seconds 20
+    }
+    [ordered]@{
+        status           = $status
+        waitedSeconds    = [int]((Get-Date) - $start).TotalSeconds
+        outlookStartedAt = Format-Date $outlookStart
+    }
+}
+
 # --- Boîte principale -------------------------------------------------------
 
-$outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
+try {
+    $outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
+} catch {
+    throw ("Outlook ne répond pas (souvent une instance bloquée) : ferme complètement Outlook, " +
+           "vérifie qu'il ne reste aucun OUTLOOK.EXE dans le Gestionnaire des tâches, rouvre-le et relance. " +
+           "Détail : $($_.Exception.Message)")
+}
 $namespace = $outlook.GetNamespace('MAPI')
 
 if ($Mailbox) {
@@ -187,18 +246,28 @@ $since = (Get-Date).Date.AddDays(-$Days)
 $sinceUtc = $since.ToUniversalTime().ToString('yyyy-MM-dd HH:mm', $invariant)
 $filter = "@SQL=(""urn:schemas:httpmail:datereceived"" >= '$sinceUtc' OR ""urn:schemas:httpmail:date"" >= '$sinceUtc')"
 
+$sync = [ordered]@{ status = 'skipped'; waitedSeconds = 0; outlookStartedAt = $null }
+if ($SyncTimeoutSeconds -gt 0) { $sync = Wait-OutlookSync $store.GetRootFolder() }
+
 $messages = New-Object System.Collections.Generic.List[object]
 $folderStats = New-Object System.Collections.Generic.List[object]
 Export-Folder $store.GetRootFolder()
 
 # --- Écriture ---------------------------------------------------------------
 
+$mailboxAddress = $null
+foreach ($account in $namespace.Accounts) {
+    try { if ($account.DeliveryStore.StoreID -eq $store.StoreID) { $mailboxAddress = $account.SmtpAddress } } catch { }
+}
+
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $file = Join-Path $OutputDir ('mails-{0:yyyy-MM-dd}.json' -f (Get-Date))
 $export = [ordered]@{
     exportedAt   = Format-Date (Get-Date)
     mailbox      = $store.DisplayName
+    address      = $mailboxAddress
     since        = Format-Date $since
+    sync         = $sync
     folders      = $folderStats
     messageCount = $messages.Count
     messages     = $messages
@@ -206,7 +275,30 @@ $export = [ordered]@{
 $json = $export | ConvertTo-Json -Depth 6
 [IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding($false)))
 
-Get-ChildItem -Path $OutputDir -Filter 'mails-*.json' |
+# Vue compacte par fil (une ligne d'en-tête par message), beaucoup plus courte
+# que le JSON : c'est elle que la synthèse lit en premier.
+$view = New-Object Text.StringBuilder
+[void]$view.AppendLine("Boîte : $($store.DisplayName) <$mailboxAddress> | depuis $(Format-Date $since) | $($messages.Count) mails | synchro : $($sync.status)")
+$threads = $messages | Group-Object { $_.conversationId } |
+    Sort-Object { ($_.Group | ForEach-Object { $_.received } | Sort-Object | Select-Object -Last 1) } -Descending
+foreach ($thread in $threads) {
+    [void]$view.AppendLine()
+    [void]$view.AppendLine("######## FIL : $($thread.Group[0].conversationTopic) ($($thread.Count) msg)")
+    foreach ($mail in ($thread.Group | Sort-Object { $_.received })) {
+        $to = ($mail.to | ForEach-Object { $_.address }) -join ', '
+        $cc = ($mail.cc | ForEach-Object { $_.address }) -join ', '
+        $flag = $(if ($mail.flag) { " | drapeau=$($mail.flag.status) $($mail.flag.due)" })
+        $last = $(if ($mail.lastAction) { " | déjà=$($mail.lastAction.type) $($mail.lastAction.at)" })
+        $att = $(if ($mail.attachments) { " | pj=$($mail.attachments -join ', ')" })
+        [void]$view.AppendLine("--- [$($mail.folder)] $($mail.received) | De : $($mail.from.name) <$($mail.from.address)> | À : $to | Cc : $cc | non lu=$($mail.unread) | importance=$($mail.importance)$flag$last$att")
+        [void]$view.AppendLine("Objet : $($mail.subject)")
+        if ($mail.body) { [void]$view.AppendLine(($mail.body -replace "(`n\s*)+", ' / ')) }
+    }
+}
+$viewFile = [IO.Path]::ChangeExtension($file, $null).TrimEnd('.') + '-fils.txt'
+[IO.File]::WriteAllText($viewFile, $view.ToString(), (New-Object Text.UTF8Encoding($false)))
+
+Get-ChildItem -Path $OutputDir -Filter 'mails-*' |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays) } |
     Remove-Item -Force
 

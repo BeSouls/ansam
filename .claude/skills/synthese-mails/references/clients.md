@@ -1,11 +1,22 @@
 # Clients suivis (TAM)
 
-À compléter : ce tableau permet de rattacher chaque mail au bon client, et
-d'alerter en fin de mois sur les variabilités manquantes.
+Les clients ne sont plus saisis ici : le lanceur construit
+`contexte-ansam.json` à partir des données AnsamDiag du PC (fiches
+`Clients\<CODE>.json` et dossiers `Tickets\<CLE>\ticket.json`, voir
+SKILL.md).
 
-| Client | Domaine(s) mail | Alias / abréviations | Contacts clés | Dossier Outlook |
-|---|---|---|---|---|
-| <Nom du client> | <exemple.ch> | <ABC> | <Prénom Nom (rôle)> | <Clients/Nom> |
+Le **portefeuille TAM** est la liste des sous-dossiers Outlook de
+`Boîte de réception\MES CLIENTS` (réglable dans la page de configuration) :
+c'est sur ces clients que porte le contrôle de fin de mois des
+variabilités.
+
+## Compléments
+
+Alias ou adresses qui ne se déduisent pas des fiches clients :
+
+| Client (code) | Alias / domaines supplémentaires | Remarque |
+|---|---|---|
+| | | |
 
 ## Interlocuteurs internes ANSAM utiles
 
