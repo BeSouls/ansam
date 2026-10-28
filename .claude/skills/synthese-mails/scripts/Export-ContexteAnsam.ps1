@@ -7,7 +7,7 @@
     Lit, sans rien modifier :
     - <DataDir>\Clients\<CODE>.json : nom, modèle, domaines, particularités ;
     - <DataDir>\Tickets\<CLE>\ticket.json : client, domaine, utilisateur,
-      symptôme, statut, dernière note ;
+      symptôme, statut, 3 dernières notes, clôture préparée ;
     - dans l'export des mails, les sous-dossiers Outlook de
       -DossierPortefeuille (un sous-dossier par client du portefeuille).
     Un fichier illisible est ignoré avec un avertissement.
@@ -22,7 +22,7 @@ param(
     [string]$ExportFile,
     [string]$DossierPortefeuille = 'Boîte de réception\MES CLIENTS',
     # Longueur maximale conservée pour les textes (notes, particularités).
-    [int]$MaxTextChars = 400
+    [int]$MaxTextChars = 300
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,16 +69,20 @@ if (Test-Path $ticketDir) {
         if (-not (Test-Path $path)) { continue }
         $ticket = Read-Json $path
         if (-not $ticket) { continue }
-        $lastNote = @($ticket.Notes) | Where-Object { $_ } | Select-Object -Last 1
+        # Les dernières notes disent où j'en suis (action faite, attente, résolu).
+        $notes = @(@($ticket.Notes) | Where-Object { $_ } | Select-Object -Last 3 |
+            ForEach-Object { Limit-Text "$($_.horodatage) : $($_.texte)" })
         $tickets.Add([ordered]@{
-            cle          = $(if ($ticket.Ticket) { $ticket.Ticket } else { $dir.Name })
-            client       = $ticket.Client
-            domaine      = $ticket.Domaine
-            utilisateur  = $ticket.Utilisateur
-            symptome     = Limit-Text $ticket.Symptome
-            statut       = $ticket.Statut
-            misAJour     = $ticket.MisAJour
-            derniereNote = $(if ($lastNote) { Limit-Text "$($lastNote.horodatage) : $($lastNote.texte)" })
+            cle         = $(if ($ticket.Ticket) { $ticket.Ticket } else { $dir.Name })
+            client      = $ticket.Client
+            domaine     = $ticket.Domaine
+            utilisateur = $ticket.Utilisateur
+            symptome    = Limit-Text $ticket.Symptome
+            statut      = $ticket.Statut              # Ouvert, EnAttente, Resolu
+            creeLe      = $ticket.Cree
+            misAJour    = $ticket.MisAJour
+            cloture     = Test-Path (Join-Path $dir.FullName 'cloture.md')
+            notes       = $notes
         })
     }
 } else {

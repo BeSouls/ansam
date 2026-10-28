@@ -12,10 +12,15 @@
     l'heure prévue, elle démarre dès que possible. Relancer le script
     remplace la tâche.
 
+    Crée aussi « <TaskName> - page » : la page de suivi et de configuration,
+    lancée à l'ouverture de session et gardée active (adresse fixe, lien dans
+    chaque synthèse). Elle est démarrée tout de suite.
+
 .EXAMPLE
     .\Installer-TacheSyntheseMails.ps1
     .\Installer-TacheSyntheseMails.ps1 -At '06:45'
-    Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM'   # désinstaller
+    Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM'          # désinstaller
+    Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM - page'
 #>
 [CmdletBinding()]
 param(
@@ -38,3 +43,16 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal -Force | Out-Null
 Write-Host "Tâche « $TaskName » créée : tous les jours à $At."
+
+# Page de suivi permanente : démarrée à l'ouverture de session, sans limite de durée.
+$pageTask = "$TaskName - page"
+$pageScript = Join-Path $PSScriptRoot 'Configurer-SyntheseMails.ps1'
+$pageAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$pageScript`" -Service"
+$pageTrigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+$pageSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName $pageTask -Action $pageAction -Trigger $pageTrigger `
+    -Settings $pageSettings -Principal $principal -Force | Out-Null
+if ((Get-ScheduledTask -TaskName $pageTask).State -ne 'Running') { Start-ScheduledTask -TaskName $pageTask }
+Write-Host "Tâche « $pageTask » créée : page permanente sur $(Get-SmPageUrl)"

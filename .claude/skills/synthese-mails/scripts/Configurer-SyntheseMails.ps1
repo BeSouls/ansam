@@ -1,26 +1,40 @@
 ﻿<#
 .SYNOPSIS
-    Ouvre la page locale de configuration de la synthèse mails.
+    Ouvre la page locale de suivi et de configuration de la synthèse mails.
 
 .DESCRIPTION
-    Démarre un petit serveur web sur 127.0.0.1 (port libre choisi au hasard,
-    jamais accessible depuis le réseau), ouvre la page dans le navigateur et
-    s'arrête quand on clique sur « Fermer » ou après 30 minutes sans activité.
-    Chaque requête doit porter le jeton aléatoire de la session.
+    Petit serveur web sur 127.0.0.1 (jamais accessible depuis le réseau), au
+    port de la configuration (8765 par défaut). Chaque requête doit porter le
+    jeton gardé dans <WorkDir>\page.token : l'adresse reste la même, on peut
+    la mettre en favori, et chaque synthèse envoyée contient le lien.
 
-    La page règle <WorkDir>\config.json : synthèse active, heure, jours
+    -Service : mode permanent, lancé à l'ouverture de session par la tâche
+    « Synthese mails ANSAM - page » (installée avec la tâche du matin) ; ni
+    navigateur ni arrêt automatique.
+    Sans -Service : si le service tourne déjà, ouvre simplement la page ;
+    sinon démarre le serveur, ouvre la page, et s'arrête sur « Arrêter » ou
+    après 30 minutes sans activité.
+
+    Onglet « Suivi » : les points du registre (<WorkDir>\suivi.json), dont
+    je change le statut (à faire, en attente d'un tiers, traité, sans objet)
+    avec une note ; la synthèse suivante en tient compte.
+
+    Onglet « Réglages » : <WorkDir>\config.json : synthèse active, heure, jours
     d'envoi, fenêtre en jours, envoi par mail, absences, dossiers. Elle
     affiche la prochaine synthèse prévue, l'état de la tâche planifiée et les
     dernières synthèses, et peut installer ou mettre à jour la tâche.
 
 .EXAMPLE
     .\Configurer-SyntheseMails.ps1      # ou double-clic sur Configurer-SyntheseMails.cmd
+    .\Configurer-SyntheseMails.ps1 -Service
 #>
 [CmdletBinding()]
 param(
     [string]$WorkDir = (Join-Path $env:USERPROFILE 'SyntheseMails'),
     [string]$TaskName = 'Synthese mails ANSAM',
     [int]$IdleMinutes = 30,
+    # Mode permanent (tâche à l'ouverture de session).
+    [switch]$Service,
     # Affiche l'adresse sans ouvrir le navigateur.
     [switch]$PasDeNavigateur
 )
@@ -30,7 +44,14 @@ $ErrorActionPreference = 'Stop'
 
 $utf8 = New-Object Text.UTF8Encoding($false)
 $pagePath = Join-Path $PSScriptRoot 'config.html'
-$token = [guid]::NewGuid().ToString('N')
+$port = [int](Get-SmConfig $WorkDir).portPage
+$token = Get-SmPageToken $WorkDir
+$url = "http://127.0.0.1:$port/?t=$token"
+
+function Test-PageRunning {
+    $probe = New-Object Net.Sockets.TcpClient
+    try { $probe.Connect([Net.IPAddress]::Loopback, $port); $true } catch { $false } finally { $probe.Close() }
+}
 
 function Get-TaskState {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -39,6 +60,7 @@ function Get-TaskState {
     $trigger = @($task.Triggers)[0]
     [ordered]@{
         installee          = $true
+        pagePermanente     = [bool](Get-ScheduledTask -TaskName "$TaskName - page" -ErrorAction SilentlyContinue)
         heure              = $(if ($trigger.StartBoundary) { ([datetime]$trigger.StartBoundary).ToString('HH:mm') })
         prochaineExecution = $(if ($info.NextRunTime) { $info.NextRunTime.ToString('yyyy-MM-ddTHH:mm') })
         derniereExecution  = $(if ($info.LastRunTime -and $info.LastRunTime.Year -gt 2000) { $info.LastRunTime.ToString('yyyy-MM-ddTHH:mm') })
@@ -72,6 +94,7 @@ function Get-State {
         tache      = Get-TaskState
         syntheses  = $files
         dossier    = $WorkDir
+        service    = $Service.IsPresent
     }
 }
 
@@ -159,21 +182,27 @@ function Install-Task {
     & (Join-Path $PSScriptRoot 'Installer-TacheSyntheseMails.ps1') -At (Get-SmConfig $WorkDir).heure -TaskName $TaskName | Out-Null
 }
 
-$listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
-$listener.Start()
-$port = $listener.LocalEndpoint.Port
-$url = "http://127.0.0.1:$port/?t=$token"
-Write-Host "Page de configuration : $url"
-Write-Host "Fermer depuis la page, ou Ctrl+C ici. Arrêt automatique après $IdleMinutes min sans activité."
-if (-not $PasDeNavigateur) { Start-Process $url }
+if (Test-PageRunning) {
+    # Le service (ou une autre fenêtre) sert déjà la page : il suffit de l'ouvrir.
+    if (-not $Service -and -not $PasDeNavigateur) { Start-Process $url }
+    Write-Host "Page déjà active : $url"
+    return
+}
+
+$listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $port)
+try { $listener.Start() } catch { throw "Port $port indisponible (utilisé par un autre programme ?) : changer « portPage » dans config.json. $($_.Exception.Message)" }
+Write-Host "Page de suivi et de configuration : $url"
+if ($Service) { Write-Host 'Mode permanent.' }
+else { Write-Host "Arrêt depuis la page, Ctrl+C ici, ou automatiquement après $IdleMinutes min sans activité." }
+if (-not $Service -and -not $PasDeNavigateur) { Start-Process $url }
 
 $lastActivity = Get-Date
 $stop = $false
 try {
     while (-not $stop) {
         if (-not $listener.Pending()) {
-            if (((Get-Date) - $lastActivity).TotalMinutes -ge $IdleMinutes) { Write-Host 'Arrêt après inactivité.'; break }
-            Start-Sleep -Milliseconds 150
+            if (-not $Service -and ((Get-Date) - $lastActivity).TotalMinutes -ge $IdleMinutes) { Write-Host 'Arrêt après inactivité.'; break }
+            Start-Sleep -Milliseconds 200
             continue
         }
         $client = $listener.AcceptTcpClient()
@@ -187,8 +216,8 @@ try {
             # Seule la page servie ici, avec le jeton de la session, peut appeler le serveur.
             $host_ = $request.Headers['host']
             $tokenOk = ($request.Query['t'] -eq $token) -or ($request.Headers['x-token'] -eq $token)
-            if ($host_ -ne "127.0.0.1:$port" -or -not $tokenOk) {
-                Send-Response $stream 403 'text/plain' 'Accès refusé : ouvrir la page depuis Configurer-SyntheseMails.'
+            if (@("127.0.0.1:$port", "localhost:$port") -notcontains $host_ -or -not $tokenOk) {
+                Send-Response $stream 403 'text/plain' 'Accès refusé : ouvrir la page depuis le lien de la synthèse ou Configurer-SyntheseMails.cmd.'
                 continue
             }
 
@@ -206,9 +235,20 @@ try {
                     if ((Get-TaskState).installee) { Install-Task; $message += ' Tâche planifiée mise à jour.' }
                     Send-Json $stream 200 ([ordered]@{ message = $message; etat = (Get-State) })
                 }
+                '^GET /api/suivi$' {
+                    $suivi = Get-SmSuivi $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ majLe = $suivi.majLe; points = @($suivi.points) })
+                }
+                '^POST /api/suivi$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
+                    Save-SmSuivi $suivi $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point })
+                }
                 '^POST /api/tache$' {
                     Install-Task
-                    Send-Json $stream 200 ([ordered]@{ message = "Tâche planifiée installée ($((Get-SmConfig $WorkDir).heure))."; etat = (Get-State) })
+                    Send-Json $stream 200 ([ordered]@{ message = "Tâches installées : synthèse à $((Get-SmConfig $WorkDir).heure), page permanente à l'ouverture de session."; etat = (Get-State) })
                 }
                 '^GET /synthese$' {
                     $name = [string]$request.Query['d']
@@ -217,7 +257,8 @@ try {
                     Send-Response $stream 200 'text/html' (ConvertTo-SmHtml ([IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)))
                 }
                 '^POST /api/quitter$' {
-                    Send-Json $stream 200 ([ordered]@{ message = 'Page fermée.' })
+                    if ($Service) { Send-Json $stream 200 ([ordered]@{ message = 'Page permanente : elle reste active.' }); break }
+                    Send-Json $stream 200 ([ordered]@{ message = 'Page arrêtée.' })
                     $stop = $true
                 }
                 default { Send-Response $stream 404 'text/plain' 'Introuvable.' }
@@ -231,4 +272,8 @@ try {
     }
 } finally {
     $listener.Stop()
+    # Fenêtre ponctuelle arrêtée : la page permanente reprend le relais si elle est installée.
+    if (-not $Service -and (Get-ScheduledTask -TaskName "$TaskName - page" -ErrorAction SilentlyContinue)) {
+        Start-ScheduledTask -TaskName "$TaskName - page"
+    }
 }

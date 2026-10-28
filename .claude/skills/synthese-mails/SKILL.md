@@ -35,10 +35,18 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
    - `clients` : code, nom complet, modèle (ASW / BWS / SOM), domaines mail,
      particularités (faits connus, avec ticket) ;
    - `tickets` : tickets suivis localement, avec client, domaine,
-     utilisateur, symptôme, statut et dernière note ;
+     utilisateur, symptôme, statut (`Ouvert`, `EnAttente`, `Resolu`), trois
+     dernières notes datées (où j'en suis) et `cloture` (clôture préparée) ;
    - `portefeuille` : codes des clients suivis en tant que TAM.
    S'il manque, classer quand même et le signaler.
-3. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
+3. **Tickets Jira assignés** : `jira-assignes.json`, mes tickets ouverts
+   (clé, titre, statut Jira, rapporteur, dates), lus le matin même en
+   lecture seule. Si la demande dit qu'ils sont indisponibles, le signaler.
+4. **Registre de suivi** : `suivi.json`, les points des synthèses
+   précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
+   `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand
+   (`majLe`), ma note (`noteMoi`) et l'historique.
+5. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
    session : lire la même boîte directement.
 
 Sans export ni connecteur, s'arrêter et le dire. Ne jamais remplacer la
@@ -70,12 +78,21 @@ interlocuteurs internes).
      d'attention.
 
 2. **Rattacher** chaque fil à son client et à son ticket avec le contexte
-   AnsamDiag (`references/regles-classement.md`, « Rattacher un mail »).
+   AnsamDiag et les tickets Jira assignés (`references/regles-classement.md`,
+   « Rattacher un mail »). Un mail sur un ticket déjà suivi qui n'apporte
+   pas de nouvelle demande est une **information complémentaire** du point
+   existant, pas un nouveau point.
 
-3. **Écarter le bruit**, strictement selon la section C des règles : en cas
+3. **Reprendre le registre de suivi** : chaque point ouvert (`a_faire`,
+   `attente_tiers`) est revu, qu'il ait ou non des mails récents, et son
+   statut est mis à jour selon `references/regles-classement.md`
+   (« Statut d'un point »). Un point ouvert ne disparaît jamais en silence :
+   il reste dans la synthèse tant qu'aucune source ne le dit réglé.
+
+4. **Écarter le bruit**, strictement selon la section C des règles : en cas
    de doute, ce n'est pas du bruit. Le bruit est listé en annexe.
 
-4. **Classer chaque fil restant** selon `references/regles-classement.md` :
+5. **Classer chaque fil restant** selon `references/regles-classement.md` :
    - **A – En attente de moi** : le dernier message n'est pas de moi, et une
      réponse, une décision, une validation, un document ou une action est
      attendu de moi. Cela vaut aussi quand j'ai promis un retour (« je
@@ -86,12 +103,21 @@ interlocuteurs internes).
    - Ce qui est **supposé** reste visible, marqué « à vérifier », avec
      l'indice et la façon de vérifier.
 
-5. **Rédiger** la synthèse selon `references/modele-synthese.md`, en
+6. **Rédiger** la synthèse selon `references/modele-synthese.md`, en
    français, factuelle, avec chiffres, dates et noms exacts tirés des mails.
    Chaque ligne permet de retrouver le mail : lien quand la source en
    fournit un, sinon dossier + date de réception. Si quelque chose est
    incertain, l'écrire (« échéance non précisée », « client à confirmer »).
-   La réponse est **uniquement** la synthèse en Markdown, sans préambule.
+   Chaque point porte son identifiant de suivi (`[ASD-27334]`, `[P-20261028-3]`).
+
+7. **Terminer par le bloc de suivi** (format dans
+   `references/modele-synthese.md`) : une ligne `<!-- SUIVI -->` puis un
+   tableau JSON avec **tous** les points ouverts du registre et tous les
+   nouveaux points, avec leur statut proposé et son motif. Le lanceur
+   l'intègre au registre et le retire du mail.
+
+La réponse est **uniquement** la synthèse en Markdown suivie du bloc de
+suivi, sans préambule.
 
 ## Retour d'absence
 
@@ -113,9 +139,14 @@ passe, de code MFA, de lien de mot de passe ou de secret dans la synthèse ;
 
 `scripts/Lancer-SyntheseMails.ps1`, déclenché chaque matin par une tâche
 planifiée Windows (`scripts/Installer-TacheSyntheseMails.ps1`), enchaîne :
-export Outlook, contexte AnsamDiag, rédaction par Claude Code (cette
-méthode), puis **envoi de la synthèse par mail à soi-même** via Outlook. La
-synthèse est aussi gardée dans `%USERPROFILE%\SyntheseMails\syntheses`.
+export Outlook, contexte AnsamDiag, tickets Jira assignés, rédaction par
+Claude Code (cette méthode), mise à jour du registre de suivi, puis **envoi
+de la synthèse par mail à soi-même** via Outlook. La synthèse est aussi
+gardée dans `%USERPROFILE%\SyntheseMails\syntheses`.
+
+Je marque mes points (traité, en attente d'un tiers, sans objet, avec une
+note) dans l'onglet « Suivi » de la page de configuration ; la synthèse
+suivante en tient compte.
 
 Les réglages (heure, jours d'envoi, fenêtre, absences, envoi du mail) se
 font dans la page locale ouverte par `scripts/Configurer-SyntheseMails.cmd`.

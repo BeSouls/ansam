@@ -48,13 +48,49 @@
   ul.files { margin: 0; padding-left: 18px; }
   a { color: var(--accent); }
   @media (max-width: 560px) { .row-add { grid-template-columns: 1fr 1fr; } .row-add .wide { grid-column: 1 / -1; } }
+  nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; color: var(--muted); font-weight: 600; }
+  nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .hidden { display: none; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .toolbar input { flex: 1; min-width: 180px; }
+  .toolbar button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  h3.group { font-size: 14px; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .point { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--card); }
+  .point .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .point .title { font-weight: 600; }
+  .point .meta { color: var(--muted); font-size: 12.5px; }
+  .point .action { margin: 4px 0 6px; }
+  .point .controls { display: grid; grid-template-columns: 190px 1fr auto; gap: 8px; align-items: center; }
+  .point select, .point .note { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; width: 100%; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.rouge { background: #cf222e; } .dot.orange { background: #d4a72c; } .dot.vert { background: #2da44e; } .dot.aucune { background: var(--line); }
+  .id { font-family: Consolas, monospace; font-size: 12.5px; }
+  @media (max-width: 560px) { .point .controls { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
   <h1>Synthèse mails</h1>
-  <p class="sub">Réglages de la synthèse matinale envoyée par mail à moi-même. Page locale, fermée automatiquement après 30 minutes sans activité.</p>
+  <p class="sub">Suivi des points et réglages de la synthèse matinale envoyée par mail à moi-même. Page locale, accessible uniquement depuis ce PC : adresse à garder en favori.</p>
 
+  <nav class="tabs">
+    <button type="button" id="tabSuivi" class="on">Suivi</button>
+    <button type="button" id="tabReglages">Réglages</button>
+  </nav>
+
+  <div id="paneSuivi">
+    <div class="toolbar">
+      <button type="button" data-filtre="ouverts" class="on">Ouverts</button>
+      <button type="button" data-filtre="regles">Réglés</button>
+      <button type="button" data-filtre="tous">Tous</button>
+      <input type="text" id="recherche" placeholder="Filtrer : client, ticket, mot…">
+    </div>
+    <p class="hint" style="margin-top:0">Un point que tu marques garde son statut jusqu'à ce qu'un nouveau message arrive dessus. « En attente d'un tiers » : ton action est faite, tu attends le client, un collègue ou un fournisseur.</p>
+    <div id="points"><p class="past">Chargement…</p></div>
+  </div>
+
+  <div id="paneReglages" class="hidden">
   <section class="status">
     <h2>État</h2>
     <dl class="grid">
@@ -125,8 +161,13 @@
   <div class="actions">
     <button class="primary" type="button" id="save">Enregistrer</button>
     <button type="button" id="install">Installer la tâche planifiée</button>
-    <button type="button" id="quit">Fermer</button>
     <span class="msg" id="msg"></span>
+  </div>
+  </div>
+
+  <div class="actions" style="margin-top:20px">
+    <button type="button" id="quit" class="hidden">Arrêter la page</button>
+    <span class="msg" id="msgSuivi"></span>
   </div>
 </main>
 
@@ -226,9 +267,11 @@ function render() {
   } else {
     let text = `installée, tous les jours à ${t.heure}`;
     if (t.derniereExecution) text += ` · dernière exécution ${fmtDate(t.derniereExecution)} (code ${t.dernierResultat})`;
+    text += t.pagePermanente ? ' · page permanente active' : ' · page permanente non installée';
     $('task').textContent = text;
   }
-  $('install').textContent = t.installee ? 'Réinstaller la tâche planifiée' : 'Installer la tâche planifiée';
+  $('install').textContent = t.installee && t.pagePermanente ? 'Réinstaller les tâches planifiées' : 'Installer les tâches planifiées (synthèse + page permanente)';
+  $('quit').classList.toggle('hidden', !!state.service);
 
   const files = $('files');
   files.innerHTML = '';
@@ -288,10 +331,129 @@ $('install').onclick = async () => {
 
 $('quit').onclick = async () => {
   try { await api('POST', '/api/quitter'); } catch (e) { }
-  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Page fermée. Pour la rouvrir : Configurer-SyntheseMails.cmd.</p>';
+  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Page arrêtée. Pour la rouvrir : lien d’une synthèse ou Configurer-SyntheseMails.cmd.</p>';
 };
 
-load();
+// --- Onglets ---------------------------------------------------------------
+function showTab(name) {
+  $('paneSuivi').classList.toggle('hidden', name !== 'suivi');
+  $('paneReglages').classList.toggle('hidden', name !== 'reglages');
+  $('tabSuivi').classList.toggle('on', name === 'suivi');
+  $('tabReglages').classList.toggle('on', name === 'reglages');
+}
+$('tabSuivi').onclick = () => showTab('suivi');
+$('tabReglages').onclick = () => showTab('reglages');
+
+// --- Suivi -----------------------------------------------------------------
+const statutLabels = { a_faire: 'À faire', attente_tiers: 'En attente d’un tiers', traite: 'Traité', ignore: 'Sans objet' };
+const prioOrder = { rouge: 0, orange: 1, vert: 2 };
+let points = [];
+let filtre = 'ouverts';
+
+const ticketUrl = (key) => /^[A-Z][A-Z0-9]+-\d+$/.test(key || '') ? `https://ansamgroup.atlassian.net/browse/${key}` : null;
+const shortDate = (iso) => iso ? new Date(iso).toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' }) : '';
+
+function renderPoints() {
+  const box = $('points');
+  box.innerHTML = '';
+  const q = $('recherche').value.trim().toLowerCase();
+  const visible = points.filter(p => {
+    const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
+    if (filtre === 'ouverts' && !open) return false;
+    if (filtre === 'regles' && open) return false;
+    if (!q) return true;
+    return [p.id, p.titre, p.client, p.ticket, p.action, p.noteMoi].join(' ').toLowerCase().includes(q);
+  });
+  if (!points.length) {
+    box.innerHTML = '<p class="past">Aucun point pour l’instant : le registre se remplit à la prochaine synthèse.</p>';
+    return;
+  }
+  if (!visible.length) { box.innerHTML = '<p class="past">Aucun point pour ce filtre.</p>'; return; }
+
+  const groups = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
+  for (const [statut, title] of groups) {
+    const list = visible.filter(p => p.statut === statut)
+      .sort((a, b) => (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
+    if (!list.length) continue;
+    const h = document.createElement('h3');
+    h.className = 'group';
+    h.textContent = `${title} (${list.length})`;
+    box.appendChild(h);
+    list.forEach(p => box.appendChild(renderPoint(p)));
+  }
+}
+
+function renderPoint(p) {
+  const div = document.createElement('div');
+  div.className = 'point';
+  const url = ticketUrl(p.ticket);
+  div.innerHTML = `
+    <div class="head">
+      <span class="dot ${p.priorite || 'aucune'}"></span>
+      <span class="id"></span>
+      <span class="title"></span>
+      <span class="meta"></span>
+    </div>
+    <div class="action"></div>
+    <div class="meta last"></div>
+    <div class="controls" style="margin-top:8px">
+      <select>${Object.entries(statutLabels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+      <input class="note" type="text" placeholder="Note (ex. traité par Teams le 28.10, relancé par téléphone…)">
+      <button type="button">Enregistrer</button>
+    </div>`;
+  const id = div.querySelector('.id');
+  if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.textContent = p.id; id.appendChild(a); }
+  else id.textContent = p.id;
+  div.querySelector('.title').textContent = p.titre || '';
+  div.querySelector('.head .meta').textContent = [p.client, p.echeance ? `échéance ${fmtDay(p.echeance)}` : ''].filter(Boolean).join(' · ');
+  div.querySelector('.action').textContent = p.action || '';
+  const last = (p.historique || []).slice(-1)[0];
+  const who = p.majPar === 'moi' ? 'marqué par moi' : 'par la synthèse';
+  div.querySelector('.last').textContent = [
+    p.source ? `Dernier mail : ${p.source}` : '',
+    p.majLe ? `${statutLabels[p.statut] || p.statut} ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + last.texte : ''}` : ''
+  ].filter(Boolean).join(' · ');
+  const select = div.querySelector('select');
+  const note = div.querySelector('.note');
+  select.value = p.statut;
+  note.value = p.noteMoi || '';
+  div.querySelector('button').onclick = async () => {
+    try {
+      const r = await api('POST', '/api/suivi', { id: p.id, statut: select.value, note: note.value.trim() });
+      Object.assign(p, r.point);
+      showSuivi(r.message, true);
+      renderPoints();
+    } catch (e) { showSuivi(e.message, false); }
+  };
+  return div;
+}
+
+function showSuivi(text, ok) {
+  const msg = $('msgSuivi');
+  msg.textContent = text;
+  msg.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+document.querySelectorAll('[data-filtre]').forEach(b => b.onclick = () => {
+  filtre = b.dataset.filtre;
+  document.querySelectorAll('[data-filtre]').forEach(x => x.classList.toggle('on', x === b));
+  renderPoints();
+});
+$('recherche').oninput = renderPoints;
+
+async function loadSuivi() {
+  try { const r = await api('GET', '/api/suivi'); points = r.points || []; renderPoints(); }
+  catch (e) { showSuivi(e.message, false); }
+}
+
+if (location.protocol === 'file:' || !token) {
+  // Fichier ouvert directement : sans le serveur local, rien ne peut être lu ni enregistré.
+  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Cette page ne fonctionne que servie par son service local. ' +
+    'Ouvre-la avec le lien « Ouvrir mon suivi » d’une synthèse, ton favori http://127.0.0.1:8765/?t=…, ou Configurer-SyntheseMails.cmd.</p>';
+} else {
+  load();
+  loadSuivi();
+}
 </script>
 </body>
 </html>
