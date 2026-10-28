@@ -13,27 +13,44 @@ Mode **lecture seule** : on ne répond pas, on n'envoie rien, on ne déplace,
 ne supprime ni ne marque aucun mail (pas même « lu »). L'archivage est
 **proposé** dans la synthèse, jamais exécuté.
 
-## Prérequis
+## Source des mails
 
-- Connecteur **Microsoft 365** connecté (claude.ai → Paramètres → Connecteurs)
-  et chargé dans la session. Sans lui, s'arrêter et le dire : ne jamais
-  remplacer la boîte Outlook par le Gmail perso, ni inventer de contenu.
-- `references/clients.md` renseigné (clients suivis en tant que TAM, domaines
-  mail, alias). S'il est vide, classer quand même au mieux et le signaler en
-  fin de synthèse.
+Uniquement **la boîte principale** de l'utilisateur·rice : tous ses dossiers
+et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
+
+1. **Export local (source actuelle)** : fichier JSON `mails-AAAA-MM-JJ.json`
+   produit sur le PC par `scripts/Export-OutlookMails.ps1` (voir
+   `scripts/README.md`). Le chemin est donné dans la demande ; sinon, prendre
+   le plus récent dans `%USERPROFILE%\SyntheseMails\exports`. Lire le
+   fichier **en entier**, par tranches s'il est long. Champs :
+   `folder`, `subject`, `from`, `to`, `cc`, `received`, `sent`, `unread`,
+   `importance`, `categories`, `flag` (suivi Outlook et échéance),
+   `lastAction` (réponse ou transfert déjà fait depuis ce mail),
+   `attachments`, `body` (sans l'historique cité), et `conversationId` pour
+   regrouper les messages d'un même fil.
+2. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
+   session : lire la même boîte directement.
+
+Sans aucune de ces sources, s'arrêter et le dire. Ne jamais remplacer la
+boîte pro par le Gmail perso, et ne rien inventer.
+
+`references/clients.md` doit être renseigné (clients suivis en tant que TAM,
+domaines mail, alias). S'il est vide, classer quand même au mieux et le
+signaler en fin de synthèse.
 
 ## Méthode
 
 1. **Périmètre**
-   - Dossiers : Boîte de réception **et tous ses sous-dossiers** (récursif).
-     Ignorer Courrier indésirable, Éléments supprimés, Brouillons.
+   - Dossiers : tous ceux de la boîte principale, y compris les Éléments
+     envoyés (l'export exclut déjà Brouillons, Courrier indésirable,
+     Éléments supprimés et Boîte d'envoi).
    - Fenêtre « nouveautés » : mails reçus depuis la veille 7h00 (le lundi :
      depuis le vendredi 7h00).
    - Fenêtre « en attente » : fils actifs sur les **14 derniers jours**, pour
      ne pas perdre un mail resté sans réponse.
-   - Lire chaque fil en entier (dernier message compris) avant de le classer,
-     ainsi que les Éléments envoyés, pour savoir si une réponse est déjà
-     partie.
+   - Reconstituer chaque fil (`conversationId`) avec ses messages envoyés
+     avant de le classer : si mon dernier message est postérieur au leur, ou
+     si `lastAction` indique une réponse, rien n'attend de moi.
 
 2. **Écarter le bruit** : newsletters, notifications automatiques sans
    action, accusés de lecture, invitations déjà acceptées, alertes système
@@ -50,11 +67,14 @@ ne supprime ni ne marque aucun mail (pas même « lu »). L'archivage est
 
 4. **Rédiger** la synthèse selon `references/modele-synthese.md`, en
    français, factuelle, avec chiffres, dates et noms exacts tirés des mails.
-   Chaque ligne porte le lien vers le mail. Si quelque chose est incertain,
+   Chaque ligne permet de retrouver le mail : lien quand la source en
+   fournit un, sinon dossier + date de réception. Si quelque chose est incertain,
    l'écrire (« échéance non précisée », « client à confirmer »).
 
 5. **Livrer** la synthèse : le canal reste **à définir** (voir plus bas).
-   D'ici là, la synthèse est la réponse finale de la session.
+   D'ici là, la synthèse est la réponse finale de la session ; en local,
+   `scripts/Lancer-SyntheseMails.ps1` l'enregistre dans
+   `%USERPROFILE%\SyntheseMails\syntheses\AAAA-MM-JJ.md`.
 
 ## Sécurité
 
@@ -78,7 +98,11 @@ consigne retenue.
 
 ## Activation de la tâche planifiée
 
-À faire **depuis une session où le connecteur Microsoft 365 est chargé**
+**En local (export Outlook)** : `scripts/Installer-TacheSyntheseMails.ps1`
+crée une tâche planifiée Windows quotidienne à 7h10 (voir
+`scripts/README.md`).
+
+**Avec le connecteur Microsoft 365**, depuis une session où il est chargé
 (les connecteurs sont lus au démarrage d'une session) :
 
 - tâche planifiée « Synthèse mails ANSAM », nouvelle session à chaque

@@ -1,7 +1,9 @@
 # Modèle de synthèse
 
 Respecter cette structure. Omettre une section vide en écrivant
-« Rien aujourd'hui. » Chaque sujet est un lien vers le mail.
+« Rien aujourd'hui. » Chaque sujet est un lien vers le mail quand la source
+en fournit un ; avec l'export local, indiquer à la place le dossier Outlook
+et la date de réception (ex. `Boîte de réception/Clients/ABC · 27.10 09:14`).
 
 ```markdown
 # Synthèse mails – <jour JJ.MM.AAAA>
