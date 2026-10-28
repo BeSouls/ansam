@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synthèse mails – configuration</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1f2328; --muted: #59636e; --line: #d8dee4;
+    --accent: #c2185b; --accent-soft: #fce4ec; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #9aa4af; --line: #2c313a;
+      --accent: #f06292; --accent-soft: #3a1f2a; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; }
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  input[type=text], input[type=number], input[type=time], input[type=date] {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit;
+  }
+  .switch { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .days { display: flex; flex-wrap: wrap; gap: 6px; }
+  .days label { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; margin: 0; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .row-add { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; margin-top: 10px; align-items: end; }
+  button { font: inherit; border-radius: 6px; padding: 7px 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.link { border: none; background: none; color: var(--err); padding: 2px 4px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .msg { margin-left: 4px; font-size: 13.5px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .status dt { color: var(--muted); font-size: 12.5px; }
+  .status dd { margin: 0 0 10px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12.5px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .past { color: var(--muted); }
+  ul.files { margin: 0; padding-left: 18px; }
+  a { color: var(--accent); }
+  @media (max-width: 560px) { .row-add { grid-template-columns: 1fr 1fr; } .row-add .wide { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Synthèse mails</h1>
+  <p class="sub">Réglages de la synthèse matinale envoyée par mail à moi-même. Page locale, fermée automatiquement après 30 minutes sans activité.</p>
+
+  <section class="status">
+    <h2>État</h2>
+    <dl class="grid">
+      <div><dt>Prochaine synthèse</dt><dd id="next">…</dd></div>
+      <div><dt>Dernière synthèse</dt><dd id="last">…</dd></div>
+      <div><dt>Tâche planifiée</dt><dd id="task">…</dd></div>
+      <div><dt>Dernières synthèses</dt><dd><ul class="files" id="files"></ul></dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Envoi</h2>
+    <div class="grid">
+      <div>
+        <label class="switch"><input type="checkbox" id="actif"> Synthèse active</label>
+        <label class="switch" style="margin-top:8px"><input type="checkbox" id="envoiMail"> Envoyer par mail à moi-même</label>
+        <div class="hint">Sans envoi, la synthèse est seulement enregistrée dans le dossier « syntheses ».</div>
+      </div>
+      <div>
+        <label for="heure">Heure</label>
+        <input type="time" id="heure">
+        <div class="hint">Appliquée à la tâche planifiée à l'enregistrement.</div>
+      </div>
+      <div>
+        <label for="fenetreJours">Fenêtre (jours)</label>
+        <input type="number" id="fenetreJours" min="1" max="60">
+        <div class="hint">Période relue pour retrouver les échanges restés sans réponse.</div>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <label>Jours d'envoi</label>
+      <div class="days" id="days"></div>
+      <div class="hint">Un jour sans envoi est repris par la synthèse suivante (le lundi couvre le week-end).</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Absences</h2>
+    <p class="hint" style="margin-top:-6px">Pas de synthèse pendant une absence. Le premier jour d'envoi suivant, une seule synthèse couvre toute la période : tâches à faire en priorité, ce qui a été réglé pendant l'absence, et ce qui peut être archivé directement.</p>
+    <table>
+      <thead><tr><th>Du</th><th>Au</th><th>Libellé</th><th></th></tr></thead>
+      <tbody id="absences"></tbody>
+    </table>
+    <div class="row-add">
+      <div><label for="absDebut">Du</label><input type="date" id="absDebut"></div>
+      <div><label for="absFin">Au</label><input type="date" id="absFin"></div>
+      <div class="wide"><label for="absLibelle">Libellé</label><input type="text" id="absLibelle" placeholder="Vacances, formation…"></div>
+      <div><button type="button" id="absAdd">Ajouter</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sources</h2>
+    <div class="grid">
+      <div>
+        <label for="dossierAnsamDiag">Données AnsamDiag</label>
+        <input type="text" id="dossierAnsamDiag">
+        <div class="hint">Fiches clients (Clients\) et tickets (Tickets\) utilisés pour rattacher les mails.</div>
+      </div>
+      <div>
+        <label for="dossierPortefeuille">Dossier Outlook du portefeuille</label>
+        <input type="text" id="dossierPortefeuille">
+        <div class="hint">Un sous-dossier par client suivi en tant que TAM.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="primary" type="button" id="save">Enregistrer</button>
+    <button type="button" id="install">Installer la tâche planifiée</button>
+    <button type="button" id="quit">Fermer</button>
+    <span class="msg" id="msg"></span>
+  </div>
+</main>
+
+<script>
+const token = new URLSearchParams(location.search).get('t') || '';
+const dayNames = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+let state = null;
+let absences = [];
+
+const $ = (id) => document.getElementById(id);
+const fmtDate = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('fr-CH', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) +
+         ' à ' + d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' });
+};
+const fmtDay = (ymd) => ymd ? ymd.split('-').reverse().join('.') : '';
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'X-Token': token, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data.erreurs || ['Erreur ' + res.status]).join(' '));
+  return data;
+}
+
+function showMessage(text, ok) {
+  const msg = $('msg');
+  msg.textContent = text;
+  msg.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+function renderAbsences() {
+  const today = new Date().toISOString().slice(0, 10);
+  const body = $('absences');
+  body.innerHTML = '';
+  if (!absences.length) {
+    body.innerHTML = '<tr><td colspan="4" class="past">Aucune absence prévue.</td></tr>';
+    return;
+  }
+  absences.forEach((a, i) => {
+    const tr = document.createElement('tr');
+    if (a.fin < today) tr.className = 'past';
+    tr.innerHTML = `<td>${fmtDay(a.debut)}</td><td>${fmtDay(a.fin)}</td><td></td><td><button class="link" type="button">Retirer</button></td>`;
+    tr.children[2].textContent = a.libelle || '';
+    tr.querySelector('button').onclick = () => { absences.splice(i, 1); renderAbsences(); };
+    body.appendChild(tr);
+  });
+}
+
+function render() {
+  const c = state.config;
+  $('actif').checked = !!c.actif;
+  $('envoiMail').checked = !!c.envoiMail;
+  $('heure').value = c.heure;
+  $('fenetreJours').value = c.fenetreJours;
+  $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
+  $('dossierPortefeuille').value = c.dossierPortefeuille || '';
+  const days = $('days');
+  days.innerHTML = '';
+  for (let d = 1; d <= 7; d++) {
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" value="${d}"> ${dayNames[d]}`;
+    label.querySelector('input').checked = (c.joursEnvoi || []).includes(d);
+    days.appendChild(label);
+  }
+  absences = (c.absences || []).map(a => ({ debut: a.debut, fin: a.fin, libelle: a.libelle }));
+  renderAbsences();
+
+  const n = state.prochaine;
+  if (!n) {
+    $('next').textContent = c.actif ? 'Aucune dans les 90 prochains jours' : 'Synthèse désactivée';
+  } else {
+    let text = fmtDate(n.moment);
+    if (n.absences && n.absences.length) {
+      text += ' — retour d’absence (' + n.absences.map(a => `${a.libelle || 'absence'} ${fmtDay(a.debut)} → ${fmtDay(a.fin)}`).join(', ') + ')';
+    }
+    $('next').innerHTML = '';
+    $('next').append(text);
+    if (n.depuis) {
+      const small = document.createElement('div');
+      small.className = 'hint';
+      small.textContent = `Nouveautés depuis le ${fmtDate(n.depuis)}, fenêtre de ${n.jours} jours.`;
+      $('next').appendChild(small);
+    }
+  }
+
+  const e = state.etat || {};
+  $('last').textContent = e.derniereSynthese ? fmtDate(e.derniereSynthese) + (e.dernierMode === 'retour' ? ' (retour d’absence)' : '') : 'Aucune pour l’instant';
+
+  const t = state.tache;
+  if (!t.installee) {
+    $('task').innerHTML = '<span class="pill">non installée</span>';
+  } else {
+    let text = `installée, tous les jours à ${t.heure}`;
+    if (t.derniereExecution) text += ` · dernière exécution ${fmtDate(t.derniereExecution)} (code ${t.dernierResultat})`;
+    $('task').textContent = text;
+  }
+  $('install').textContent = t.installee ? 'Réinstaller la tâche planifiée' : 'Installer la tâche planifiée';
+
+  const files = $('files');
+  files.innerHTML = '';
+  if (!state.syntheses.length) files.innerHTML = '<li class="past">Aucune</li>';
+  state.syntheses.forEach(name => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = `/synthese?d=${name}&t=${token}`;
+    a.target = '_blank';
+    a.textContent = fmtDay(name);
+    li.appendChild(a);
+    files.appendChild(li);
+  });
+}
+
+function collect() {
+  return {
+    actif: $('actif').checked,
+    envoiMail: $('envoiMail').checked,
+    heure: $('heure').value,
+    fenetreJours: Number($('fenetreJours').value),
+    joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
+    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(),
+    dossierPortefeuille: $('dossierPortefeuille').value.trim(),
+    absences
+  };
+}
+
+async function load() {
+  try { state = await api('GET', '/api/etat'); render(); }
+  catch (e) { showMessage(e.message, false); }
+}
+
+$('absAdd').onclick = () => {
+  const debut = $('absDebut').value, fin = $('absFin').value || $('absDebut').value;
+  if (!debut) { showMessage('Indiquer au moins la date de début.', false); return; }
+  if (fin < debut) { showMessage('La fin précède le début.', false); return; }
+  absences.push({ debut, fin, libelle: $('absLibelle').value.trim() || 'Absence' });
+  absences.sort((a, b) => a.debut.localeCompare(b.debut));
+  $('absDebut').value = $('absFin').value = $('absLibelle').value = '';
+  renderAbsences();
+  showMessage('Absence ajoutée : penser à enregistrer.', true);
+};
+
+$('save').onclick = async () => {
+  try { const r = await api('POST', '/api/config', collect()); state = r.etat; render(); showMessage(r.message, true); }
+  catch (e) { showMessage(e.message, false); }
+};
+
+$('install').onclick = async () => {
+  try {
+    await api('POST', '/api/config', collect());
+    const r = await api('POST', '/api/tache');
+    state = r.etat; render(); showMessage(r.message, true);
+  } catch (e) { showMessage(e.message, false); }
+};
+
+$('quit').onclick = async () => {
+  try { await api('POST', '/api/quitter'); } catch (e) { }
+  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Page fermée. Pour la rouvrir : Configurer-SyntheseMails.cmd.</p>';
+};
+
+load();
+</script>
+</body>
+</html>

@@ -17,8 +17,11 @@
     entiers, Éléments envoyés compris, peuvent encore manquer au cache local.
     -SyncTimeoutSeconds 0 supprime cette attente.
 
-    Le script écrit un fichier mails-AAAA-MM-JJ.json dans -OutputDir et
-    renvoie son chemin. Les exports de plus de -KeepDays jours sont effacés.
+    Le script écrit mails-AAAA-MM-JJ.json (détail complet) et
+    mails-AAAA-MM-JJ-fils.txt (vue compacte par fil) dans -OutputDir et
+    renvoie le chemin du JSON. Les exports de plus de -KeepDays jours sont
+    effacés. Les synthèses déjà envoyées (« Synthèse mails – … ») sont
+    exclues.
 
     Ne fonctionne pas avec le « nouvel Outlook » (pas d'accès COM).
 
@@ -37,7 +40,7 @@ param(
     # le compte par défaut.
     [string]$Mailbox,
     # Longueur maximale du corps conservé (après retrait de l'historique cité).
-    [int]$MaxBodyChars = 2000,
+    [int]$MaxBodyChars = 1500,
     # Durée de conservation des exports, qui contiennent des données sensibles.
     [int]$KeepDays = 14,
     # Attente maximale de la synchronisation d'Outlook, en secondes (0 = aucune).
@@ -94,7 +97,10 @@ function Get-CleanBody($item) {
     $body = [string]$item.Body
     $quote = [regex]::Match($body, '(?m)^\s*(_{20,}|-{3,}\s*(Original Message|Message d.origine)|(De|From)\s*:\s)')
     if ($quote.Success -and $quote.Index -gt 0) { $body = $body.Substring(0, $quote.Index) }
-    $body = ($body -replace "`r", '' -replace "(`n\s*){3,}", "`n`n").Trim()
+    # Liens Safelinks / images (souvent plus longs que le texte) et bandeaux d'avertissement.
+    $body = $body -replace '<(https?|mailto):[^>\s]*>', '' -replace '(?m)^.*Pourquoi c.est important\s*$', '' `
+                  -replace '(?m)^\s*Attention\s*: Email externe\.\s*$', ''
+    $body = ($body -replace "`r", '' -replace "[ `t]+`n", "`n" -replace "(`n\s*){3,}", "`n`n").Trim()
     if ($body.Length -gt $MaxBodyChars) { $body = $body.Substring(0, $MaxBodyChars) + "`n[... tronqué]" }
     $body
 }
@@ -159,6 +165,7 @@ function Export-Folder($folder) {
         foreach ($item in $folder.Items.Restrict($filter)) {
             if ($item.Class -ne 43) { continue }   # MailItem
             if ($item.MessageClass -like 'IPM.Note.Microsoft.Conversation*') { continue }   # historique Teams/Skype
+            if ($item.Subject -like 'Synthèse mails – *') { continue }   # nos propres synthèses
             try {
                 $messages.Add((Convert-Mail $item $path))
                 $count++
@@ -248,11 +255,17 @@ Export-Folder $store.GetRootFolder()
 
 # --- Écriture ---------------------------------------------------------------
 
+$mailboxAddress = $null
+foreach ($account in $namespace.Accounts) {
+    try { if ($account.DeliveryStore.StoreID -eq $store.StoreID) { $mailboxAddress = $account.SmtpAddress } } catch { }
+}
+
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $file = Join-Path $OutputDir ('mails-{0:yyyy-MM-dd}.json' -f (Get-Date))
 $export = [ordered]@{
     exportedAt   = Format-Date (Get-Date)
     mailbox      = $store.DisplayName
+    address      = $mailboxAddress
     since        = Format-Date $since
     sync         = $sync
     folders      = $folderStats
@@ -262,7 +275,30 @@ $export = [ordered]@{
 $json = $export | ConvertTo-Json -Depth 6
 [IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding($false)))
 
-Get-ChildItem -Path $OutputDir -Filter 'mails-*.json' |
+# Vue compacte par fil (une ligne d'en-tête par message), beaucoup plus courte
+# que le JSON : c'est elle que la synthèse lit en premier.
+$view = New-Object Text.StringBuilder
+[void]$view.AppendLine("Boîte : $($store.DisplayName) <$mailboxAddress> | depuis $(Format-Date $since) | $($messages.Count) mails | synchro : $($sync.status)")
+$threads = $messages | Group-Object { $_.conversationId } |
+    Sort-Object { ($_.Group | ForEach-Object { $_.received } | Sort-Object | Select-Object -Last 1) } -Descending
+foreach ($thread in $threads) {
+    [void]$view.AppendLine()
+    [void]$view.AppendLine("######## FIL : $($thread.Group[0].conversationTopic) ($($thread.Count) msg)")
+    foreach ($mail in ($thread.Group | Sort-Object { $_.received })) {
+        $to = ($mail.to | ForEach-Object { $_.address }) -join ', '
+        $cc = ($mail.cc | ForEach-Object { $_.address }) -join ', '
+        $flag = $(if ($mail.flag) { " | drapeau=$($mail.flag.status) $($mail.flag.due)" })
+        $last = $(if ($mail.lastAction) { " | déjà=$($mail.lastAction.type) $($mail.lastAction.at)" })
+        $att = $(if ($mail.attachments) { " | pj=$($mail.attachments -join ', ')" })
+        [void]$view.AppendLine("--- [$($mail.folder)] $($mail.received) | De : $($mail.from.name) <$($mail.from.address)> | À : $to | Cc : $cc | non lu=$($mail.unread) | importance=$($mail.importance)$flag$last$att")
+        [void]$view.AppendLine("Objet : $($mail.subject)")
+        if ($mail.body) { [void]$view.AppendLine(($mail.body -replace "(`n\s*)+", ' / ')) }
+    }
+}
+$viewFile = [IO.Path]::ChangeExtension($file, $null).TrimEnd('.') + '-fils.txt'
+[IO.File]::WriteAllText($viewFile, $view.ToString(), (New-Object Text.UTF8Encoding($false)))
+
+Get-ChildItem -Path $OutputDir -Filter 'mails-*' |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays) } |
     Remove-Item -Force
 
