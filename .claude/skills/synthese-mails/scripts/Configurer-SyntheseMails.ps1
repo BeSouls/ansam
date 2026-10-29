@@ -342,7 +342,7 @@ try {
             $tokenOk = ($request.Query['t'] -eq $token) -or ($request.Headers['x-token'] -eq $token)
             if (@("127.0.0.1:$port", "localhost:$port") -notcontains $host_ -or -not $tokenOk) {
                 Send-Response $stream 403 'text/plain' ("Accès refusé : lien incomplet ou ancien (il manque le jeton). Ouvrir la page avec le raccourci " +
-                    "« Préfix » du menu Démarrer, le lien « Ouvrir Préfix » d'une synthèse, ou Configurer-SyntheseMails.cmd.")
+                    "« Panoramix » du menu Démarrer, le lien « Ouvrir Panoramix » d'une synthèse, ou Configurer-SyntheseMails.cmd.")
                 continue
             }
 

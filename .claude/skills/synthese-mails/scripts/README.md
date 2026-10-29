@@ -47,8 +47,8 @@ qu'Outlook affiche déjà.
 La page locale de suivi et de configuration tourne en permanence une fois
 les tâches installées : elle démarre à l'ouverture de session, sur
 `http://127.0.0.1:8765/` avec un jeton propre au PC (un lien sans jeton est
-refusé). Pour l'ouvrir : le raccourci **« Préfix »** du menu
-Démarrer, le lien « Ouvrir Préfix » en bas de chaque synthèse, ou
+refusé). Pour l'ouvrir : le raccourci **« Panoramix »** du menu
+Démarrer, le lien « Ouvrir Panoramix » en bas de chaque synthèse, ou
 **`Configurer-SyntheseMails.cmd`** (qui démarre une page temporaire si le
 service ne tourne pas).
 

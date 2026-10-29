@@ -16,10 +16,10 @@
     déverrouillage, pour rattraper un PC en veille à l'heure prévue ; elle
     tourne sur batterie et retente 3 fois en cas d'échec.
 
-    Crée aussi « <TaskName> - page » : Préfix, la page de suivi et de
+    Crée aussi « <TaskName> - page » : Panoramix, la page de suivi et de
     configuration, lancée à l'ouverture de session et gardée active (adresse
     fixe, lien dans chaque synthèse), démarrée tout de suite, et son
-    raccourci « Préfix » dans le menu Démarrer.
+    raccourci « Panoramix » dans le menu Démarrer.
 
 .EXAMPLE
     .\Installer-TacheSyntheseMails.ps1
@@ -86,7 +86,7 @@ Write-Host "Tâche « $pageTask » créée : page permanente (redémarrée)."
 
 # Raccourci du menu Démarrer vers la page, avec son jeton (le lien sans jeton est refusé).
 $programs = [Environment]::GetFolderPath('Programs')
-Remove-Item (Join-Path $programs 'Synthèse mails – suivi.url') -ErrorAction SilentlyContinue   # ancien nom
-$startMenu = Join-Path $programs 'Préfix.url'
+foreach ($old in 'Synthèse mails – suivi.url', 'Préfix.url') { Remove-Item (Join-Path $programs $old) -ErrorAction SilentlyContinue }   # anciens noms
+$startMenu = Join-Path $programs 'Panoramix.url'
 [IO.File]::WriteAllText($startMenu, "[InternetShortcut]`r`nURL=$(Get-SmPageUrl)`r`n", [Text.Encoding]::ASCII)
-Write-Host "Raccourci créé dans le menu Démarrer : « Préfix »."
+Write-Host "Raccourci créé dans le menu Démarrer : « Panoramix »."
