@@ -212,6 +212,11 @@
   .contact .btn { font-size: .8125rem; padding: .32rem .75rem; background: var(--surface); }
   .sheet-h { flex: 1; font-size: 1.375rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin: 0; }
   #csheet { z-index: 32; }
+  .dossier { margin: .8rem 0 1rem; padding: .7rem .85rem; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+  .dossier-head { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; font-size: .9375rem; }
+  .resume { font-size: .875rem; white-space: pre-line; margin-top: .3rem; color: var(--text); }
+  .resume:empty::before { content: 'Pas encore de résumé du dossier : « Rédiger avec tout le dossier » le prépare.'; color: var(--muted); }
+  .dossier .run { margin: 0; }
   #csheet textarea.field { resize: vertical; line-height: 1.5; font-size: .9375rem; }
   #csheet a.btn { text-decoration: none; display: inline-flex; align-items: center; }
   .callcard { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: .8rem; padding: .8rem 1rem;
@@ -385,6 +390,17 @@
     <button class="close" type="button" id="csClose" aria-label="Fermer">✕</button>
   </div>
   <div class="meta" id="csSub"></div>
+  <div class="dossier">
+    <div class="dossier-head">
+      <b>Où on en est</b>
+      <span class="meta" id="csRedige"></span>
+    </div>
+    <div class="resume" id="csResume"></div>
+    <div class="actions" style="margin-top:.55rem">
+      <button class="btn" type="button" id="csFull" title="Relit toutes les notes et tests AnsamDiag, le plan, les messages déjà envoyés, les commentaires Jira et le fil de mails complet">Rédiger avec tout le dossier</button>
+      <span class="run" id="csFullState" hidden><span class="spinner"></span><span id="csFullText"></span></span>
+    </div>
+  </div>
   <div id="csMail">
     <label class="f" for="csTo">À</label><input class="field" id="csTo" type="text">
     <label class="f" for="csSubject" style="margin-top:.6rem">Objet</label><input class="field" id="csSubject" type="text">
@@ -765,11 +781,26 @@ function contactStrip(c) {
          `<button class="btn" type="button">${call ? 'Préparer l’appel' : 'Préparer le mail'}</button></div>`;
 }
 
-let contactPoint = null, contactOrigin = null;
+let contactPoint = null, contactOrigin = null, redactionTimer = null;
 function openContact(p, origin) {
   contactPoint = p;
   contactOrigin = origin;
+  fillContact(p);
+  const sheet = $('csheet'), scrim = $('scrim');
+  sheet.hidden = scrim.hidden = false;
+  const r = origin.getBoundingClientRect(), s = sheet.getBoundingClientRect();
+  sheet.style.transformOrigin = `${r.left + r.width / 2 - s.left}px ${r.top + r.height / 2 - s.top}px`;
+  requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open'); });
+  $('csClose').focus();
+  pollRedaction(p.id, false);   // une rédaction peut déjà tourner pour ce point
+}
+
+function fillContact(p) {
   const c = p.contact, call = c.mode === 'appel';
+  $('csResume').textContent = c.resume || '';
+  $('csRedige').textContent = c.redigeLe
+    ? `rédigé avec tout le dossier le ${shortDate(c.redigeLe)} à ${new Date(c.redigeLe).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}`
+    : 'brouillon de la synthèse du matin';
   $('csTitle').textContent = call ? `Appeler ${c.nom || ''}`.trim() : `Écrire à ${c.nom || c.email || ''}`.trim();
   $('csSub').textContent = `${p.titre}${p.ticket ? ' · ' + p.ticket : ''}${p.client ? ' · ' + p.client : ''}`;
   $('csMail').hidden = call;
@@ -787,12 +818,40 @@ function openContact(p, origin) {
     $('csBody').value = c.message || '';
     updateMailto();
   }
-  const sheet = $('csheet'), scrim = $('scrim');
-  sheet.hidden = scrim.hidden = false;
-  const r = origin.getBoundingClientRect(), s = sheet.getBoundingClientRect();
-  sheet.style.transformOrigin = `${r.left + r.width / 2 - s.left}px ${r.top + r.height / 2 - s.top}px`;
-  requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open'); });
-  $('csClose').focus();
+}
+
+// Rédaction avec tout le dossier : lancée côté serveur, suivie ici ; le brouillon se remplace à la fin.
+$('csFull').addEventListener('click', async () => {
+  const p = contactPoint;
+  if (!p) return;
+  try {
+    const r = await api('POST', '/api/redaction', { id: p.id });
+    toast(r.message);
+    pollRedaction(p.id, true);
+  } catch (e) { toast(e.message, null, true); }
+});
+
+async function pollRedaction(id, started) {
+  clearTimeout(redactionTimer);
+  let s;
+  try { s = await api('GET', '/api/redaction?id=' + encodeURIComponent(id)); } catch (e) { return; }
+  const mine = contactPoint && contactPoint.id === id;
+  if (s.etat === 'en_cours') {
+    if (mine) { $('csFullState').hidden = false; $('csFullText').textContent = s.message || 'Rédaction en cours'; $('csFull').disabled = true; }
+    redactionTimer = setTimeout(() => pollRedaction(id, true), 4000);
+    return;
+  }
+  if (mine) { $('csFullState').hidden = true; $('csFull').disabled = false; }
+  if (!started) return;
+  if (s.etat === 'ok') {
+    points = (await api('GET', '/api/suivi')).points || points;
+    renderAll();
+    const fresh = points.find(x => x.id === id);
+    if (fresh && contactPoint && contactPoint.id === id) { contactPoint = fresh; fillContact(fresh); }
+    toast(s.message);
+  } else if (s.etat === 'echec') {
+    toast('Rédaction impossible : ' + (s.message || 'voir le journal'), null, true);
+  }
 }
 
 function closeContact() {

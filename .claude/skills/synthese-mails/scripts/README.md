@@ -68,6 +68,14 @@ texte) à relire, puis « Créer le brouillon Outlook » (rien n'est envoyé),
 numéro et les points à aborder, et garde le compte rendu dans la note du
 point.
 
+Dans ces deux fenêtres, **« Rédiger avec tout le dossier »** (1 à 2 min)
+fait relire à Claude Code, pour ce seul point : toutes les notes et les
+résultats de tests du dossier AnsamDiag, `TICKET.md`, les messages déjà
+rédigés, les commentaires Jira (lecture seule) et le fil de mails complet.
+Le brouillon ou les points d'appel sont réécrits sans reposer une question
+déjà traitée, et un résumé « Où on en est » s'affiche. Cette version est
+gardée tant qu'aucun nouveau message n'arrive sur le point.
+
 Vues **Variabilité**, **Facturation** et **Attention** : les éléments à
 garder relevés par les synthèses (`archives.json`), établis ou à vérifier
 (avec l'indice et la façon de vérifier). La variabilité se lit par mois et

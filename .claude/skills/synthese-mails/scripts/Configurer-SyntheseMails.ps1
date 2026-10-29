@@ -216,6 +216,19 @@ function Get-RunState {
     }
 }
 
+# État d'une rédaction avec tout le dossier (Rediger-Contact.ps1) ; une rédaction dont le processus
+# a disparu sans conclure est signalée en échec. Le démarrage (pid encore vide) a 30 s pour se lancer.
+function Get-RedactionState([string]$Id) {
+    $state = Read-SmJson (Join-Path $WorkDir "redaction-$Id.json")
+    if (-not $state) { return [ordered]@{ id = $Id; etat = 'aucune' } }
+    if ($state.etat -eq 'en_cours') {
+        $since = ConvertTo-SmDateTime $state.le
+        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        if ($dead) { $state.etat = 'echec'; $state.message = 'Rédaction interrompue.' }
+    }
+    $state
+}
+
 # -Mail : synthèse envoyée ; sinon actualisation (analyse et registres, sans mail).
 function Start-Run([switch]$Mail) {
     $launcher = Join-Path $PSScriptRoot 'Lancer-SyntheseMails.ps1'
@@ -299,6 +312,23 @@ try {
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
+                }
+                '^POST /api/redaction$' {
+                    # Rédaction d'une prise de contact avec tout le dossier : en arrière-plan, 1 à 2 minutes.
+                    $id = [string]($request.Body | ConvertFrom-Json).id
+                    if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
+                    $state = Get-RedactionState $id
+                    if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Rédaction déjà en cours pour ce point.') }); break }
+                    Write-SmJson (Join-Path $WorkDir "redaction-$id.json") ([ordered]@{ id = $id; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Rediger-Contact.ps1'
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Id $id" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Rédaction lancée : relecture de tout le dossier, 1 à 2 minutes.' })
+                }
+                '^GET /api/redaction$' {
+                    $id = [string]$request.Query['id']
+                    if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
+                    Send-Json $stream 200 (Get-RedactionState $id)
                 }
                 '^POST /api/brouillon$' {
                     # Brouillon Outlook d'une prise de contact : enregistré dans Brouillons et ouvert pour relecture,

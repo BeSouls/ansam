@@ -254,8 +254,16 @@ function Merge-SmSuivi($Suivi, $Updates) {
         }
 
         # Champs descriptifs : toujours mis à jour.
-        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage', 'contact') {
+        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
+        }
+        # Une prise de contact rédigée avec tout le dossier (redigeLe) tient tant qu'aucun message
+        # n'est arrivé après elle ; sinon le brouillon de la synthèse la remplace.
+        if ($update.PSObject.Properties.Name -contains 'contact') {
+            $written = $(if ($point.contact -and $point.contact.redigeLe) { ConvertTo-SmDateTime $point.contact.redigeLe })
+            $lastMessage = ConvertTo-SmDateTime $update.dernierMessage
+            $keep = $written -and $update.contact -and -not ($lastMessage -and $lastMessage -gt $written)
+            if (-not $keep) { $point.contact = $update.contact }
         }
 
         # Regroupement proposé par la synthèse ; un groupement fait ou défait par moi prime.
