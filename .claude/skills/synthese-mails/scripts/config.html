@@ -48,6 +48,7 @@
   .runbtn { font: inherit; font-size: .875rem; font-weight: 600; border: 0; border-radius: 999px; padding: .45rem .95rem; cursor: pointer;
     background: var(--accent); color: var(--on-accent); transition: transform .1s ease-out, background-color .2s; white-space: nowrap; }
   .runbtn.confirm { background: var(--orange); }
+  .runbtn.secondary { background: var(--surface-2); color: var(--text); }
   .runbtn:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
   .run { display: flex; align-items: center; gap: .55rem; font-size: .8125rem; color: var(--muted); margin: -.25rem 0 .7rem; }
   .run[hidden] { display: none; }
@@ -192,6 +193,7 @@
         <div class="sub" id="sub">Chargement…</div>
       </div>
       <div class="search"><input type="search" id="q" placeholder="Rechercher : client, ticket, mot…" aria-label="Rechercher"></div>
+      <button class="runbtn secondary" type="button" id="refresh" title="Relit les mails, AnsamDiag et Jira et met à jour les points, sans envoyer de mail">Actualiser</button>
       <button class="runbtn" type="button" id="run" title="Relit la boîte avec tes statuts à jour et t'envoie la synthèse par mail">Envoyer la synthèse</button>
     </div>
     <div class="run" id="runState" role="status" aria-live="polite" hidden><span class="spinner"></span><span id="runText"></span></div>
@@ -603,7 +605,9 @@ function renderCounts() {
   const waiting = points.filter(p => p.statut === 'attente_tiers').length;
   const e = state && state.etat || {};
   $('sub').textContent = `${openPoints} à faire${urgent ? ` dont ${urgent} urgents` : ''} · ${waiting} en attente` +
-    (e.derniereSynthese ? ` · synthèse du ${shortDate(e.derniereSynthese)}` : '');
+    (e.derniereSynthese ? ` · synthèse du ${shortDate(e.derniereSynthese)}` : '') +
+    (e.derniereAnalyse && e.derniereAnalyse > (e.derniereSynthese || '')
+      ? ` · actualisé le ${shortDate(e.derniereAnalyse)} à ${new Date(e.derniereAnalyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '');
 }
 
 function renderAll() {
@@ -712,34 +716,45 @@ $('run').addEventListener('click', async () => {
   }
   clearTimeout(armTimer);
   b.classList.remove('confirm');
+  startRun(true);
+});
+// Actualiser : même analyse complète, sans mail ; un clic suffit.
+$('refresh').addEventListener('click', () => startRun(false));
+
+async function startRun(mail) {
   try {
-    const r = await api('POST', '/api/lancement');
+    const r = await api('POST', '/api/lancement', { mail });
     watching = true;
+    runMail = mail;
     runStartedAt = Date.now();
     toast(r.message);
     pollRun();
-  } catch (e) { b.textContent = 'Envoyer la synthèse'; toast(e.message, null, true); }
-});
+  } catch (e) { $('run').textContent = 'Envoyer la synthèse'; toast(e.message, null, true); }
+}
+let runMail = false;
 
 async function pollRun() {
   clearTimeout(pollTimer);
   let r;
   try { r = await api('GET', '/api/lancement'); } catch (e) { pollTimer = setTimeout(pollRun, 8000); return; }
   const starting = !r.enCours && watching && Date.now() - runStartedAt < 25000;   // le temps que le lanceur pose son verrou
-  const b = $('run');
+  const b = $('run'), f = $('refresh');
   if (r.enCours || starting) {
     if (r.enCours && !watching) { watching = true; runStartedAt = Date.parse(r.debut) || Date.now(); }
+    if (r.enCours && r.mail != null) runMail = r.mail;
     const min = Math.max(0, Math.round((Date.now() - (Date.parse(r.debut) || runStartedAt)) / 60000));
-    $('runText').textContent = `Synthèse en cours · ${r.etape || 'démarrage'} · ${min} min`;
+    $('runText').textContent = `${runMail ? 'Synthèse' : 'Actualisation'} en cours · ${r.etape || 'démarrage'} · ${min} min`;
     $('runState').hidden = false;
-    b.disabled = true;
-    b.textContent = 'En cours…';
+    b.disabled = f.disabled = true;
+    b.textContent = runMail ? 'Envoi en cours…' : 'Envoyer la synthèse';
+    f.textContent = runMail ? 'Actualiser' : 'Actualisation…';
     pollTimer = setTimeout(pollRun, 4000);
     return;
   }
   $('runState').hidden = true;
-  b.disabled = false;
+  b.disabled = f.disabled = false;
   b.textContent = 'Envoyer la synthèse';
+  f.textContent = 'Actualiser';
   if (watching) {
     watching = false;
     const d = r.dernier || {};

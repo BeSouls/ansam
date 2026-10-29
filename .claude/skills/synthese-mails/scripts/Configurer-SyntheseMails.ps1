@@ -210,15 +210,18 @@ function Get-RunState {
     [ordered]@{
         enCours = $running
         debut   = $(if ($running) { $lock.debut } else { $null })
+        mail    = $(if ($running) { [bool]$lock.mail } else { $null })
         etape   = $step
         dernier = Read-SmJson (Join-Path $WorkDir 'dernier-lancement.json')
     }
 }
 
-function Start-Run {
+# -Mail : synthèse envoyée ; sinon actualisation (analyse et registres, sans mail).
+function Start-Run([switch]$Mail) {
     $launcher = Join-Path $PSScriptRoot 'Lancer-SyntheseMails.ps1'
+    $options = $(if ($Mail) { '-Force' } else { '-Force -PasDeMail' })
     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
-        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -Force" | Out-Null
+        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" $options" | Out-Null
 }
 
 function Install-Task {
@@ -299,9 +302,13 @@ try {
                 }
                 '^GET /api/lancement$' { Send-Json $stream 200 (Get-RunState) }
                 '^POST /api/lancement$' {
-                    if ((Get-RunState).enCours) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une synthèse est déjà en cours.') }); break }
-                    Start-Run
-                    Send-Json $stream 200 ([ordered]@{ message = 'Synthèse lancée : environ 8 minutes, puis le mail arrive.' })
+                    if ((Get-RunState).enCours) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une analyse est déjà en cours.') }); break }
+                    $mail = $false
+                    if ($request.Body) { $mail = [bool]($request.Body | ConvertFrom-Json).mail }
+                    Start-Run -Mail:$mail
+                    $message = $(if ($mail) { 'Synthèse lancée : environ 8 minutes, puis le mail arrive.' }
+                                 else { 'Actualisation lancée : environ 7 minutes, sans mail.' })
+                    Send-Json $stream 200 ([ordered]@{ message = $message })
                 }
                 '^GET /api/archives$' {
                     $archives = Get-SmArchives $WorkDir

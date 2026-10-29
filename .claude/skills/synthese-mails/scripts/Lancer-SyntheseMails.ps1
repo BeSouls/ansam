@@ -24,7 +24,7 @@
 .EXAMPLE
     .\Lancer-SyntheseMails.ps1              # comme la tâche planifiée
     .\Lancer-SyntheseMails.ps1 -Force       # même un jour non prévu ou déjà traité
-    .\Lancer-SyntheseMails.ps1 -Force -PasDeMail
+    .\Lancer-SyntheseMails.ps1 -Force -PasDeMail   # actualisation (bouton « Actualiser » de la page)
 #>
 [CmdletBinding()]
 param(
@@ -37,7 +37,8 @@ param(
     [string]$ClaudeExe,
     # Lance même un jour non prévu, pendant une absence ou déjà traité.
     [switch]$Force,
-    # N'envoie pas le mail (la synthèse est seulement enregistrée).
+    # Actualisation : analyse complète et registres mis à jour, sans mail. La synthèse du jour et la
+    # date de la dernière synthèse ne changent pas ; le résultat va dans syntheses\actualisations.
     [switch]$PasDeMail
 )
 
@@ -84,7 +85,7 @@ try {
         return
     }
     $lockFile = $lockPath
-    Write-SmJson $lockFile ([ordered]@{ pid = $PID; debut = $start.ToString('o') })
+    Write-SmJson $lockFile ([ordered]@{ pid = $PID; debut = $start.ToString('o'); mail = -not $PasDeMail.IsPresent })
 
     $config = Get-SmConfig $WorkDir
     $etat = Get-SmEtat $WorkDir
@@ -178,24 +179,41 @@ try {
         $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
     }
     $markdown += "`n`n---`n[Ouvrir mon suivi]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
-    $synthesisFile = Join-Path $synthesisDir "$today.md"
+    # Une actualisation (-PasDeMail) ne remplace pas la synthèse du jour : fichier à part, et la date de
+    # la dernière synthèse reste celle du dernier envoi, sinon celle du matin serait sautée ou raccourcie.
+    $analysisOnly = $PasDeMail.IsPresent
+    if ($analysisOnly) {
+        $refreshDir = Join-Path $synthesisDir 'actualisations'
+        New-Item -ItemType Directory -Force -Path $refreshDir | Out-Null
+        $synthesisFile = Join-Path $refreshDir ('{0:yyyy-MM-dd_HHmm}.md' -f $start)
+    } else {
+        $synthesisFile = Join-Path $synthesisDir "$today.md"
+    }
     [IO.File]::WriteAllText($synthesisFile, $markdown, (New-Object Text.UTF8Encoding($false)))
     Write-Host "Synthèse prête : $synthesisFile"
 
-    if ($config.envoiMail -and -not $PasDeMail) {
+    if ($config.envoiMail -and -not $analysisOnly) {
         $subject = ((($markdown -split "`n")[0]) -replace '^#\s*', '').Trim()
         if ($subject -notlike 'Synthèse mails – *') { $subject = "Synthèse mails – $($start.ToString('dd.MM.yyyy'))" }
         Send-SelfMail $subject (ConvertTo-SmHtml $markdown) $address
     }
 
-    $etat = [ordered]@{
-        derniereSynthese = $start.ToString('o')
-        dernierMode      = $(if ($absences.Count) { 'retour' } else { 'quotidien' })
-        dernierFichier   = $synthesisFile
+    $newEtat = [ordered]@{
+        derniereSynthese = $etat.derniereSynthese
+        dernierMode      = $etat.dernierMode
+        dernierFichier   = $etat.dernierFichier
+        derniereAnalyse  = $start.ToString('o')
     }
-    Save-SmEtat $etat $WorkDir
+    if (-not $analysisOnly) {
+        $newEtat.derniereSynthese = $start.ToString('o')
+        $newEtat.dernierMode = $(if ($absences.Count) { 'retour' } else { 'quotidien' })
+        $newEtat.dernierFichier = $synthesisFile
+    }
+    Save-SmEtat $newEtat $WorkDir
     $outcome.resultat = 'ok'
-    $outcome.message = $(if ($config.envoiMail -and -not $PasDeMail) { 'Synthèse envoyée.' } else { 'Synthèse enregistrée (sans mail).' })
+    $outcome.message = $(if ($analysisOnly) { 'Analyse actualisée (sans mail).' }
+                         elseif ($config.envoiMail) { 'Synthèse envoyée.' }
+                         else { 'Synthèse enregistrée (envoi par mail désactivé).' })
 } catch {
     $outcome.resultat = 'echec'
     $outcome.message = $_.Exception.Message

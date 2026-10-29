@@ -59,6 +59,13 @@ par client ; on marque chaque élément reporté, traité, vu ou écarté, d'un
 clic, avec possibilité d'annuler. Les informations TAM à archiver sont dans
 la vue Attention.
 
+Bouton **« Actualiser »** (en haut de la page, un clic) : relance toute
+l'analyse (mails, AnsamDiag, Jira) et met à jour les points et les
+éléments à garder, **sans envoyer de mail**. Utile quand des mails ont été
+envoyés ou reçus depuis la synthèse du matin. La synthèse du jour et sa
+date ne changent pas : celle du lendemain couvre toujours tout depuis le
+dernier envoi. Le texte produit est gardé dans `syntheses\actualisations`.
+
 Bouton **« Envoyer la synthèse »** (en haut de la page, deux clics pour
 confirmer) : relance tout de suite la synthèse complète avec les statuts
 à jour et l'envoie par mail, par exemple après avoir marqué les points
