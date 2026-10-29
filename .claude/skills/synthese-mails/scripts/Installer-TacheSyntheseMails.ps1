@@ -16,10 +16,10 @@
     déverrouillage, pour rattraper un PC en veille à l'heure prévue ; elle
     tourne sur batterie et retente 3 fois en cas d'échec.
 
-    Crée aussi « <TaskName> - page » : la page de suivi et de configuration,
-    lancée à l'ouverture de session et gardée active (adresse fixe, lien dans
-    chaque synthèse), démarrée tout de suite, et un raccourci « Synthèse
-    mails – suivi » dans le menu Démarrer.
+    Crée aussi « <TaskName> - page » : Préfix, la page de suivi et de
+    configuration, lancée à l'ouverture de session et gardée active (adresse
+    fixe, lien dans chaque synthèse), démarrée tout de suite, et son
+    raccourci « Préfix » dans le menu Démarrer.
 
 .EXAMPLE
     .\Installer-TacheSyntheseMails.ps1
@@ -85,6 +85,8 @@ Start-ScheduledTask -TaskName $pageTask
 Write-Host "Tâche « $pageTask » créée : page permanente (redémarrée)."
 
 # Raccourci du menu Démarrer vers la page, avec son jeton (le lien sans jeton est refusé).
-$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Synthèse mails – suivi.url'
+$programs = [Environment]::GetFolderPath('Programs')
+Remove-Item (Join-Path $programs 'Synthèse mails – suivi.url') -ErrorAction SilentlyContinue   # ancien nom
+$startMenu = Join-Path $programs 'Préfix.url'
 [IO.File]::WriteAllText($startMenu, "[InternetShortcut]`r`nURL=$(Get-SmPageUrl)`r`n", [Text.Encoding]::ASCII)
-Write-Host "Raccourci créé dans le menu Démarrer : « Synthèse mails – suivi »."
+Write-Host "Raccourci créé dans le menu Démarrer : « Préfix »."

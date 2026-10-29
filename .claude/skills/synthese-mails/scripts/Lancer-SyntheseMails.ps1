@@ -190,7 +190,7 @@ try {
         Write-Warning "Registre des éléments à garder inchangé : $($_.Exception.Message)"
         $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
     }
-    $markdown += "`n`n---`n[Ouvrir mon suivi]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
+    $markdown += "`n`n---`n[Ouvrir Préfix]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     # Une actualisation (-PasDeMail) ne remplace pas la synthèse du jour : fichier à part, et la date de
     # la dernière synthèse reste celle du dernier envoi, sinon celle du matin serait sautée ou raccourcie.
     $analysisOnly = $PasDeMail.IsPresent
