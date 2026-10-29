@@ -45,6 +45,15 @@
   }
   .search input:focus { border-color: var(--accent); background: var(--surface); }
 
+  .runbtn { font: inherit; font-size: .875rem; font-weight: 600; border: 0; border-radius: 999px; padding: .45rem .95rem; cursor: pointer;
+    background: var(--accent); color: var(--on-accent); transition: transform .1s ease-out, background-color .2s; white-space: nowrap; }
+  .runbtn.confirm { background: var(--orange); }
+  .runbtn:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+  .run { display: flex; align-items: center; gap: .55rem; font-size: .8125rem; color: var(--muted); margin: -.25rem 0 .7rem; }
+  .run[hidden] { display: none; }
+  .spinner { width: .8rem; height: .8rem; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   /* Contrôle segmenté de navigation */
   nav.seg { display: flex; gap: 2px; padding: 2px; margin: 0 0 .75rem; background: var(--surface-2); border-radius: 10px; overflow-x: auto; scrollbar-width: none; }
   nav.seg button {
@@ -160,6 +169,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .pane { animation: none; }
+    .spinner { animation: none; border-color: var(--accent); }
     *, *::before, *::after { transition-duration: .01ms !important; }
     button:active, .chip:active, .opt:active { transform: none; }
   }
@@ -182,7 +192,9 @@
         <div class="sub" id="sub">Chargement…</div>
       </div>
       <div class="search"><input type="search" id="q" placeholder="Rechercher : client, ticket, mot…" aria-label="Rechercher"></div>
+      <button class="runbtn" type="button" id="run" title="Relit la boîte avec tes statuts à jour et t'envoie la synthèse par mail">Envoyer la synthèse</button>
     </div>
+    <div class="run" id="runState" role="status" aria-live="polite" hidden><span class="spinner"></span><span id="runText"></span></div>
     <nav class="seg" role="tablist" aria-label="Vues">
       <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
@@ -686,6 +698,57 @@ $('quit').onclick = async () => {
   document.querySelector('main').innerHTML = '<div class="empty"><b>Page arrêtée</b>Pour la rouvrir : raccourci « Synthèse mails – suivi » du menu Démarrer.</div>';
 };
 
+// --- Synthèse à la demande ---------------------------------------------------
+// Deux temps : un premier clic arme le bouton, le second lance (un mail part, ~8 min).
+let armTimer = null, watching = false, runStartedAt = 0, pollTimer = null;
+$('run').addEventListener('click', async () => {
+  const b = $('run');
+  if (!b.classList.contains('confirm')) {
+    b.classList.add('confirm');
+    b.textContent = 'Confirmer l’envoi';
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => { b.classList.remove('confirm'); b.textContent = 'Envoyer la synthèse'; }, 4000);
+    return;
+  }
+  clearTimeout(armTimer);
+  b.classList.remove('confirm');
+  try {
+    const r = await api('POST', '/api/lancement');
+    watching = true;
+    runStartedAt = Date.now();
+    toast(r.message);
+    pollRun();
+  } catch (e) { b.textContent = 'Envoyer la synthèse'; toast(e.message, null, true); }
+});
+
+async function pollRun() {
+  clearTimeout(pollTimer);
+  let r;
+  try { r = await api('GET', '/api/lancement'); } catch (e) { pollTimer = setTimeout(pollRun, 8000); return; }
+  const starting = !r.enCours && watching && Date.now() - runStartedAt < 25000;   // le temps que le lanceur pose son verrou
+  const b = $('run');
+  if (r.enCours || starting) {
+    if (r.enCours && !watching) { watching = true; runStartedAt = Date.parse(r.debut) || Date.now(); }
+    const min = Math.max(0, Math.round((Date.now() - (Date.parse(r.debut) || runStartedAt)) / 60000));
+    $('runText').textContent = `Synthèse en cours · ${r.etape || 'démarrage'} · ${min} min`;
+    $('runState').hidden = false;
+    b.disabled = true;
+    b.textContent = 'En cours…';
+    pollTimer = setTimeout(pollRun, 4000);
+    return;
+  }
+  $('runState').hidden = true;
+  b.disabled = false;
+  b.textContent = 'Envoyer la synthèse';
+  if (watching) {
+    watching = false;
+    const d = r.dernier || {};
+    if (d.resultat === 'ok') toast(d.message + (/envoyée/.test(d.message || '') ? ' Vérifie ta boîte.' : ''));
+    else toast('Échec de la synthèse : ' + (d.message || 'voir le journal'), null, true);
+    load();
+  }
+}
+
 // --- Démarrage ---------------------------------------------------------------
 async function load() {
   // Le serveur répond aux requêtes une à une : d'abord ce qu'on lit, ensuite les réglages.
@@ -710,7 +773,7 @@ if (location.protocol === 'file:' || !token) {
 } else {
   try { const saved = localStorage.getItem('sm-tab'); if (saved && $('p-' + saved)) showTab(saved); } catch (e) { }
   ['suivi', 'variabilite', 'facturation', 'attention'].forEach(t => { $('list-' + t) && ($('list-' + t).innerHTML = '<div class="empty">Chargement…</div>'); });
-  load();
+  load().then(pollRun);
 }
 </script>
 </body>

@@ -59,6 +59,13 @@ par client ; on marque chaque élément reporté, traité, vu ou écarté, d'un
 clic, avec possibilité d'annuler. Les informations TAM à archiver sont dans
 la vue Attention.
 
+Bouton **« Envoyer la synthèse »** (en haut de la page, deux clics pour
+confirmer) : relance tout de suite la synthèse complète avec les statuts
+à jour et l'envoie par mail, par exemple après avoir marqué les points
+déjà réglés. La progression s'affiche sous l'en-tête. Un seul lancement à
+la fois : si une synthèse tourne déjà (tâche du matin ou bouton), le
+second lancement est refusé.
+
 Onglet **Réglages** :
 
 - synthèse active, envoi par mail, heure, jours d'envoi ;

@@ -194,6 +194,33 @@ function ConvertFrom-PageConfig([string]$Json) {
     $config
 }
 
+# Lancement à la demande (bouton de la page) : même lanceur que la tâche du matin, avec -Force.
+function Get-RunState {
+    $lock = Read-SmJson (Join-Path $WorkDir 'lancement.lock')
+    $running = [bool]($lock -and (Get-Process -Id $lock.pid -ErrorAction SilentlyContinue))
+    $step = $null
+    $log = Join-Path $WorkDir ("logs\{0:yyyy-MM-dd}.log" -f (Get-Date))
+    if ($running -and (Test-Path $log)) {
+        # Le journal est ouvert en écriture par le lanceur : lecture partagée.
+        $fs = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
+        try { $text = (New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)).ReadToEnd() } finally { $fs.Close() }
+        $lines = @($text -split "`r?`n" | Where-Object { $_ -match 'Étape :' })
+        if ($lines.Count) { $step = ($lines[-1] -replace '^\d\d:\d\d:\d\d\s*Étape :\s*', '').Trim() }
+    }
+    [ordered]@{
+        enCours = $running
+        debut   = $(if ($running) { $lock.debut } else { $null })
+        etape   = $step
+        dernier = Read-SmJson (Join-Path $WorkDir 'dernier-lancement.json')
+    }
+}
+
+function Start-Run {
+    $launcher = Join-Path $PSScriptRoot 'Lancer-SyntheseMails.ps1'
+    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -Force" | Out-Null
+}
+
 function Install-Task {
     & (Join-Path $PSScriptRoot 'Installer-TacheSyntheseMails.ps1') -At (Get-SmConfig $WorkDir).heure -TaskName $TaskName | Out-Null
     [void](Get-TaskState -Refresh)
@@ -269,6 +296,12 @@ try {
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point })
+                }
+                '^GET /api/lancement$' { Send-Json $stream 200 (Get-RunState) }
+                '^POST /api/lancement$' {
+                    if ((Get-RunState).enCours) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une synthèse est déjà en cours.') }); break }
+                    Start-Run
+                    Send-Json $stream 200 ([ordered]@{ message = 'Synthèse lancée : environ 8 minutes, puis le mail arrive.' })
                 }
                 '^GET /api/archives$' {
                     $archives = Get-SmArchives $WorkDir

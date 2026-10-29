@@ -72,12 +72,25 @@ New-Item -ItemType Directory -Force -Path $exportDir, $synthesisDir, $logDir | O
 Start-Transcript -Path (Join-Path $logDir "$today.log") -Append | Out-Null
 $address = $null
 $config = $null
+$lockFile = $null
+$outcome = [ordered]@{ debut = $start.ToString('o'); fin = $null; resultat = 'ignore'; message = $null; force = $Force.IsPresent }
 try {
+    # Une seule synthèse à la fois (tâche du matin, bouton de la page).
+    $lockPath = Join-Path $WorkDir 'lancement.lock'
+    $other = Read-SmJson $lockPath
+    if ($other -and $other.pid -ne $PID -and (Get-Process -Id $other.pid -ErrorAction SilentlyContinue)) {
+        Write-Host "Synthèse déjà en cours (processus $($other.pid))."
+        $outcome = $null
+        return
+    }
+    $lockFile = $lockPath
+    Write-SmJson $lockFile ([ordered]@{ pid = $PID; debut = $start.ToString('o') })
+
     $config = Get-SmConfig $WorkDir
     $etat = Get-SmEtat $WorkDir
     $plan = Get-SmPlan $config $etat $start
     if (-not $plan.lancer) {
-        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; return }
+        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; $outcome.message = $plan.raison; return }
         Write-Host "Lancement forcé malgré : $($plan.raison)"
         if (-not $plan.depuis) { $plan.depuis = $start.Date.AddDays(-1).AddHours(7) }
     }
@@ -181,7 +194,11 @@ try {
         dernierFichier   = $synthesisFile
     }
     Save-SmEtat $etat $WorkDir
+    $outcome.resultat = 'ok'
+    $outcome.message = $(if ($config.envoiMail -and -not $PasDeMail) { 'Synthèse envoyée.' } else { 'Synthèse enregistrée (sans mail).' })
 } catch {
+    $outcome.resultat = 'echec'
+    $outcome.message = $_.Exception.Message
     Write-Warning "Échec : $($_.Exception.Message)"
     if ($config.envoiMail -and -not $PasDeMail) {
         try {
@@ -193,5 +210,11 @@ try {
     }
     throw
 } finally {
+    # Les déclenchements sans synthèse (déverrouillage, jour non prévu) n'écrasent pas le dernier vrai résultat.
+    if ($outcome -and $outcome.resultat -ne 'ignore') {
+        $outcome.fin = (Get-Date).ToString('o')
+        Write-SmJson (Join-Path $WorkDir 'dernier-lancement.json') $outcome
+    }
+    if ($lockFile) { Remove-Item $lockFile -ErrorAction SilentlyContinue }
     Stop-Transcript | Out-Null
 }
