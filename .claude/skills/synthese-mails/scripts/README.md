@@ -81,6 +81,13 @@ Le brouillon ou les points d'appel sont réécrits sans reposer une question
 déjà traitée, et un résumé « Où on en est » s'affiche. Cette version est
 gardée tant qu'aucun nouveau message n'arrive sur le point.
 
+Bouton **« Claude »** sur chaque tâche : ouvre une session Claude Code
+dans le dossier AnsamDiag (ses règles et ses skills), dans un onglet
+Windows Terminal : « Analyser le ticket » (`/ticket`), « Timesheet »,
+« Clôture », « Escalade », ou « Session libre » avec le contexte du point.
+Chaque session est mémorisée sur la tâche (« Claude ● ») et se reprend
+depuis le même menu (« Reprendre »), là où elle s'était arrêtée.
+
 Vues **Variabilité**, **Facturation** et **Attention** : les éléments à
 garder relevés par les synthèses (`archives.json`), établis ou à vérifier
 (avec l'indice et la façon de vérifier). La variabilité se lit par mois et

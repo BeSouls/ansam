@@ -229,6 +229,67 @@ function Get-RedactionState([string]$Id) {
     $state
 }
 
+# Session Claude Code interactive sur un point, dans le dossier AnsamDiag (son CLAUDE.md et ses skills),
+# ouverte dans un onglet Windows Terminal. Chaque session porte un identifiant fixé d'avance
+# (--session-id) et gardé sur le point, pour la reprendre plus tard (--resume).
+$SmClaudeCommandes = [ordered]@{
+    ticket    = 'Analyser le ticket'
+    timesheet = 'Timesheet'
+    cloture   = 'Clôture'
+    escalade  = 'Escalade'
+    libre     = 'Session libre'
+}
+
+function Start-ClaudeSession($Point, [string]$Commande, [string]$Reprendre) {
+    $config = Get-SmConfig $WorkDir
+    $dir = $config.dossierAnsamDiag
+    if (-not (Test-Path $dir)) { throw "Dossier AnsamDiag introuvable : $dir" }
+    $claude = Resolve-SmClaude $null
+    $key = [string]$Point.ticket
+    $label = $(if ($key) { $key } else { [string]$Point.id })
+    $quote = { param($s) "'" + ([string]$s -replace "'", "''") + "'" }
+
+    if ($Reprendre) {
+        if ($Reprendre -notmatch '^[0-9a-f-]{36}$') { throw 'Session invalide.' }
+        $line = "& $(& $quote $claude) --resume $(& $quote $Reprendre)"
+        $title = "Claude · $label (reprise)"
+        $session = $null
+    } else {
+        if (-not $SmClaudeCommandes.Contains($Commande)) { throw "Commande inconnue : $Commande" }
+        if ($Commande -ne 'libre' -and -not $key) { throw 'Ce point n''a pas de ticket : seule la session libre est possible.' }
+        $context = @(
+            "Point de ma synthèse mails : « $($Point.titre) »" + $(if ($Point.client) { ", client $($Point.client)" } else { '' }) + '.'
+            $(if ($Point.action) { "Ce qui est attendu : $($Point.action)" })
+            $(if ($Point.contact -and $Point.contact.resume) { "Où on en est : $($Point.contact.resume)" })
+            $(if ($Point.noteMoi) { "Ma note : $($Point.noteMoi)" })
+        ) | Where-Object { $_ }
+        $prompt = $(switch ($Commande) {
+            'libre' { "Reprends ce sujet avec moi$(if ($key) { " (ticket $key)" }). " + ($context -join ' ') + ' Commence par relire le dossier du ticket s''il existe, puis propose la suite.' }
+            default { "/$Commande $key" }
+        })
+        # Windows PowerShell 5.1 transmet mal les guillemets droits aux programmes externes.
+        $prompt = $prompt -replace '"', "'"
+        $session = [guid]::NewGuid().ToString()
+        $name = "$label · $($SmClaudeCommandes[$Commande])" -replace '"', "'"
+        $line = "& $(& $quote $claude) --session-id $session -n $(& $quote $name) $(& $quote $prompt)"
+        $title = "Claude · $name"
+    }
+
+    # Petit script de lancement (UTF-8 avec BOM pour les accents sous Windows PowerShell 5.1).
+    $launchDir = Join-Path $WorkDir 'claude'
+    New-Item -ItemType Directory -Force -Path $launchDir | Out-Null
+    $launcher = Join-Path $launchDir ("lancer-{0}-{1:yyyyMMddHHmmss}.ps1" -f ($label -replace '[^A-Za-z0-9-]', ''), (Get-Date))
+    $body = "Set-Location -LiteralPath $(& $quote $dir)`r`n`$Host.UI.RawUI.WindowTitle = $(& $quote $title)`r`n$line`r`n"
+    [IO.File]::WriteAllText($launcher, $body, (New-Object Text.UTF8Encoding($true)))
+    Get-ChildItem $launchDir -Filter 'lancer-*.ps1' | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force
+
+    $terminal = Get-Command wt.exe -ErrorAction SilentlyContinue
+    $psArgs = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
+    if ($terminal) { Start-Process $terminal.Source -ArgumentList "-w new --title `"$title`" -d `"$dir`" powershell.exe $psArgs" }
+    else { Start-Process powershell.exe -ArgumentList $psArgs -WorkingDirectory $dir }
+    $session
+}
+
 # -Mail : synthèse envoyée ; sinon actualisation (analyse et registres, sans mail).
 function Start-Run([switch]$Mail) {
     $launcher = Join-Path $PSScriptRoot 'Lancer-SyntheseMails.ps1'
@@ -312,6 +373,23 @@ try {
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
+                }
+                '^POST /api/claude$' {
+                    # Ouvre une session Claude Code sur un point (skill ou session libre), ou reprend une session.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = $suivi.points | Where-Object { $_.id -eq [string]$posted.id -and -not $_.estGroupe } | Select-Object -First 1
+                    if (-not $point) { throw 'Point introuvable.' }
+                    $session = Start-ClaudeSession $point ([string]$posted.commande) ([string]$posted.reprendre)
+                    if ($session) {
+                        $entry = [ordered]@{ id = $session; commande = [string]$posted.commande; nom = $SmClaudeCommandes[[string]$posted.commande]; le = (Get-Date).ToString('o') }
+                        $point.claudeSessions = @(@($entry) + @($point.claudeSessions | Where-Object { $_ }) | Select-Object -First 5)
+                        Save-SmSuivi $suivi $WorkDir
+                        $message = "Session « $($entry.nom) » ouverte dans Windows Terminal."
+                    } else {
+                        $message = 'Session reprise dans Windows Terminal.'
+                    }
+                    Send-Json $stream 200 ([ordered]@{ message = $message; point = $point })
                 }
                 '^POST /api/redaction$' {
                     # Rédaction d'une prise de contact avec tout le dossier : en arrière-plan, 1 à 2 minutes.

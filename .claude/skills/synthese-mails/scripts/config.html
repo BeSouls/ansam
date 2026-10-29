@@ -226,6 +226,23 @@
   ol.talk { margin: .2rem 0 1rem; padding-left: 1.3rem; font-size: .9375rem; }
   ol.talk li { margin-bottom: .3rem; }
 
+  /* Menu « Ouvrir dans Claude » : matériau clair et flottant, né du bouton */
+  .btn.claude { font-size: .8125rem; padding: .32rem .75rem; margin-left: auto; }
+  .menu {
+    position: fixed; z-index: 40; min-width: 15rem; padding: .35rem; border-radius: 14px;
+    background: var(--chrome); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--line); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+    opacity: 0; transform: scale(.94); transition: opacity .16s ease, transform .22s cubic-bezier(.2, .9, .25, 1);
+  }
+  .menu.open { opacity: 1; transform: scale(1); }
+  .menu[hidden] { display: none; }
+  .menu-h { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: .45rem .6rem .2rem; }
+  .menu button { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; width: 100%; text-align: left; font: inherit;
+    font-size: .875rem; border: 0; background: none; color: var(--text); padding: .4rem .6rem; border-radius: 8px; cursor: pointer; }
+  .menu button:hover, .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
+  .menu button small { font-size: .75rem; color: var(--muted); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .menu button:hover small, .menu button:focus-visible small { color: inherit; opacity: .85; }
+
   /* Toast d'annulation */
   .toast {
     position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; z-index: 20;
@@ -245,6 +262,7 @@
     .pane { animation: none; }
     .spinner { animation: none; border-color: var(--accent); }
     .bar { animation: none; }
+    .menu { transform: none; }
     .sheet { transform: translateX(-50%); }
     *, *::before, *::after { transition-duration: .01ms !important; }
     button:active, .chip:active, .opt:active { transform: none; }
@@ -441,6 +459,8 @@
   </div>
   <div id="sheetList"></div>
 </div>
+
+<div class="menu" id="cmenu" role="menu" aria-label="Ouvrir dans Claude" hidden></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastUndo" hidden>Annuler</button></div>
 
@@ -731,9 +751,67 @@ function closeSheet() {
 }
 $('sheetClose').addEventListener('click', closeSheet);
 $('scrim').addEventListener('click', () => { if (!$('csheet').hidden) closeContact(); else closeSheet(); });
+// --- Ouvrir dans Claude ---------------------------------------------------------
+// Menu ancré au bouton : un skill AnsamDiag sur le ticket, une session libre, ou la reprise d'une session.
+function claudeButton(p) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn claude';
+  b.setAttribute('aria-haspopup', 'menu');
+  b.textContent = (p.claudeSessions && p.claudeSessions.length) ? 'Claude ●' : 'Claude';
+  b.title = 'Ouvrir ce point dans Claude Code';
+  b.addEventListener('click', e => { e.stopPropagation(); openMenu(p, b); });
+  return b;
+}
+
+function openMenu(p, trigger) {
+  const m = $('cmenu');
+  const items = [];
+  if (p.ticket) {
+    items.push(['ticket', 'Analyser le ticket', `/ticket ${p.ticket}`], ['timesheet', 'Timesheet', `/timesheet ${p.ticket}`],
+               ['cloture', 'Clôture', `/cloture ${p.ticket}`], ['escalade', 'Escalade', `/escalade ${p.ticket}`]);
+  }
+  items.push(['libre', 'Session libre', 'avec le contexte du point']);
+  const sessions = (p.claudeSessions || []).slice(0, 3);
+  m.innerHTML = `<div class="menu-h">Ouvrir dans Claude</div>` +
+    items.map(([v, label, hint]) => `<button type="button" role="menuitem" data-c="${v}"><span>${esc(label)}</span><small>${esc(hint)}</small></button>`).join('') +
+    (sessions.length ? `<div class="menu-h">Reprendre</div>` + sessions.map(s =>
+      `<button type="button" role="menuitem" data-r="${esc(s.id)}"><span>${esc(s.nom || s.commande)}</span><small>ouverte le ${shortDate(s.le)} à ${new Date(s.le).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}</small></button>`).join('') : '');
+  m.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    closeMenu();
+    launchClaude(p, b.dataset.c || '', b.dataset.r || '');
+  }));
+  // Le menu naît du bouton : placé dessous (ou dessus s'il manque de place), origine sur le bouton.
+  m.hidden = false;
+  const r = trigger.getBoundingClientRect(), h = m.offsetHeight, w = m.offsetWidth;
+  const below = r.bottom + 6 + h < innerHeight;
+  m.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + 'px';
+  m.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
+  m.style.transformOrigin = `${r.left + r.width / 2 - parseFloat(m.style.left)}px ${below ? 0 : h}px`;
+  requestAnimationFrame(() => m.classList.add('open'));
+  m.querySelector('button').focus();
+}
+
+function closeMenu() {
+  const m = $('cmenu');
+  m.classList.remove('open');
+  m.hidden = true;
+}
+document.addEventListener('click', e => { if (!$('cmenu').hidden && !$('cmenu').contains(e.target)) closeMenu(); });
+
+async function launchClaude(p, commande, reprendre) {
+  try {
+    const r = await api('POST', '/api/claude', { id: p.id, commande, reprendre });
+    if (r.point) Object.assign(p, r.point);
+    renderAll();
+    toast(r.message);
+  } catch (e) { toast(e.message, null, true); }
+}
+
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (!$('csheet').hidden) closeContact();
+  if (!$('cmenu').hidden) closeMenu();
+  else if (!$('csheet').hidden) closeContact();
   else if (!$('sheet').hidden) closeSheet();
   else if (selected.size) { selected.clear(); renderAll(); }
 });
@@ -926,6 +1004,7 @@ function pointCard(p, inSheet) {
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
+  foot.appendChild(claudeButton(p));
   if (inSheet) {
     const out = document.createElement('button');
     out.type = 'button';
