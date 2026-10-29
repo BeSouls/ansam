@@ -19,13 +19,70 @@ SKILL.md) :
    Outlook (`…\MES CLIENTS\<CODE>`, `…\CLIENTS\<CODE>`). Sans
    correspondance : « client à identifier ».
 2. **Ticket** : clé dans l'objet ou le corps (`ASD-27334`), sinon ticket
-   local ouvert du même client ou du même domaine (`tickets`), sinon alerte
-   Jira « Incident raised » arrivée le même jour pour un ticket de ce
-   client. Un rapprochement qui ne repose pas sur une clé explicite est
-   **supposé** : l'écrire « lié à ASD-xxxx ? (même client, même jour) ».
+   Jira assigné dont le rapporteur ou le client correspond
+   (`jira-assignes.json`), sinon ticket local ouvert du même client ou du
+   même domaine (`tickets` du contexte), sinon alerte Jira « Incident
+   raised » arrivée le même jour pour un ticket de ce client. Un
+   rapprochement qui ne repose pas sur une clé explicite est **supposé** :
+   l'écrire « lié à ASD-xxxx ? (même client, même jour) ».
 3. Le **symptôme** et les **notes** du ticket local, et les
    **particularités** de la fiche client, complètent le mail : s'en servir
    pour comprendre le sujet, la priorité et ce qui est attendu.
+4. **Point de suivi** : un mail rattaché à un ticket qui a déjà un point
+   ouvert dans le registre met à jour **ce point** (une seule ligne par
+   ticket). Il ne crée un nouveau point que s'il apporte une demande
+   distincte.
+
+### Information complémentaire ou nouvelle demande
+
+Un mail sur un ticket déjà suivi est une **information complémentaire**
+quand il ne demande rien de nouveau : photo, pièce jointe, précision sur le
+symptôme, confirmation, remerciement, copie d'un échange. Il enrichit le
+point existant (« info reçue le 28.10 : factures de l'installateur ») sans
+créer de tâche.
+
+C'est une **nouvelle demande** quand il pose une question, demande une
+action ou une date, ou change le périmètre. Elle met à jour l'action
+attendue du point existant ; un sujet différent sur le même ticket devient
+un point séparé.
+
+Une **réponse du client sur un ticket en attente du client** (Jira
+« En attente du client », AnsamDiag `EnAttente`, ou point `attente_tiers`)
+fait repasser le point en `a_faire` : c'est à moi de reprendre.
+
+## Statut d'un point
+
+| Statut | Sens |
+|---|---|
+| `a_faire` | Une action m'attend |
+| `attente_tiers` | Mon action est faite, j'attends le client, un collègue, un fournisseur |
+| `traite` | Réglé, plus rien à faire |
+| `ignore` | Sans objet pour moi (posé par moi seulement, jamais proposé par la synthèse) |
+
+Sources, de la plus forte à la plus faible :
+
+1. **Mon marquage** (`majPar` = `moi`) : il tient tant qu'aucun message
+   n'est arrivé sur le point **après** `majLe`. Un nouveau message peut le
+   rouvrir, en le disant (« rouvert : nouveau message de X le 30.10 »).
+2. **AnsamDiag** : statut `Resolu` ou note « RESOLU » → `traite` ; statut
+   `EnAttente` ou note qui dit que l'action est faite et que j'attends →
+   `attente_tiers` ; clôture préparée (`cloture`) → `traite`.
+3. **Jira** : ticket absent de la liste des assignés ouverts, ou statut
+   « Résolu » / « Clos » → `traite` ; « En attente du client », « En
+   attente du fournisseur », « En attente Interne », « Awaiting CAB »,
+   « Planifié » → `attente_tiers` (préciser qui ou quoi) ; « En cours »,
+   « Ouvert », « À traiter » → `a_faire`.
+4. **Les mails** : ma réponse est le dernier message et elle n'appelle
+   rien de ma part → `attente_tiers` ; elle clôt le sujet → `traite` ; un
+   message plus récent que le mien me demande quelque chose → `a_faire`.
+
+Quand les sources se contredisent, prendre la plus forte et signaler la
+contradiction dans le motif (« Jira dit En cours, AnsamDiag dit Résolu »).
+Un point `traite` par une source automatique est listé dans « Réglé depuis
+la dernière synthèse » avec son motif : on doit pouvoir le rouvrir.
+
+Un point `attente_tiers` depuis plus de 5 jours ouvrés est signalé
+« à relancer ? », sans changer de statut.
 
 Un document d'un tiers (facture d'installateur, bon de livraison, fiche
 technique) transmis par un client sert de **contexte au ticket** : il ne
@@ -51,7 +108,9 @@ avec la mention « relance de mon engagement ».
 
 Les rappels Jira qui me concernent directement sont aussi des attentes :
 tâche **échue**, ticket **en retard**, **assignation** nouvelle,
-**mention** de mon nom.
+**mention** de mon nom. Un ticket Jira assigné ouvert sans aucun mail
+récent n'est pas un point à lui seul : il le devient s'il est échu, en
+retard, ou si un mail ou une note le concerne.
 
 ### Priorité
 

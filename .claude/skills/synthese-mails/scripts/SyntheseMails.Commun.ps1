@@ -19,7 +19,26 @@ function Get-SmDefaultConfig {
         dossierAnsamDiag    = Join-Path $env:USERPROFILE 'OneDrive - ANSAM group\Documents\AnsamDiag-Donnees'
         dossierPortefeuille = 'Boîte de réception\MES CLIENTS'
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
+        portPage            = 8765               # page locale : http://127.0.0.1:<port>/
     }
+}
+
+# Jeton de la page locale, créé une fois et gardé dans <WorkDir>\page.token :
+# l'adresse reste la même d'un démarrage à l'autre (favori, lien du mail).
+function Get-SmPageToken([string]$WorkDir = $SmWorkDir) {
+    $path = Join-Path $WorkDir 'page.token'
+    if (Test-Path $path) {
+        $token = ([IO.File]::ReadAllText($path)).Trim()
+        if ($token -match '^[0-9a-f]{32}$') { return $token }
+    }
+    New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+    $token = [guid]::NewGuid().ToString('N')
+    [IO.File]::WriteAllText($path, $token)
+    $token
+}
+
+function Get-SmPageUrl([string]$WorkDir = $SmWorkDir) {
+    "http://127.0.0.1:$((Get-SmConfig $WorkDir).portPage)/?t=$(Get-SmPageToken $WorkDir)"
 }
 
 function Read-SmJson([string]$Path) {
@@ -114,6 +133,12 @@ function Get-SmPlan($Config, $Etat, [datetime]$Moment = (Get-Date)) {
     $last = $null
     if ($Etat.derniereSynthese) { $last = [datetime]::Parse([string]$Etat.derniereSynthese, $SmInvariant) }
     if ($last -and $last.Date -eq $Moment.Date) { $plan.raison = "Synthèse déjà produite aujourd'hui à $($last.ToString('HH:mm'))."; return $plan }
+    # La tâche se déclenche aussi à l'ouverture de session et au déverrouillage : pas avant l'heure prévue.
+    $parts = $Config.heure -split ':'
+    if ($Moment -lt $Moment.Date.AddHours([int]$parts[0]).AddMinutes([int]$parts[1])) {
+        $plan.raison = "Avant l'heure prévue ($($Config.heure))."
+        return $plan
+    }
 
     if (-not $last) {
         # Première synthèse : depuis le jour d'envoi précédent, 7h00.
@@ -144,6 +169,228 @@ function Get-SmProchaine($Config, $Etat, [datetime]$Moment = (Get-Date)) {
         if (-not $Config.actif) { return $null }
     }
     $null
+}
+
+# Exécutable de Claude Code : « claude » du PATH, sinon l'installation native
+# (%USERPROFILE%\.local\bin), que l'installeur n'ajoute pas toujours au PATH.
+function Resolve-SmClaude([string]$ClaudeExe) {
+    if ($ClaudeExe) { return $ClaudeExe }
+    $command = Get-Command claude -ErrorAction SilentlyContinue
+    $nativeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+    if ($command) { return $command.Source }
+    if (Test-Path $nativeExe) { return $nativeExe }
+    throw "Claude Code introuvable : installe-le (irm https://claude.ai/install.ps1 | iex) ou précise -ClaudeExe."
+}
+
+# --- Registre de suivi des points ------------------------------------------
+# suivi.json garde chaque point d'une synthèse à l'autre. Statuts :
+#   a_faire        une action m'attend
+#   attente_tiers  mon action est faite, j'attends quelqu'un
+#   traite         réglé
+#   ignore         sans objet pour moi (posé par moi seulement)
+# Un statut posé par moi (majPar = 'moi') n'est changé par la synthèse que si
+# un message plus récent que mon marquage arrive sur le point.
+
+$SmStatuts = @('a_faire', 'attente_tiers', 'traite', 'ignore')
+
+function Get-SmSuivi([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'suivi.json')
+    $points = New-Object System.Collections.ArrayList   # pas de List[object] : @() échoue dessus sous PS 5.1
+    if ($saved) {
+        foreach ($point in @($saved.points)) {
+            if (-not $point) { continue }
+            $copy = [ordered]@{}
+            foreach ($property in $point.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+            $copy.historique = @($point.historique | Where-Object { $_ })
+            [void]$points.Add($copy)
+        }
+    }
+    [ordered]@{ majLe = $(if ($saved) { $saved.majLe }); points = $points }
+}
+
+function Save-SmSuivi($Suivi, [string]$WorkDir = $SmWorkDir) {
+    $Suivi.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Join-Path $WorkDir 'suivi.json') ([ordered]@{ majLe = $Suivi.majLe; points = @($Suivi.points) })
+}
+
+function ConvertTo-SmDateTime($Value) {
+    if (-not $Value) { return $null }
+    $date = [datetime]::MinValue
+    if ([datetime]::TryParse([string]$Value, $SmInvariant, [Globalization.DateTimeStyles]::None, [ref]$date)) { return $date }
+    $null
+}
+
+function Add-SmHistorique($Point, [string]$Par, [string]$Statut, [string]$Texte) {
+    $Point.historique = @(@($Point.historique) + [ordered]@{ le = (Get-Date).ToString('o'); par = $Par; statut = $Statut; texte = $Texte } |
+        Select-Object -Last 20)
+}
+
+# Intègre les points proposés par la synthèse. Renvoie les points dont le
+# statut a changé, pour le compte rendu.
+function Merge-SmSuivi($Suivi, $Updates) {
+    $changes = @()
+    $today = (Get-Date).ToString('yyyyMMdd')
+    $counter = @($Suivi.points | Where-Object { $_.id -like "P-$today-*" }).Count
+    foreach ($update in @($Updates)) {
+        if (-not $update -or -not $update.titre) { continue }
+        $statut = [string]$update.statut
+        if ($SmStatuts -notcontains $statut -or $statut -eq 'ignore') { $statut = 'a_faire' }
+
+        $point = $null
+        if ($update.id) { $point = $Suivi.points | Where-Object { $_.id -eq $update.id } | Select-Object -First 1 }
+        if (-not $point -and $update.ticket) {
+            $point = $Suivi.points | Where-Object { $_.ticket -eq $update.ticket -and $_.statut -ne 'traite' -and $_.statut -ne 'ignore' } | Select-Object -First 1
+        }
+        if (-not $point) {
+            $id = [string]$update.id
+            if (-not $id -or ($Suivi.points | Where-Object { $_.id -eq $id })) {
+                if ($update.ticket) { $id = [string]$update.ticket } else { $counter++; $id = "P-$today-$counter" }
+                if ($Suivi.points | Where-Object { $_.id -eq $id }) { $counter++; $id = "P-$today-$counter" }
+            }
+            $point = [ordered]@{ id = $id; creeLe = (Get-Date).ToString('o'); statut = $null; majPar = 'synthese'; majLe = $null; noteMoi = ''; historique = @() }
+            [void]$Suivi.points.Add($point)
+        }
+
+        # Champs descriptifs : toujours mis à jour.
+        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
+            if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
+        }
+
+        if ($point.statut -eq $statut) { continue }
+        if ($point.majPar -eq 'moi' -and $point.statut) {
+            # Mon marquage tient, sauf message plus récent que lui.
+            $marked = ConvertTo-SmDateTime $point.majLe
+            $lastMessage = ConvertTo-SmDateTime $update.dernierMessage
+            if (-not ($marked -and $lastMessage -and $lastMessage -gt $marked)) { continue }
+        }
+        $previous = $point.statut
+        $point.statut = $statut
+        $point.majPar = 'synthese'
+        $point.majLe = (Get-Date).ToString('o')
+        Add-SmHistorique $point 'synthese' $statut ([string]$update.motif)
+        $changes += [ordered]@{ id = $point.id; titre = $point.titre; avant = $previous; apres = $statut; motif = $update.motif }
+    }
+
+    # Les points réglés depuis plus de 60 jours quittent le registre.
+    $limit = (Get-Date).AddDays(-60)
+    $kept = New-Object System.Collections.ArrayList
+    foreach ($point in $Suivi.points) {
+        $updated = ConvertTo-SmDateTime $point.majLe
+        if (($point.statut -eq 'traite' -or $point.statut -eq 'ignore') -and $updated -and $updated -lt $limit) { continue }
+        [void]$kept.Add($point)
+    }
+    $Suivi.points = $kept
+    , $changes
+}
+
+# Marquage d'un point par moi (page de suivi).
+function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) {
+    $point = $Suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $point) { throw "Point « $Id » introuvable." }
+    if ($SmStatuts -notcontains $Statut) { throw "Statut inconnu : $Statut." }
+    $changed = $point.statut -ne $Statut
+    $point.statut = $Statut
+    $point.noteMoi = $Note
+    $point.majPar = 'moi'
+    $point.majLe = (Get-Date).ToString('o')
+    if ($changed) { Add-SmHistorique $point 'moi' $Statut $Note }
+    $point
+}
+
+# Tableau JSON d'un bloc de fin de synthèse (« <!-- SUIVI --> », « <!-- ARCHIVES --> ») :
+# du marqueur jusqu'au marqueur suivant. $null si le bloc est absent.
+function Get-SmBlocJson([string]$Text, [string]$Marker) {
+    $at = $Text.IndexOf("<!-- $Marker -->")
+    if ($at -lt 0) { return $null }
+    $segment = $Text.Substring($at + $Marker.Length + 9)
+    $next = $segment.IndexOf('<!-- ')
+    if ($next -ge 0) { $segment = $segment.Substring(0, $next) }
+    $start = $segment.IndexOf('[')
+    $end = $segment.LastIndexOf(']')
+    if ($start -lt 0 -or $end -le $start) { throw "bloc $Marker sans tableau JSON" }
+    $parsed = $segment.Substring($start, $end - $start + 1) | ConvertFrom-Json
+    , @($parsed | ForEach-Object { $_ })   # PS 5.1 : un tableau JSON arrive comme un seul objet
+}
+
+# --- Registre des éléments à garder -----------------------------------------
+# archives.json garde ce qui sert plus tard : variabilité mensuelle, facturation,
+# suivi TAM, points d'attention. Chaque élément a un statut :
+#   a_traiter  à reporter (variabilité), à traiter (facturation), à voir (attention)
+#   fait       reporté / traité / vu
+#   ignore     écarté
+# « certitude » : etabli (le mail l'affirme) ou a_verifier (indice à contrôler).
+
+$SmArchiveTypes = @('variabilite', 'facturation', 'tam', 'attention')
+$SmArchiveStatuts = @('a_traiter', 'fait', 'ignore')
+
+function Get-SmArchives([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'archives.json')
+    $items = New-Object System.Collections.ArrayList
+    if ($saved) {
+        foreach ($item in @($saved.elements)) {
+            if (-not $item) { continue }
+            $copy = [ordered]@{}
+            foreach ($property in $item.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+            [void]$items.Add($copy)
+        }
+    }
+    [ordered]@{ majLe = $(if ($saved) { $saved.majLe }); elements = $items }
+}
+
+function Save-SmArchives($Archives, [string]$WorkDir = $SmWorkDir) {
+    $Archives.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Join-Path $WorkDir 'archives.json') ([ordered]@{ majLe = $Archives.majLe; elements = @($Archives.elements) })
+}
+
+# Intègre les éléments proposés par la synthèse ; renvoie le nombre de nouveaux.
+function Merge-SmArchives($Archives, $Updates) {
+    $added = 0
+    $today = (Get-Date).ToString('yyyyMMdd')
+    $prefixes = @{ variabilite = 'V'; facturation = 'F'; tam = 'T'; attention = 'A' }
+    foreach ($update in @($Updates)) {
+        if (-not $update -or -not $update.element) { continue }
+        $type = [string]$update.type
+        if ($SmArchiveTypes -notcontains $type) { $type = 'attention' }
+
+        $item = $null
+        if ($update.id) { $item = $Archives.elements | Where-Object { $_.id -eq $update.id } | Select-Object -First 1 }
+        if (-not $item) {
+            $prefix = "$($prefixes[$type])-$today-"
+            $n = @($Archives.elements | Where-Object { $_.id -like "$prefix*" }).Count + 1
+            $item = [ordered]@{ id = "$prefix$n"; type = $type; statut = 'a_traiter'; majPar = 'synthese'; majLe = (Get-Date).ToString('o');
+                                creeLe = (Get-Date).ToString('o'); noteMoi = '' }
+            [void]$Archives.elements.Add($item)
+            $added++
+        }
+        foreach ($field in 'certitude', 'client', 'element', 'sens', 'quantite', 'montant', 'dateEffet', 'mois', 'echeance',
+                           'source', 'indice', 'verifier', 'dossier', 'ticket') {
+            if ($update.PSObject.Properties.Name -contains $field) { $item[$field] = $update.$field }
+        }
+        # Une suggestion confirmée devient établie ; jamais l'inverse sans le dire.
+        if (-not $item.certitude) { $item.certitude = 'etabli' }
+    }
+
+    # Les éléments faits ou écartés depuis plus de 120 jours quittent le registre (variabilité : un mois et demi d'historique au moins).
+    $limit = (Get-Date).AddDays(-120)
+    $kept = New-Object System.Collections.ArrayList
+    foreach ($item in $Archives.elements) {
+        $updated = ConvertTo-SmDateTime $item.majLe
+        if ($item.statut -ne 'a_traiter' -and $updated -and $updated -lt $limit) { continue }
+        [void]$kept.Add($item)
+    }
+    $Archives.elements = $kept
+    $added
+}
+
+function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$Note) {
+    $item = $Archives.elements | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $item) { throw "Élément « $Id » introuvable." }
+    if ($SmArchiveStatuts -notcontains $Statut) { throw "Statut inconnu : $Statut." }
+    $item.statut = $Statut
+    $item.noteMoi = $Note
+    $item.majPar = 'moi'
+    $item.majLe = (Get-Date).ToString('o')
+    $item
 }
 
 # --- Markdown -> HTML (le sous-ensemble produit par la synthèse) -----------
@@ -184,6 +431,8 @@ function ConvertTo-SmHtml([string]$Markdown) {
         } elseif ($isItem) {
             if (-not $inList) { [void]$out.Append('<ul>'); $inList = $true }
             [void]$out.Append("<li>$(ConvertTo-SmInlineHtml ($line -replace '^\s*[-*]\s+', ''))</li>")
+        } elseif ($line -match '^-{3,}\s*$') {
+            [void]$out.Append('<hr>')
         } elseif ($line -match '^(#{1,4})\s+(.*)$') {
             $level = $Matches[1].Length
             [void]$out.Append("<h$level>$(ConvertTo-SmInlineHtml $Matches[2])</h$level>")

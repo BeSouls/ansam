@@ -11,16 +11,28 @@ Les clés de ticket sont des liens Jira
 Ce qui est supposé porte la mention **à vérifier** (voir
 `regles-classement.md`).
 
-```markdown
+~~~markdown
 # Synthèse mails – <jour JJ.MM.AAAA>
 
-**En bref** : <n> échanges attendent une action de ma part (<n> 🔴), <n> informations à archiver, <n> suggestions à vérifier, <n> mails écartés (bruit, liste en annexe).
+**En bref** : <n> points à faire (<n> 🔴, dont <n> nouveaux), <n> en attente d'un tiers, <n> réglés depuis la dernière synthèse, <n> informations à archiver, <n> suggestions à vérifier, <n> mails écartés (bruit, liste en annexe).
 
 ## 1. En attente de moi
 
-| Prio | Client / émetteur | Sujet | Reçu | Attend depuis | Ce qu'on attend de moi | Échéance |
+### À faire
+Tous les points `a_faire` du registre et les nouveaux, par priorité. « Nouveau » marque un point apparu aujourd'hui ; « info » signale une information complémentaire reçue sur un point existant.
+
+| Prio | Point | Client / émetteur | Sujet | Attend depuis | Ce qu'on attend de moi | Échéance |
 |---|---|---|---|---|---|---|
-| 🔴 | ABC – Jean Dupont | Onduleur, lié à [ASD-12345](https://ansamgroup.atlassian.net/browse/ASD-12345) (`Boîte de réception · 28.10 10:47`) | 28.10 | 0 j | Répondre sur l'onduleur (batterie en fin de vie) et retrouver l'installateur grâce à la facture jointe | aujourd'hui |
+| 🔴 | `ASD-12345` nouveau | ABC – Jean Dupont | Onduleur, [ASD-12345](https://ansamgroup.atlassian.net/browse/ASD-12345) (`Boîte de réception · 28.10 10:47`) | 0 j | Répondre sur l'onduleur (batterie en fin de vie) et retrouver l'installateur grâce à la facture jointe | aujourd'hui |
+
+### En attente d'un tiers
+| Point | Client | Sujet | J'attends | Depuis | Source du statut |
+|---|---|---|---|---|---|
+| `ASD-12346` | ABC | Création de compte | Le nom du manager (client) | 24.10 (4 j, à relancer ?) | Jira « En attente du client » |
+
+### Réglé depuis la dernière synthèse
+Points fermés automatiquement, avec la raison, pour pouvoir les rouvrir dans la page de suivi.
+- `ASD-12347` ABC – Export gDoc : réglé (AnsamDiag « RESOLU 28.10 16:53 »).
 
 ## 2. À archiver
 
@@ -50,11 +62,86 @@ Ce qui est supposé porte la mention **à vérifier** (voir
   information de variabilité reçue ce mois-ci.
 
 ## Annexe – Bruit écarté (<n>)
-Regroupé par catégorie, avec le nombre et les objets distincts :
+Regroupé par catégorie, avec le nombre et les objets distincts, sur toute la période des nouveautés :
 - **Notifications Jira automatiques** (<n>) : ASD-20194 « Création compte » ×3, …
 - **Viva Engage / Confluence** (<n>) : …
 - **Opérateurs, alertes closes** (<n>) : …
+
+<!-- SUIVI -->
+```json
+[
+  {"id": "ASD-12345", "titre": "Onduleur en alarme", "client": "ABC", "ticket": "ASD-12345",
+   "statut": "a_faire", "priorite": "rouge", "action": "Répondre sur l'onduleur et retrouver l'installateur",
+   "echeance": "2026-10-28", "source": "Boîte de réception · 28.10 10:47",
+   "dernierMessage": "2026-10-28T14:14:00+01:00", "motif": "Nouvelle demande du client"}
+]
 ```
+~~~
+
+## Bloc de suivi
+
+Après la synthèse, une ligne `<!-- SUIVI -->` puis un tableau JSON (dans un
+bloc de code ou non) avec :
+
+- **tous les points ouverts** du registre (`a_faire`, `attente_tiers`),
+  même sans nouveauté, avec leur statut revu ;
+- **tous les nouveaux points** ;
+- les points que je dois voir passer à `traite` aujourd'hui.
+
+Champs : `id` (celui du registre ; pour un nouveau point, la clé du ticket
+s'il y en a un, sinon `null`), `titre`, `client`, `ticket` (ou `null`),
+`statut` (`a_faire`, `attente_tiers`, `traite` ; jamais `ignore`),
+`priorite` (`rouge`, `orange`, `vert`), `action` (ce qu'on attend de moi, ou
+ce que j'attends), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
+et date du mail le plus récent), `dernierMessage` (date ISO du dernier
+message reçu sur le point, `null` sans mail), `motif` (pourquoi ce statut,
+avec la source : « Jira En attente du client », « AnsamDiag RESOLU 28.10 »,
+« ma réponse du 27.10 », « nouveau message du client le 29.10 »).
+
+Ne pas proposer de changement de statut à un point marqué par moi
+(`majPar` = `moi`) sans message reçu après `majLe` : le lanceur l'ignorerait.
+
+## Bloc des éléments à garder
+
+Après le bloc de suivi, une ligne `<!-- ARCHIVES -->` puis un tableau JSON
+avec **chaque élément des sections « À archiver » et « Points d'attention »
+de la synthèse du jour** : variabilité établie et suggestions à vérifier,
+facturation, faits TAM à archiver, points d'attention. La page de suivi les
+affiche dans ses vues Variabilité, Facturation et Attention, où je les
+marque reportés, traités ou écartés.
+
+Avant d'ajouter un élément, chercher dans `archives.json` s'il y est déjà
+(même client, même élément) : reprendre alors son `id` pour le mettre à
+jour au lieu d'en créer un doublon. Ne pas renvoyer un élément déjà
+enregistré qui n'a pas changé.
+
+Champs :
+
+- `id` : celui du registre, ou `null` pour un nouvel élément ;
+- `type` : `variabilite`, `facturation`, `tam` ou `attention` ;
+- `certitude` : `etabli` (le mail l'affirme) ou `a_verifier` (indice) ;
+- `client` (code) ;
+- `element` : ce dont il s'agit, en quelques mots (« Départ de Mme X »,
+  « Facture 2026-1042 », « SwissTransfer CBERNARD expire ») ;
+- `sens` (`+`, `−` ou `null`), `quantite`, `montant` (avec la devise),
+  `dateEffet` et `echeance` (`AAAA-MM-JJ` ou `null`) ;
+- `mois` : mois de variabilité concerné (`AAAA-MM`), pour le type
+  `variabilite` ;
+- `source` : dossier et date du mail ;
+- `indice` : la phrase ou le fait qui a fait remonter l'élément ;
+- `verifier` : comment le vérifier (pour `a_verifier`) ;
+- `dossier` : classement proposé (`Clients/ABC/Variabilité`) ;
+- `ticket` : clé du ticket lié, ou `null`.
+
+~~~
+<!-- ARCHIVES -->
+[
+  {"id": null, "type": "variabilite", "certitude": "a_verifier", "client": "ABC", "element": "Départ de Mme X",
+   "sens": "−", "quantite": 1, "montant": null, "dateEffet": null, "echeance": null, "mois": "2026-10",
+   "source": "Boîte de réception\\CLIENTS\\ABC · 26.10 16:06", "indice": "« ne travaille plus chez ABC »",
+   "verifier": "Compte et licence dans Entra", "dossier": "Clients/ABC/Variabilité", "ticket": null}
+]
+~~~
 
 ## Variante « retour d'absence »
 

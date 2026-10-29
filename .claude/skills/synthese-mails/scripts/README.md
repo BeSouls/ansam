@@ -9,11 +9,15 @@ Le principe :
 2. Un second script rassemble le **contexte AnsamDiag** : fiches clients
    (`Clients\*.json`) et tickets suivis (`Tickets\*\ticket.json`), pour
    rattacher chaque mail à son client et à son ticket.
-3. **Claude Code**, installé sur le PC, lit ces fichiers avec le skill
-   `synthese-mails` et rédige la synthèse.
-4. La synthèse t'est **envoyée par mail** (à ta propre adresse, via
+3. **Claude Code** lit tes **tickets Jira assignés ouverts** avec le
+   connecteur Atlassian, en lecture seule (outils d'écriture refusés).
+4. **Claude Code**, installé sur le PC, lit ces fichiers et le **registre
+   de suivi** (`suivi.json`) avec le skill `synthese-mails`, rédige la
+   synthèse et met à jour le registre : chaque point reste ouvert d'un jour
+   à l'autre tant qu'il n'est pas réglé (marquage, AnsamDiag, Jira ou mail).
+5. La synthèse t'est **envoyée par mail** (à ta propre adresse, via
    Outlook) et gardée dans `%USERPROFILE%\SyntheseMails\syntheses`.
-5. Une **tâche planifiée Windows** enchaîne le tout chaque matin. Les jours
+6. Une **tâche planifiée Windows** enchaîne le tout chaque matin. Les jours
    d'envoi et les absences sont respectés ; au retour d'une absence, une
    seule synthèse couvre toute la période.
 
@@ -35,9 +39,34 @@ qu'Outlook affiche déjà.
 
 ## Configuration
 
-Double-clic sur **`Configurer-SyntheseMails.cmd`** : une page locale
-s'ouvre dans le navigateur (servie sur 127.0.0.1 uniquement, fermée après
-30 minutes sans activité). On y règle :
+La page locale de suivi et de configuration tourne en permanence une fois
+les tâches installées : elle démarre à l'ouverture de session, sur
+`http://127.0.0.1:8765/` avec un jeton propre au PC (un lien sans jeton est
+refusé). Pour l'ouvrir : le raccourci **« Synthèse mails – suivi »** du menu
+Démarrer, le lien « Ouvrir mon suivi » en bas de chaque synthèse, ou
+**`Configurer-SyntheseMails.cmd`** (qui démarre une page temporaire si le
+service ne tourne pas).
+
+Onglet **Suivi** : les points du registre, ouverts ou réglés. Pour chacun,
+choisir « À faire », « En attente d'un tiers » (ton action est faite),
+« Traité » ou « Sans objet », avec une note (« réglé par Teams le 28.10 »).
+Ton marquage tient jusqu'à ce qu'un nouveau message arrive sur le point.
+
+Vues **Variabilité**, **Facturation** et **Attention** : les éléments à
+garder relevés par les synthèses (`archives.json`), établis ou à vérifier
+(avec l'indice et la façon de vérifier). La variabilité se lit par mois et
+par client ; on marque chaque élément reporté, traité, vu ou écarté, d'un
+clic, avec possibilité d'annuler. Les informations TAM à archiver sont dans
+la vue Attention.
+
+Bouton **« Envoyer la synthèse »** (en haut de la page, deux clics pour
+confirmer) : relance tout de suite la synthèse complète avec les statuts
+à jour et l'envoie par mail, par exemple après avoir marqué les points
+déjà réglés. La progression s'affiche sous l'en-tête. Un seul lancement à
+la fois : si une synthèse tourne déjà (tâche du matin ou bouton), le
+second lancement est refusé.
+
+Onglet **Réglages** :
 
 - synthèse active, envoi par mail, heure, jours d'envoi ;
 - fenêtre relue (14 jours par défaut) ;
@@ -85,6 +114,14 @@ Options utiles :
 
 - **Mail « Synthèse mails – échec du … »** : la chaîne a échoué ; le mail
   donne l'erreur et le chemin du journal.
+- **Pas de mail du tout** : regarder le résultat de la tâche dans le
+  Planificateur. Un PC en veille à 7h10 rattrape la synthèse à l'ouverture
+  de session ou au déverrouillage. `0xC000013A` ou `0x8007042B` : la console
+  du script a été tuée au démarrage ; les tâches passent par
+  `conhost.exe --headless` pour l'éviter (réinstaller les tâches depuis la
+  page si elles datent d'avant).
+- **« Accès refusé : lien incomplet »** sur la page : le lien n'a pas le
+  jeton ; utiliser le raccourci du menu Démarrer.
 - **`0x80080005` (CO_E_SERVER_EXEC_FAILURE)** : l'Outlook ouvert ne répond
   pas aux scripts. Fermer complètement Outlook (aucun `OUTLOOK.EXE` restant
   dans le Gestionnaire des tâches), le rouvrir, relancer.

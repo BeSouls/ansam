@@ -9,9 +9,12 @@
        une seule synthèse couvre toute la période depuis la dernière.
     2. Export-OutlookMails.ps1 : export de la boîte principale.
     3. Export-ContexteAnsam.ps1 : fiches clients et tickets AnsamDiag.
-    4. claude -p (Claude Code non interactif, lecture seule) depuis ce repo,
-       pour que le skill synthese-mails soit chargé.
-    5. Synthèse gardée dans <WorkDir>\syntheses\AAAA-MM-JJ.md et envoyée par
+    4. Export-JiraAssignes.ps1 : mes tickets Jira ouverts (lecture seule).
+    5. claude -p (Claude Code non interactif, lecture seule) depuis ce repo,
+       pour que le skill synthese-mails soit chargé, avec le registre de
+       suivi (suivi.json). La réponse se termine par un bloc de suivi, qui
+       est intégré au registre (Merge-SmSuivi) puis retiré du mail.
+    6. Synthèse gardée dans <WorkDir>\syntheses\AAAA-MM-JJ.md et envoyée par
        mail à ma propre adresse via Outlook. En cas d'échec, un mail
        « Synthèse mails – échec » le signale. Journal dans <WorkDir>\logs.
 
@@ -43,13 +46,7 @@ $ErrorActionPreference = 'Stop'
 
 # $PSScriptRoot est vide dans les valeurs par défaut du param() sous Windows PowerShell 5.1.
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path }
-if (-not $ClaudeExe) {
-    $command = Get-Command claude -ErrorAction SilentlyContinue
-    $nativeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
-    if ($command) { $ClaudeExe = $command.Source }
-    elseif (Test-Path $nativeExe) { $ClaudeExe = $nativeExe }
-    else { throw "Claude Code introuvable : installe-le (irm https://claude.ai/install.ps1 | iex) ou précise -ClaudeExe." }
-}
+$ClaudeExe = Resolve-SmClaude $ClaudeExe
 
 function Send-SelfMail([string]$Subject, [string]$HtmlBody, [string]$Address) {
     $outlook = New-Object -ComObject Outlook.Application
@@ -72,44 +69,78 @@ $synthesisDir = Join-Path $WorkDir 'syntheses'
 $logDir = Join-Path $WorkDir 'logs'
 New-Item -ItemType Directory -Force -Path $exportDir, $synthesisDir, $logDir | Out-Null
 
-$config = Get-SmConfig $WorkDir
-$etat = Get-SmEtat $WorkDir
-$plan = Get-SmPlan $config $etat $start
-
 Start-Transcript -Path (Join-Path $logDir "$today.log") -Append | Out-Null
 $address = $null
+$config = $null
+$lockFile = $null
+$outcome = [ordered]@{ debut = $start.ToString('o'); fin = $null; resultat = 'ignore'; message = $null; force = $Force.IsPresent }
 try {
+    # Une seule synthèse à la fois (tâche du matin, bouton de la page).
+    $lockPath = Join-Path $WorkDir 'lancement.lock'
+    $other = Read-SmJson $lockPath
+    if ($other -and $other.pid -ne $PID -and (Get-Process -Id $other.pid -ErrorAction SilentlyContinue)) {
+        Write-Host "Synthèse déjà en cours (processus $($other.pid))."
+        $outcome = $null
+        return
+    }
+    $lockFile = $lockPath
+    Write-SmJson $lockFile ([ordered]@{ pid = $PID; debut = $start.ToString('o') })
+
+    $config = Get-SmConfig $WorkDir
+    $etat = Get-SmEtat $WorkDir
+    $plan = Get-SmPlan $config $etat $start
     if (-not $plan.lancer) {
-        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; return }
+        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; $outcome.message = $plan.raison; return }
         Write-Host "Lancement forcé malgré : $($plan.raison)"
         if (-not $plan.depuis) { $plan.depuis = $start.Date.AddDays(-1).AddHours(7) }
     }
 
     $exportArgs = @{ Days = $plan.jours; OutputDir = $exportDir }
     if ($Mailbox) { $exportArgs.Mailbox = $Mailbox }
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : export Outlook ($($plan.jours) jours)"
     $exportFile = & (Join-Path $PSScriptRoot 'Export-OutlookMails.ps1') @exportArgs | Select-Object -Last 1
     $threadFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-fils.txt'
     $address = (Read-SmJson $exportFile).address
 
     $contextFile = Join-Path $WorkDir 'contexte-ansam.json'
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : contexte AnsamDiag"
     & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ExportFile $exportFile `
         -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
 
+    # Tickets Jira assignés (lecture seule) ; en cas d'échec, la synthèse continue sans eux.
+    $jiraFile = Join-Path $WorkDir 'jira-assignes.json'
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"
+    $jiraOk = & (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1') -OutputFile $jiraFile -ClaudeExe $ClaudeExe | Select-Object -Last 1
+    $jiraNote = $(if ($jiraOk) { "tickets Jira assignés : $jiraFile" }
+                  elseif (Test-Path $jiraFile) { "tickets Jira assignés : $jiraFile (lecture du jour en échec : liste de la veille, à signaler)" }
+                  else { "tickets Jira assignés : indisponibles aujourd'hui (à signaler dans les points d'attention)" })
+
+    # Registres : les points restent ouverts d'une synthèse à l'autre, les éléments à garder aussi.
+    $suivi = Get-SmSuivi $WorkDir
+    $suiviFile = Join-Path $WorkDir 'suivi.json'
+    if (-not (Test-Path $suiviFile)) { Save-SmSuivi $suivi $WorkDir }
+    $archivesFile = Join-Path $WorkDir 'archives.json'
+    if (-not (Test-Path $archivesFile)) { Save-SmArchives (Get-SmArchives $WorkDir) $WorkDir }
+
     $since = $plan.depuis.ToString('dd.MM.yyyy HH:mm')
     $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
-              "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile. " +
+              "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile ; " +
+              "$jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
+              "registre des éléments à garder : $archivesFile. " +
               "Nouveautés depuis la dernière synthèse : $since."
     $absences = @($plan.absences)
     if ($absences.Count) {
         $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
         $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
     }
-    $prompt += " Réponds uniquement avec la synthèse en Markdown."
+    $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
+               "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
 
     # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
     Push-Location $RepoDir
     try {
+        Write-Host "$(Get-Date -Format HH:mm:ss) Étape : rédaction par Claude Code"
         $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
         if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
     } finally {
@@ -120,6 +151,33 @@ try {
     $markdown = $synthesis -join "`n"
     $titleAt = [regex]::Match($markdown, '(?m)^# ')
     if ($titleAt.Success) { $markdown = $markdown.Substring($titleAt.Index) }
+
+    # Blocs de fin (suivi, éléments à garder) : intégrés aux registres, retirés du mail.
+    $raw = $markdown
+    $firstBlock = [regex]::Match($markdown, '<!-- (SUIVI|ARCHIVES) -->')
+    if ($firstBlock.Success) { $markdown = $markdown.Substring(0, $firstBlock.Index).TrimEnd() }
+    try {
+        $updates = Get-SmBlocJson $raw 'SUIVI'
+        if ($null -eq $updates) { throw 'bloc absent' }
+        $changes = Merge-SmSuivi $suivi $updates
+        Save-SmSuivi $suivi $WorkDir
+        Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
+    } catch {
+        Write-Warning "Registre de suivi inchangé : $($_.Exception.Message)"
+        $markdown += "`n`n> ⚠ Registre de suivi non mis à jour aujourd'hui ($($_.Exception.Message))."
+    }
+    try {
+        $kept = Get-SmBlocJson $raw 'ARCHIVES'
+        if ($null -eq $kept) { throw 'bloc absent' }
+        $archives = Get-SmArchives $WorkDir
+        $added = Merge-SmArchives $archives $kept
+        Save-SmArchives $archives $WorkDir
+        Write-Host "Éléments à garder : $(@($kept).Count) revus, $added nouveaux, $(@($archives.elements).Count) au registre."
+    } catch {
+        Write-Warning "Registre des éléments à garder inchangé : $($_.Exception.Message)"
+        $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
+    }
+    $markdown += "`n`n---`n[Ouvrir mon suivi]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     $synthesisFile = Join-Path $synthesisDir "$today.md"
     [IO.File]::WriteAllText($synthesisFile, $markdown, (New-Object Text.UTF8Encoding($false)))
     Write-Host "Synthèse prête : $synthesisFile"
@@ -136,7 +194,11 @@ try {
         dernierFichier   = $synthesisFile
     }
     Save-SmEtat $etat $WorkDir
+    $outcome.resultat = 'ok'
+    $outcome.message = $(if ($config.envoiMail -and -not $PasDeMail) { 'Synthèse envoyée.' } else { 'Synthèse enregistrée (sans mail).' })
 } catch {
+    $outcome.resultat = 'echec'
+    $outcome.message = $_.Exception.Message
     Write-Warning "Échec : $($_.Exception.Message)"
     if ($config.envoiMail -and -not $PasDeMail) {
         try {
@@ -148,5 +210,11 @@ try {
     }
     throw
 } finally {
+    # Les déclenchements sans synthèse (déverrouillage, jour non prévu) n'écrasent pas le dernier vrai résultat.
+    if ($outcome -and $outcome.resultat -ne 'ignore') {
+        $outcome.fin = (Get-Date).ToString('o')
+        Write-SmJson (Join-Path $WorkDir 'dernier-lancement.json') $outcome
+    }
+    if ($lockFile) { Remove-Item $lockFile -ErrorAction SilentlyContinue }
     Stop-Transcript | Out-Null
 }
