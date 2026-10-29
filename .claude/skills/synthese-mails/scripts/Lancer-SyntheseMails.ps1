@@ -122,7 +122,15 @@ try {
     # Registres : les points restent ouverts d'une synthèse à l'autre, les éléments à garder aussi.
     $suivi = Get-SmSuivi $WorkDir
     $suiviFile = Join-Path $WorkDir 'suivi.json'
-    if (-not (Test-Path $suiviFile)) { Save-SmSuivi $suivi $WorkDir }
+    # Chaque ticket Jira ouvert qui m'est assigné a un point, avant même que l'agent lise les mails.
+    $jira = $(if ($jiraOk) { Read-SmJson $jiraFile })
+    $contextData = Read-SmJson $contextFile
+    if ($jira) {
+        $sync = Sync-SmJira $suivi $jira $contextData
+        Write-Host "Jira → suivi : $($sync.ajoutes) ajoutés, $($sync.regles) réglés, $($sync.rouverts) rouverts."
+        if ($jira.complet -eq $false) { $jiraNote += " ATTENTION : liste Jira incomplète ($(@($jira.tickets).Count) sur $($jira.total)), à signaler" }
+    }
+    Save-SmSuivi $suivi $WorkDir
     $archivesFile = Join-Path $WorkDir 'archives.json'
     if (-not (Test-Path $archivesFile)) { Save-SmArchives (Get-SmArchives $WorkDir) $WorkDir }
 
@@ -164,6 +172,7 @@ try {
         $updates = Get-SmBlocJson $raw 'SUIVI'
         if ($null -eq $updates) { throw 'bloc absent' }
         $changes = Merge-SmSuivi $suivi $updates
+        if ($jira) { [void](Sync-SmJira $suivi $jira $contextData) }   # Jira a le dernier mot sur ce qui est encore ouvert
         Save-SmSuivi $suivi $WorkDir
         Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
     } catch {

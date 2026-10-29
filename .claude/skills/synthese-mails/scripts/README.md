@@ -10,7 +10,12 @@ Le principe :
    (`Clients\*.json`) et tickets suivis (`Tickets\*\ticket.json`), pour
    rattacher chaque mail à son client et à son ticket.
 3. **Claude Code** lit tes **tickets Jira assignés ouverts** avec le
-   connecteur Atlassian, en lecture seule (outils d'écriture refusés).
+   connecteur Atlassian, en lecture seule (outils d'écriture refusés), et
+   vérifie que la liste est complète (total annoncé par Jira). Le lanceur
+   donne ensuite **un point de suivi à chaque ticket ouvert**, même sans
+   mail ni dossier AnsamDiag (statut et priorité repris de Jira, client
+   déduit du dossier AnsamDiag, du rapporteur ou du projet) ; un ticket
+   encore ouvert dans Jira n'est jamais considéré comme réglé en silence.
 4. **Claude Code**, installé sur le PC, lit ces fichiers et le **registre
    de suivi** (`suivi.json`) avec le skill `synthese-mails`, rédige la
    synthèse et met à jour le registre : chaque point reste ouvert d'un jour

@@ -102,6 +102,7 @@
   .tag.sure { background: var(--green-soft); color: var(--green); }
   .tag.plus { background: var(--green-soft); color: var(--green); }
   .tag.minus { background: var(--red-soft); color: var(--red); }
+  .tag.jira { background: var(--blue-soft); color: var(--blue); }
   .body { margin: .35rem 0 .2rem; font-size: .9375rem; }
   .meta { color: var(--muted); font-size: .8125rem; }
   .clue { font-size: .875rem; margin-top: .35rem; padding: .45rem .6rem; border-radius: 8px; background: var(--surface-2); }
@@ -912,6 +913,8 @@ function pointCard(p, inSheet) {
       <span class="title">${esc(p.titre)}</span>
       ${p.client ? `<span class="tag">${esc(p.client)}</span>` : ''}
       ${dueTag(p.echeance)}
+      ${p.jiraStatut ? `<span class="tag jira" title="Statut dans Jira${p.jiraMisAJour ? ', mis à jour le ' + shortDate(p.jiraMisAJour) : ''}">Jira : ${esc(p.jiraStatut)}</span>` : ''}
+      ${p.jiraEncoreOuvert ? '<span class="tag late" title="Réglé ici, mais le ticket est encore ouvert dans Jira">à clôturer dans Jira</span>' : ''}
       <span class="mono">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(p.id)}</a>` : esc(p.id)}</span>
     </div>
     ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}

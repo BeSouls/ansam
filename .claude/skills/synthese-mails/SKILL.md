@@ -42,8 +42,11 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
 3. **Tickets Jira** : `jira-assignes.json`, lu le matin même en lecture
    seule : `tickets`, mes tickets ouverts (clé, titre, statut, rapporteur,
    dates) ; `suivis`, le statut réel (catégorie, résolution, assigné) des
-   tickets des points ouverts du registre, même clos ou réassignés. Si la
-   demande dit qu'ils sont indisponibles, le signaler.
+   tickets des points ouverts du registre, même clos ou réassignés ;
+   `complet` dit si la liste contient bien tous les tickets annoncés par
+   Jira. Si la demande dit qu'ils sont indisponibles ou incomplets, le
+   signaler. Chaque ticket ouvert a déjà un point dans le registre
+   (ajouté par le lanceur) : voir « Tickets Jira : tous dans le suivi ».
 4. **Registre de suivi** : `suivi.json`, les points des synthèses
    précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
    `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand

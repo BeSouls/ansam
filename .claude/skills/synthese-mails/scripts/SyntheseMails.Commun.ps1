@@ -363,6 +363,125 @@ function Set-SmParent($Suivi, [string[]]$Ids, [string]$GroupeId) {
     Update-SmGroupes $Suivi
 }
 
+# --- Synchronisation avec Jira -------------------------------------------------
+# Déterministe (sans l'agent) : chaque ticket Jira ouvert qui m'est assigné a un point
+# dans le registre, et un ticket encore ouvert dans Jira n'est pas « réglé » en silence.
+
+function Get-SmStatutJira([string]$JiraStatus) {
+    if ($JiraStatus -match 'R[ée]solu|Resolved|Clos|Closed|Termin|Done|Annul|Cancel') { return 'traite' }
+    if ($JiraStatus -match 'attente|Waiting|Awaiting|Pending|Planifi|Scheduled|Suspend') { return 'attente_tiers' }
+    'a_faire'
+}
+
+function Get-SmPrioriteJira([string]$JiraPriority) {
+    if ($JiraPriority -match 'P1|P2|Highest|High|Haute|Critique|Urgent') { return 'rouge' }
+    if ($JiraPriority -match 'P4|P5|Low|Basse|Mineure') { return 'vert' }
+    'orange'
+}
+
+# Client d'un ticket : dossier AnsamDiag du ticket, domaine du rapporteur, puis projet Jira (clé ou
+# nom), d'après les fiches clients. Sinon vide : la synthèse le complète à partir des mails.
+function Resolve-SmClientJira($Ticket, $Context) {
+    $local = @($Context.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle -eq $Ticket.cle -and $_.client }) | Select-Object -First 1
+    if ($local) { return $local.client }   # dossier AnsamDiag du ticket
+    $clients = @($Context.clients | ForEach-Object { $_ } | Where-Object { $_ })
+    # Organisation Service Desk du ticket : son nom ressemble au nom complet de la fiche client.
+    foreach ($organisation in @($Ticket.organisations | ForEach-Object { $_ } | Where-Object { $_ })) {
+        $key = ConvertTo-SmCle ([string]$organisation)
+        $hit = $clients | Where-Object { $_.code -and ((ConvertTo-SmCle ([string]$_.code)) -eq $key -or
+            ($_.nom -and ((ConvertTo-SmCle ([string]$_.nom)).StartsWith($key) -or $key.StartsWith((ConvertTo-SmCle ([string]$_.nom)))))) } | Select-Object -First 1
+        if ($hit) { return $hit.code }
+    }
+    $reporter = $(if ($Ticket.rapporteurEmail) { [string]$Ticket.rapporteurEmail } else { [string]$Ticket.rapporteur })
+    if ($reporter -match '@([A-Za-z0-9.-]+)$') {
+        $domain = $Matches[1].ToLowerInvariant()
+        $hit = $clients | Where-Object { @($_.domaines) -contains $domain } | Select-Object -First 1
+        if ($hit) { return $hit.code }
+    }
+    $prefix = ([string]$Ticket.cle -split '-')[0]
+    if ($prefix -ne 'ASD') {
+        $hit = $clients | Where-Object { $_.code -and ($prefix -eq $_.code -or $prefix -like "*$($_.code)") } | Select-Object -First 1
+        if ($hit) { return $hit.code }
+        $project = ConvertTo-SmCle ([string]$Ticket.projet)
+        $hit = $clients | Where-Object { $_.nom -and $project -and (ConvertTo-SmCle $_.nom).StartsWith(($project -split ' ')[0]) } | Select-Object -First 1
+        if ($hit) { return $hit.code }
+    }
+    # Client sans fiche AnsamDiag : l'organisation Jira, sinon le domaine du rapporteur, plutôt que rien.
+    $organisation = @($Ticket.organisations | ForEach-Object { $_ } | Where-Object { $_ }) | Select-Object -First 1
+    if ($organisation) { return [string]$organisation }
+    if ($reporter -match '@([A-Za-z0-9.-]+)$') { return $Matches[1].ToLowerInvariant() }
+    $null
+}
+
+function Sync-SmJira($Suivi, $Jira, $Context) {
+    $report = [ordered]@{ ajoutes = 0; regles = 0; rouverts = 0 }
+    if (-not $Jira) { return $report }
+    $tickets = @($Jira.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle })
+    $now = (Get-Date).ToString('o')
+    $newByProject = @{}
+
+    foreach ($ticket in $tickets) {
+        $mapped = Get-SmStatutJira $ticket.statut
+        $updated = ConvertTo-SmDateTime $ticket.misAJour
+        $updatedText = $(if ($updated) { $updated.ToString('dd.MM') } else { '?' })
+        $candidates = @($Suivi.points | Where-Object { -not $_.estGroupe -and ($_.ticket -eq $ticket.cle -or $_.id -eq $ticket.cle) })
+        $point = @($candidates | Where-Object { $_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers' }) + $candidates | Select-Object -First 1
+
+        if ($point) {
+            $point.jiraStatut = $ticket.statut
+            $point.jiraMisAJour = $ticket.misAJour
+            if (-not $point.client) { $found = Resolve-SmClientJira $ticket $Context; if ($found) { $point.client = $found } }
+            $open = $point.statut -eq 'a_faire' -or $point.statut -eq 'attente_tiers'
+            $point.jiraEncoreOuvert = (-not $open) -and $mapped -ne 'traite'
+            if ($point.majPar -eq 'moi') { continue }   # mon marquage prime ; jiraEncoreOuvert le signale
+            if ($mapped -eq 'traite' -and $open) {
+                $point.statut = 'traite'; $point.majPar = 'synthese'; $point.majLe = $now
+                Add-SmHistorique $point 'synthese' 'traite' "Jira « $($ticket.statut) »"
+                $report.regles++
+            } elseif ($mapped -ne 'traite' -and -not $open) {
+                $point.statut = 'a_faire'; $point.majPar = 'synthese'; $point.majLe = $now; $point.jiraEncoreOuvert = $false
+                $point.action = "Réglé d'après les mails, mais encore « $($ticket.statut) » dans Jira : clôturer le ticket ou le reprendre."
+                Add-SmHistorique $point 'synthese' 'a_faire' "Encore « $($ticket.statut) » dans Jira"
+                $report.rouverts++
+            }
+            continue
+        }
+        if ($mapped -eq 'traite') { continue }   # résolu, en attente de clôture : rien à faire
+
+        $id = [string]$ticket.cle
+        if ($Suivi.points | Where-Object { $_.id -eq $id }) { $id = "$id-J" }
+        $action = $(if ($mapped -eq 'attente_tiers') { "En attente dans Jira (« $($ticket.statut) ») : relancer si rien ne bouge." }
+                    else { "Faire avancer le ticket : aucun mail récent, dernière mise à jour Jira le $updatedText." })
+        $point = [ordered]@{
+            id = $id; ticket = $ticket.cle; titre = $ticket.titre; client = (Resolve-SmClientJira $ticket $Context)
+            statut = $mapped; priorite = (Get-SmPrioriteJira $ticket.priorite); echeance = $ticket.echeance; action = $action
+            source = "Jira · $($ticket.statut) · mis à jour le $updatedText"; dernierMessage = $null; origine = 'jira'
+            jiraStatut = $ticket.statut; jiraMisAJour = $ticket.misAJour; creeLe = $now; majPar = 'synthese'; majLe = $now; noteMoi = ''
+            historique = @([ordered]@{ le = $now; par = 'synthese'; statut = $mapped; texte = "Ajouté depuis Jira (« $($ticket.statut) »)" })
+        }
+        [void]$Suivi.points.Add($point)
+        $report.ajoutes++
+        if ($ticket.projet -and $ticket.projet -notmatch 'Service Desk') { $newByProject[[string]$ticket.projet] = $true }
+    }
+
+    # Tâches d'un même projet (hors Service Desk) : regroupées sous le nom du projet dès trois tickets ouverts.
+    foreach ($project in @($newByProject.Keys)) {
+        $keys = @($tickets | Where-Object { $_.projet -eq $project } | ForEach-Object { [string]$_.cle })
+        $ids = @($Suivi.points | Where-Object {
+            -not $_.estGroupe -and $keys -contains $_.ticket -and -not $_.parent -and $_.parentPar -ne 'moi' -and
+            ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') } | ForEach-Object { $_.id })
+        if ($ids.Count -lt 3) { continue }
+        $group = Get-SmGroupe $Suivi $project
+        if (-not $group) { $group = New-SmGroupe $Suivi $project 'synthese' }
+        foreach ($id in $ids) {
+            $p = $Suivi.points | Where-Object { $_.id -eq $id } | Select-Object -First 1
+            $p.parent = $group.id; $p.parentPar = 'synthese'
+        }
+    }
+    Update-SmGroupes $Suivi
+    $report
+}
+
 # Recalcule chaque groupe depuis ses sous-tâches ; supprime les groupes vides.
 function Update-SmGroupes($Suivi) {
     $groupIds = @($Suivi.points | Where-Object { $_.estGroupe } | ForEach-Object { $_.id })

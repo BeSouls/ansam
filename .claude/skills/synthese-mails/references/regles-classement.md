@@ -156,9 +156,27 @@ avec la mention « relance de mon engagement ».
 
 Les rappels Jira qui me concernent directement sont aussi des attentes :
 tâche **échue**, ticket **en retard**, **assignation** nouvelle,
-**mention** de mon nom. Un ticket Jira assigné ouvert sans aucun mail
-récent n'est pas un point à lui seul : il le devient s'il est échu, en
-retard, ou si un mail ou une note le concerne.
+**mention** de mon nom.
+
+### Tickets Jira : tous dans le suivi
+
+**Chaque ticket Jira ouvert qui m'est assigné a un point** : le lanceur
+l'ajoute avant l'analyse (`origine` = `jira`, statut repris de Jira,
+action générique). Ces points sont dans le registre que je reçois : les
+**compléter** comme les autres (client, action concrète tirée des mails, des
+notes AnsamDiag ou du titre, priorité, contact, groupe), sans les
+supprimer ni les fusionner avec un autre ticket.
+
+- Un ticket sans mail ni note récente reste un point ouvert : l'action dit
+  ce qu'il faut faire pour le faire avancer (relancer, planifier,
+  clôturer s'il est réglé), et un ticket sans activité depuis plus de
+  10 jours ouvrés passe au moins en 🟠.
+- Un ticket **encore ouvert dans Jira** (hors « Résolu ») n'est jamais
+  `traite` : s'il est réglé d'après les mails ou AnsamDiag, le laisser
+  `a_faire` avec l'action « Clôturer le ticket dans Jira ». Le lanceur
+  rouvre de toute façon un point réglé dont le ticket reste ouvert, sauf
+  si c'est moi qui l'ai marqué.
+- « Résolu » dans Jira (résolu, en attente de clôture) vaut `traite`.
 
 ### Priorité
 
