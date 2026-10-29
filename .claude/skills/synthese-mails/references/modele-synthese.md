@@ -101,6 +101,48 @@ avec la source : « Jira En attente du client », « AnsamDiag RESOLU 28.10 »,
 Ne pas proposer de changement de statut à un point marqué par moi
 (`majPar` = `moi`) sans message reçu après `majLe` : le lanceur l'ignorerait.
 
+## Bloc des éléments à garder
+
+Après le bloc de suivi, une ligne `<!-- ARCHIVES -->` puis un tableau JSON
+avec **chaque élément des sections « À archiver » et « Points d'attention »
+de la synthèse du jour** : variabilité établie et suggestions à vérifier,
+facturation, faits TAM à archiver, points d'attention. La page de suivi les
+affiche dans ses vues Variabilité, Facturation et Attention, où je les
+marque reportés, traités ou écartés.
+
+Avant d'ajouter un élément, chercher dans `archives.json` s'il y est déjà
+(même client, même élément) : reprendre alors son `id` pour le mettre à
+jour au lieu d'en créer un doublon. Ne pas renvoyer un élément déjà
+enregistré qui n'a pas changé.
+
+Champs :
+
+- `id` : celui du registre, ou `null` pour un nouvel élément ;
+- `type` : `variabilite`, `facturation`, `tam` ou `attention` ;
+- `certitude` : `etabli` (le mail l'affirme) ou `a_verifier` (indice) ;
+- `client` (code) ;
+- `element` : ce dont il s'agit, en quelques mots (« Départ de Mme X »,
+  « Facture 2026-1042 », « SwissTransfer CBERNARD expire ») ;
+- `sens` (`+`, `−` ou `null`), `quantite`, `montant` (avec la devise),
+  `dateEffet` et `echeance` (`AAAA-MM-JJ` ou `null`) ;
+- `mois` : mois de variabilité concerné (`AAAA-MM`), pour le type
+  `variabilite` ;
+- `source` : dossier et date du mail ;
+- `indice` : la phrase ou le fait qui a fait remonter l'élément ;
+- `verifier` : comment le vérifier (pour `a_verifier`) ;
+- `dossier` : classement proposé (`Clients/ABC/Variabilité`) ;
+- `ticket` : clé du ticket lié, ou `null`.
+
+~~~
+<!-- ARCHIVES -->
+[
+  {"id": null, "type": "variabilite", "certitude": "a_verifier", "client": "ABC", "element": "Départ de Mme X",
+   "sens": "−", "quantite": 1, "montant": null, "dateEffet": null, "echeance": null, "mois": "2026-10",
+   "source": "Boîte de réception\\CLIENTS\\ABC · 26.10 16:06", "indice": "« ne travaille plus chez ABC »",
+   "verifier": "Compte et licence dans Entra", "dossier": "Clients/ABC/Variabilité", "ticket": null}
+]
+~~~
+
 ## Variante « retour d'absence »
 
 Quand la demande indique un retour d'absence (du <début> au <fin>), la

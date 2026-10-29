@@ -3,225 +3,623 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Synthèse mails – configuration</title>
+<title>Synthèse mails – suivi</title>
 <style>
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #1f2328; --muted: #59636e; --line: #d8dee4;
-    --accent: #c2185b; --accent-soft: #fce4ec; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+    --bg: #f5f5f7; --surface: #ffffff; --surface-2: #f0f0f3; --text: #1d1d1f; --muted: #6e6e73; --line: rgba(0, 0, 0, .09);
+    --accent: #c2185b; --accent-soft: rgba(194, 24, 91, .1); --on-accent: #fff;
+    --red: #d70015; --orange: #c46f00; --green: #248a3d; --blue: #0066cc;
+    --red-soft: rgba(215, 0, 21, .1); --orange-soft: rgba(196, 111, 0, .12); --green-soft: rgba(36, 138, 61, .12); --blue-soft: rgba(0, 102, 204, .1);
+    --chrome: rgba(245, 245, 247, .72); --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .05);
+    --radius: 14px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #9aa4af; --line: #2c313a;
-      --accent: #f06292; --accent-soft: #3a1f2a; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+      --bg: #000; --surface: #1c1c1e; --surface-2: #2c2c2e; --text: #f5f5f7; --muted: #98989d; --line: rgba(255, 255, 255, .1);
+      --accent: #ff4f8b; --accent-soft: rgba(255, 79, 139, .16); --on-accent: #fff;
+      --red: #ff453a; --orange: #ff9f0a; --green: #30d158; --blue: #0a84ff;
+      --red-soft: rgba(255, 69, 58, .16); --orange-soft: rgba(255, 159, 10, .16); --green-soft: rgba(48, 209, 88, .16); --blue-soft: rgba(10, 132, 255, .16);
+      --chrome: rgba(22, 22, 24, .72); --shadow: 0 1px 2px rgba(0, 0, 0, .5);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
-  h2 { font-size: 16px; margin: 0 0 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; }
-  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-  .hint { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
-  input[type=text], input[type=number], input[type=time], input[type=date] {
-    width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit;
+  html { font: 100%/1.47 system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", sans-serif; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 58rem; margin: 0 auto; padding: 0 1rem; }
+
+  /* En-tête translucide : le contenu défile dessous */
+  header {
+    position: sticky; top: 0; z-index: 10; background: var(--chrome);
+    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--line);
   }
-  .switch { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-  .days { display: flex; flex-wrap: wrap; gap: 6px; }
-  .days label { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; margin: 0; cursor: pointer; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
-  .row-add { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; margin-top: 10px; align-items: end; }
-  button { font: inherit; border-radius: 6px; padding: 7px 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  button.link { border: none; background: none; color: var(--err); padding: 2px 4px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .msg { margin-left: 4px; font-size: 13.5px; }
-  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
-  .status dt { color: var(--muted); font-size: 12.5px; }
-  .status dd { margin: 0 0 10px; }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12.5px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .past { color: var(--muted); }
-  ul.files { margin: 0; padding-left: 18px; }
-  a { color: var(--accent); }
-  @media (max-width: 560px) { .row-add { grid-template-columns: 1fr 1fr; } .row-add .wide { grid-column: 1 / -1; } }
-  nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
-  nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; color: var(--muted); font-weight: 600; }
-  nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
-  .hidden { display: none; }
-  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-  .toolbar input { flex: 1; min-width: 180px; }
-  .toolbar button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
-  h3.group { font-size: 14px; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .point { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--card); }
-  .point .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-  .point .title { font-weight: 600; }
-  .point .meta { color: var(--muted); font-size: 12.5px; }
-  .point .action { margin: 4px 0 6px; }
-  .point .controls { display: grid; grid-template-columns: 190px 1fr auto; gap: 8px; align-items: center; }
-  .point select, .point .note { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; width: 100%; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
-  .dot.rouge { background: #cf222e; } .dot.orange { background: #d4a72c; } .dot.vert { background: #2da44e; } .dot.aucune { background: var(--line); }
-  .id { font-family: Consolas, monospace; font-size: 12.5px; }
-  @media (max-width: 560px) { .point .controls { grid-template-columns: 1fr; } }
+  .top { display: flex; align-items: center; gap: .75rem; padding: .9rem 0 .6rem; flex-wrap: wrap; }
+  h1 { font-size: 1.5rem; line-height: 1.1; letter-spacing: -.02em; margin: 0; font-weight: 700; }
+  .sub { color: var(--muted); font-size: .8125rem; margin-top: .15rem; }
+  .search { margin-left: auto; flex: 1 1 14rem; max-width: 20rem; }
+  .search input {
+    width: 100%; font: inherit; font-size: .9375rem; padding: .45rem .8rem; border-radius: 10px;
+    border: 1px solid transparent; background: var(--surface-2); color: var(--text); outline: none;
+  }
+  .search input:focus { border-color: var(--accent); background: var(--surface); }
+
+  /* Contrôle segmenté de navigation */
+  nav.seg { display: flex; gap: 2px; padding: 2px; margin: 0 0 .75rem; background: var(--surface-2); border-radius: 10px; overflow-x: auto; scrollbar-width: none; }
+  nav.seg button {
+    flex: 1 0 auto; font: inherit; font-size: .875rem; font-weight: 600; color: var(--muted); background: none; border: 0;
+    padding: .4rem .8rem; border-radius: 8px; cursor: pointer; display: inline-flex; gap: .4rem; align-items: center; justify-content: center;
+    transition: background-color .2s, color .2s, transform .1s ease-out;
+  }
+  nav.seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .count { font-size: .75rem; font-weight: 600; min-width: 1.4rem; padding: 0 .4rem; border-radius: 999px; background: var(--line); color: var(--muted); line-height: 1.35rem; }
+  .count.hot { background: var(--red); color: #fff; }
+  button:active, .chip:active, .opt:active { transform: scale(.97); }
+
+  main { padding: 1.25rem 0 6rem; }
+  .pane { animation: in .18s ease-out; }
+  @keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .pane[hidden] { display: none; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+  .chip {
+    font: inherit; font-size: .8125rem; font-weight: 600; border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    padding: .3rem .75rem; border-radius: 999px; cursor: pointer; transition: transform .1s ease-out, background-color .2s;
+  }
+  .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  select.chip { padding-right: .5rem; }
+  .hint { color: var(--muted); font-size: .8125rem; margin: 0 0 1rem; }
+
+  h2.group { font-size: .8125rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); margin: 1.6rem 0 .6rem; display: flex; gap: .5rem; align-items: center; }
+  h2.group:first-child { margin-top: .25rem; }
+  h3.client { font-size: 1rem; font-weight: 600; margin: 1rem 0 .4rem; letter-spacing: -.01em; }
+
+  .card {
+    background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: .85rem 1rem; margin-bottom: .6rem;
+    border: 1px solid var(--line); transition: opacity .25s;
+  }
+  .card.done { opacity: .62; }
+  .head { display: flex; gap: .55rem; align-items: baseline; flex-wrap: wrap; }
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; flex: none; align-self: center; background: var(--line); }
+  .dot.rouge { background: var(--red); } .dot.orange { background: var(--orange); } .dot.vert { background: var(--green); }
+  .title { font-weight: 600; font-size: 1rem; letter-spacing: -.01em; }
+  .mono { font: .75rem/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); }
+  .tag { font-size: .75rem; font-weight: 600; padding: .05rem .5rem; border-radius: 6px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+  .tag.late { background: var(--red-soft); color: var(--red); }
+  .tag.soon { background: var(--orange-soft); color: var(--orange); }
+  .tag.check { background: var(--orange-soft); color: var(--orange); }
+  .tag.sure { background: var(--green-soft); color: var(--green); }
+  .tag.plus { background: var(--green-soft); color: var(--green); }
+  .tag.minus { background: var(--red-soft); color: var(--red); }
+  .body { margin: .35rem 0 .2rem; font-size: .9375rem; }
+  .meta { color: var(--muted); font-size: .8125rem; }
+  .clue { font-size: .875rem; margin-top: .35rem; padding: .45rem .6rem; border-radius: 8px; background: var(--surface-2); }
+  .clue b { font-weight: 600; }
+  .foot { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .65rem; }
+
+  /* Contrôle segmenté de statut : un clic suffit */
+  .status { display: inline-flex; padding: 2px; gap: 2px; background: var(--surface-2); border-radius: 9px; }
+  .opt {
+    font: inherit; font-size: .8125rem; font-weight: 600; border: 0; background: none; color: var(--muted); cursor: pointer;
+    padding: .28rem .7rem; border-radius: 7px; transition: background-color .2s, color .2s, transform .1s ease-out;
+  }
+  .opt[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .opt[aria-pressed="true"][data-v="a_faire"], .opt[aria-pressed="true"][data-v="a_traiter"] { color: var(--accent); }
+  .opt[aria-pressed="true"][data-v="traite"], .opt[aria-pressed="true"][data-v="fait"] { color: var(--green); }
+  .note { flex: 1 1 12rem; font: inherit; font-size: .8125rem; padding: .32rem .6rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); outline: none; }
+  .note:focus { border-color: var(--accent); }
+
+  .empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+  .empty b { display: block; color: var(--text); font-size: 1.0625rem; margin-bottom: .25rem; }
+
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; margin-bottom: 1.25rem; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .7rem .9rem; box-shadow: var(--shadow); }
+  .stat .n { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .stat .l { color: var(--muted); font-size: .8125rem; }
+
+  /* Réglages */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+  .panel h2 { font-size: 1.0625rem; margin: 0 0 .8rem; letter-spacing: -.01em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .9rem 1.2rem; }
+  label.f { display: block; font-weight: 600; font-size: .8125rem; margin-bottom: .3rem; }
+  .field { width: 100%; font: inherit; font-size: .9375rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); outline: none; }
+  .field:focus { border-color: var(--accent); background: var(--surface); }
+  .switch { display: flex; align-items: center; gap: .55rem; font-weight: 600; font-size: .9375rem; margin-bottom: .45rem; }
+  .switch input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+  .days { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .days label { display: inline-flex; gap: .35rem; align-items: center; font-size: .875rem; padding: .25rem .65rem; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+  .days input { accent-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: .9375rem; }
+  th, td { text-align: left; padding: .45rem .3rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+  .row-add { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: .5rem; margin-top: .7rem; align-items: end; }
+  .btn { font: inherit; font-size: .9375rem; font-weight: 600; border-radius: 9px; padding: .5rem 1rem; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; transition: transform .1s ease-out; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn.link { border: 0; background: none; color: var(--red); padding: .2rem .4rem; font-size: .875rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+  dl.state { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .8rem 1.2rem; margin: 0; }
+  dl.state dt { color: var(--muted); font-size: .8125rem; }
+  dl.state dd { margin: .1rem 0 0; font-size: .9375rem; }
+  ul.files { margin: 0; padding-left: 1.1rem; }
+
+  /* Toast d'annulation */
+  .toast {
+    position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; z-index: 20;
+    display: flex; gap: 1rem; align-items: center; padding: .65rem .9rem .65rem 1.1rem; border-radius: 12px;
+    background: rgba(29, 29, 31, .86); color: #f5f5f7; font-size: .875rem; box-shadow: 0 8px 30px rgba(0, 0, 0, .25);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); transition: opacity .2s, transform .25s cubic-bezier(.2, .8, .2, 1);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .toast.err { background: rgba(215, 0, 21, .92); }
+  .toast button { font: inherit; font-weight: 600; color: #ff8ab4; background: none; border: 0; cursor: pointer; padding: .2rem .3rem; }
+
+  @media (max-width: 40rem) {
+    .row-add { grid-template-columns: 1fr 1fr; }
+    .search { max-width: none; flex-basis: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pane { animation: none; }
+    *, *::before, *::after { transition-duration: .01ms !important; }
+    button:active, .chip:active, .opt:active { transform: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    header { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .toast { background: #1d1d1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --line: rgba(127, 127, 127, .6); --muted: var(--text); }
+    .card, .stat, .panel { box-shadow: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Synthèse mails</h1>
-  <p class="sub">Suivi des points et réglages de la synthèse matinale envoyée par mail à moi-même. Page locale, accessible uniquement depuis ce PC : adresse à garder en favori.</p>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>Synthèse mails</h1>
+        <div class="sub" id="sub">Chargement…</div>
+      </div>
+      <div class="search"><input type="search" id="q" placeholder="Rechercher : client, ticket, mot…" aria-label="Rechercher"></div>
+    </div>
+    <nav class="seg" role="tablist" aria-label="Vues">
+      <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
+      <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
+      <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
+      <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
+      <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
+    </nav>
+  </div>
+</header>
 
-  <nav class="tabs">
-    <button type="button" id="tabSuivi" class="on">Suivi</button>
-    <button type="button" id="tabReglages">Réglages</button>
-  </nav>
-
-  <div id="paneSuivi">
+<main class="wrap">
+  <section class="pane" id="p-suivi">
     <div class="toolbar">
-      <button type="button" data-filtre="ouverts" class="on">Ouverts</button>
-      <button type="button" data-filtre="regles">Réglés</button>
-      <button type="button" data-filtre="tous">Tous</button>
-      <input type="text" id="recherche" placeholder="Filtrer : client, ticket, mot…">
+      <button class="chip" data-f="ouverts" aria-pressed="true">Ouverts</button>
+      <button class="chip" data-f="regles" aria-pressed="false">Réglés</button>
+      <button class="chip" data-f="tous" aria-pressed="false">Tous</button>
     </div>
-    <p class="hint" style="margin-top:0">Un point que tu marques garde son statut jusqu'à ce qu'un nouveau message arrive dessus. « En attente d'un tiers » : ton action est faite, tu attends le client, un collègue ou un fournisseur.</p>
-    <div id="points"><p class="past">Chargement…</p></div>
-  </div>
-
-  <div id="paneReglages" class="hidden">
-  <section class="status">
-    <h2>État</h2>
-    <dl class="grid">
-      <div><dt>Prochaine synthèse</dt><dd id="next">…</dd></div>
-      <div><dt>Dernière synthèse</dt><dd id="last">…</dd></div>
-      <div><dt>Tâche planifiée</dt><dd id="task">…</dd></div>
-      <div><dt>Dernières synthèses</dt><dd><ul class="files" id="files"></ul></dd></div>
-    </dl>
+    <p class="hint">Un statut que tu poses tient jusqu'à ce qu'un nouveau message arrive sur le point. « En attente » : ton action est faite, tu attends le client, un collègue ou un fournisseur.</p>
+    <div id="list-suivi"></div>
   </section>
 
-  <section>
-    <h2>Envoi</h2>
-    <div class="grid">
-      <div>
-        <label class="switch"><input type="checkbox" id="actif"> Synthèse active</label>
-        <label class="switch" style="margin-top:8px"><input type="checkbox" id="envoiMail"> Envoyer par mail à moi-même</label>
-        <div class="hint">Sans envoi, la synthèse est seulement enregistrée dans le dossier « syntheses ».</div>
-      </div>
-      <div>
-        <label for="heure">Heure</label>
-        <input type="time" id="heure">
-        <div class="hint">Appliquée à la tâche planifiée à l'enregistrement.</div>
-      </div>
-      <div>
-        <label for="fenetreJours">Fenêtre (jours)</label>
-        <input type="number" id="fenetreJours" min="1" max="60">
-        <div class="hint">Période relue pour retrouver les échanges restés sans réponse.</div>
-      </div>
+  <section class="pane" id="p-variabilite" hidden>
+    <div class="toolbar">
+      <select class="chip" id="mois" aria-label="Mois"></select>
+      <button class="chip" data-f="ouverts" aria-pressed="true">À reporter</button>
+      <button class="chip" data-f="tous" aria-pressed="false">Tout le mois</button>
     </div>
-    <div style="margin-top:14px">
-      <label>Jours d'envoi</label>
-      <div class="days" id="days"></div>
-      <div class="hint">Un jour sans envoi est repris par la synthèse suivante (le lundi couvre le week-end).</div>
-    </div>
+    <div class="summary" id="sum-variabilite"></div>
+    <div id="list-variabilite"></div>
   </section>
 
-  <section>
-    <h2>Absences</h2>
-    <p class="hint" style="margin-top:-6px">Pas de synthèse pendant une absence. Le premier jour d'envoi suivant, une seule synthèse couvre toute la période : tâches à faire en priorité, ce qui a été réglé pendant l'absence, et ce qui peut être archivé directement.</p>
-    <table>
-      <thead><tr><th>Du</th><th>Au</th><th>Libellé</th><th></th></tr></thead>
-      <tbody id="absences"></tbody>
-    </table>
-    <div class="row-add">
-      <div><label for="absDebut">Du</label><input type="date" id="absDebut"></div>
-      <div><label for="absFin">Au</label><input type="date" id="absFin"></div>
-      <div class="wide"><label for="absLibelle">Libellé</label><input type="text" id="absLibelle" placeholder="Vacances, formation…"></div>
-      <div><button type="button" id="absAdd">Ajouter</button></div>
+  <section class="pane" id="p-facturation" hidden>
+    <div class="toolbar">
+      <button class="chip" data-f="ouverts" aria-pressed="true">À traiter</button>
+      <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
     </div>
+    <div id="list-facturation"></div>
   </section>
 
-  <section>
-    <h2>Sources</h2>
-    <div class="grid">
-      <div>
-        <label for="dossierAnsamDiag">Données AnsamDiag</label>
-        <input type="text" id="dossierAnsamDiag">
-        <div class="hint">Fiches clients (Clients\) et tickets (Tickets\) utilisés pour rattacher les mails.</div>
-      </div>
-      <div>
-        <label for="dossierPortefeuille">Dossier Outlook du portefeuille</label>
-        <input type="text" id="dossierPortefeuille">
-        <div class="hint">Un sous-dossier par client suivi en tant que TAM.</div>
-      </div>
+  <section class="pane" id="p-attention" hidden>
+    <div class="toolbar">
+      <button class="chip" data-f="ouverts" aria-pressed="true">À voir</button>
+      <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
     </div>
+    <div id="list-attention"></div>
   </section>
 
-  <div class="actions">
-    <button class="primary" type="button" id="save">Enregistrer</button>
-    <button type="button" id="install">Installer la tâche planifiée</button>
-    <span class="msg" id="msg"></span>
-  </div>
-  </div>
-
-  <div class="actions" style="margin-top:20px">
-    <button type="button" id="quit" class="hidden">Arrêter la page</button>
-    <span class="msg" id="msgSuivi"></span>
-  </div>
+  <section class="pane" id="p-reglages" hidden>
+    <div class="panel">
+      <h2>État</h2>
+      <dl class="state">
+        <div><dt>Prochaine synthèse</dt><dd id="next">…</dd></div>
+        <div><dt>Dernière synthèse</dt><dd id="last">…</dd></div>
+        <div><dt>Tâches planifiées</dt><dd id="task">…</dd></div>
+        <div><dt>Dernières synthèses</dt><dd><ul class="files" id="files"></ul></dd></div>
+      </dl>
+    </div>
+    <div class="panel">
+      <h2>Envoi</h2>
+      <div class="grid">
+        <div>
+          <label class="switch"><input type="checkbox" id="actif"> Synthèse active</label>
+          <label class="switch"><input type="checkbox" id="envoiMail"> Envoyer par mail à moi-même</label>
+        </div>
+        <div><label class="f" for="heure">Heure</label><input class="field" type="time" id="heure"></div>
+        <div><label class="f" for="fenetreJours">Fenêtre relue (jours)</label><input class="field" type="number" id="fenetreJours" min="1" max="60"></div>
+      </div>
+      <div style="margin-top:1rem">
+        <label class="f">Jours d'envoi</label>
+        <div class="days" id="days"></div>
+        <p class="hint" style="margin:.4rem 0 0">Un jour sans envoi est repris par la synthèse suivante : le lundi couvre le week-end.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Absences</h2>
+      <p class="hint">Pas de synthèse pendant une absence ; au retour, une seule synthèse couvre toute la période.</p>
+      <table>
+        <thead><tr><th>Du</th><th>Au</th><th>Libellé</th><th></th></tr></thead>
+        <tbody id="absences"></tbody>
+      </table>
+      <div class="row-add">
+        <div><label class="f" for="absDebut">Du</label><input class="field" type="date" id="absDebut"></div>
+        <div><label class="f" for="absFin">Au</label><input class="field" type="date" id="absFin"></div>
+        <div><label class="f" for="absLibelle">Libellé</label><input class="field" type="text" id="absLibelle" placeholder="Vacances, formation…"></div>
+        <div><button class="btn" type="button" id="absAdd">Ajouter</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Sources</h2>
+      <div class="grid">
+        <div><label class="f" for="dossierAnsamDiag">Données AnsamDiag</label><input class="field" type="text" id="dossierAnsamDiag"></div>
+        <div><label class="f" for="dossierPortefeuille">Dossier Outlook du portefeuille</label><input class="field" type="text" id="dossierPortefeuille"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="save">Enregistrer</button>
+      <button class="btn" type="button" id="install">Installer les tâches planifiées</button>
+      <button class="btn" type="button" id="quit" hidden>Arrêter la page</button>
+    </div>
+  </section>
 </main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastUndo" hidden>Annuler</button></div>
 
 <script>
 const token = new URLSearchParams(location.search).get('t') || '';
-const dayNames = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
-let state = null;
-let absences = [];
-
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dayNames = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const monthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const today = new Date().toISOString().slice(0, 10);
+const fmtDay = (ymd) => ymd ? String(ymd).slice(0, 10).split('-').reverse().join('.') : '';
 const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleDateString('fr-CH', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) +
-         ' à ' + d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('fr-CH', { weekday: 'long', day: '2-digit', month: '2-digit' }) + ' à ' + d.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' });
 };
-const fmtDay = (ymd) => ymd ? ymd.split('-').reverse().join('.') : '';
+const shortDate = (iso) => iso ? new Date(iso).toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' }) : '';
+const ticketUrl = (k) => /^[A-Z][A-Z0-9]+-\d+$/.test(k || '') ? `https://ansamgroup.atlassian.net/browse/${k}` : null;
+
+let state = null, points = [], elements = [];
+let tab = 'suivi';
+const filters = { suivi: 'ouverts', variabilite: 'ouverts', facturation: 'ouverts', attention: 'ouverts' };
 
 async function api(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    headers: { 'X-Token': token, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
+  const res = await fetch(path, { method, headers: { 'X-Token': token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data.erreurs || ['Erreur ' + res.status]).join(' '));
   return data;
 }
 
-function showMessage(text, ok) {
-  const msg = $('msg');
-  msg.textContent = text;
-  msg.className = 'msg ' + (ok ? 'ok' : 'err');
+// --- Toast (retour + annulation) ---------------------------------------------
+let toastTimer = null;
+function toast(text, undo, isError) {
+  const t = $('toast');
+  $('toastText').textContent = text;
+  t.classList.toggle('err', !!isError);
+  const u = $('toastUndo');
+  u.hidden = !undo;
+  u.onclick = undo ? () => { hideToast(); undo(); } : null;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, undo ? 6000 : 3500);
+}
+function hideToast() { $('toast').classList.remove('show'); }
+
+// --- Navigation --------------------------------------------------------------
+function showTab(name) {
+  tab = name;
+  document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
+  try { localStorage.setItem('sm-tab', name); } catch (e) { }
+}
+document.querySelectorAll('nav.seg button').forEach(b => b.addEventListener('pointerdown', () => showTab(b.dataset.tab)));
+document.querySelectorAll('.pane .toolbar .chip[data-f]').forEach(b => b.addEventListener('click', () => {
+  const pane = b.closest('.pane').id.slice(2);
+  filters[pane] = b.dataset.f;
+  b.parentElement.querySelectorAll('.chip[data-f]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  renderAll();
+}));
+$('q').addEventListener('input', renderAll);
+$('mois').addEventListener('change', renderAll);
+
+const matches = (obj) => {
+  const q = $('q').value.trim().toLowerCase();
+  return !q || Object.values(obj).join(' ').toLowerCase().includes(q);
+};
+
+// --- Contrôle de statut ------------------------------------------------------
+function statusControl(options, current, onPick) {
+  const wrap = document.createElement('div');
+  wrap.className = 'status';
+  wrap.setAttribute('role', 'group');
+  for (const [value, label] of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'opt';
+    b.dataset.v = value;
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(value === current));
+    b.addEventListener('pointerdown', () => { if (value !== current) onPick(value); });
+    b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && value !== current) { e.preventDefault(); onPick(value); } });
+    wrap.appendChild(b);
+  }
+  return wrap;
 }
 
+function noteField(value, onSave) {
+  const i = document.createElement('input');
+  i.className = 'note';
+  i.placeholder = 'Note : traité par Teams, relancé le…';
+  i.value = value || '';
+  const save = () => { if (i.value.trim() !== (value || '')) { value = i.value.trim(); onSave(value); } };
+  i.addEventListener('blur', save);
+  i.addEventListener('keydown', e => { if (e.key === 'Enter') i.blur(); });
+  return i;
+}
+
+function dueTag(ymd) {
+  if (!ymd) return '';
+  const d = String(ymd).slice(0, 10);
+  const soon = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+  const cls = d < today ? 'late' : (d <= soon ? 'soon' : '');
+  return `<span class="tag ${cls}">${d < today ? 'échue ' : 'échéance '}${fmtDay(d)}</span>`;
+}
+
+function emptyState(title, text) {
+  return `<div class="empty"><b>${esc(title)}</b>${esc(text)}</div>`;
+}
+
+// --- Suivi -------------------------------------------------------------------
+const pointStatus = [['a_faire', 'À faire'], ['attente_tiers', 'En attente'], ['traite', 'Traité'], ['ignore', 'Sans objet']];
+const prioOrder = { rouge: 0, orange: 1, vert: 2 };
+
+async function setPoint(p, statut, note, silent) {
+  const before = { statut: p.statut, note: p.noteMoi };
+  Object.assign(p, { statut, noteMoi: note, majPar: 'moi', majLe: new Date().toISOString() });
+  renderAll();
+  try {
+    const r = await api('POST', '/api/suivi', { id: p.id, statut, note });
+    Object.assign(p, r.point);
+    if (!silent) toast(`« ${p.titre} » : ${pointStatus.find(s => s[0] === statut)[1].toLowerCase()}`, () => setPoint(p, before.statut, before.note, true));
+  } catch (e) {
+    Object.assign(p, { statut: before.statut, noteMoi: before.note });
+    renderAll();
+    toast(e.message, null, true);
+  }
+}
+
+function pointCard(p) {
+  const card = document.createElement('div');
+  const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
+  card.className = 'card' + (open ? '' : ' done');
+  const url = ticketUrl(p.ticket);
+  const last = (p.historique || []).slice(-1)[0];
+  const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
+  card.innerHTML = `
+    <div class="head">
+      <span class="dot ${esc(p.priorite)}"></span>
+      <span class="title">${esc(p.titre)}</span>
+      ${p.client ? `<span class="tag">${esc(p.client)}</span>` : ''}
+      ${dueTag(p.echeance)}
+      <span class="mono">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(p.id)}</a>` : esc(p.id)}</span>
+    </div>
+    ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
+    <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
+    <div class="foot"></div>`;
+  const foot = card.querySelector('.foot');
+  foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
+  foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
+  return card;
+}
+
+function renderSuivi() {
+  const box = $('list-suivi');
+  box.innerHTML = '';
+  if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
+  const f = filters.suivi;
+  const visible = points.filter(p => {
+    const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
+    return (f === 'tous' || (f === 'ouverts') === open) && matches(p);
+  });
+  if (!visible.length) { box.innerHTML = emptyState('Rien ici', f === 'ouverts' ? 'Aucun point ouvert ne correspond.' : 'Aucun point réglé ne correspond.'); return; }
+  const groups = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
+  for (const [s, title] of groups) {
+    const list = visible.filter(p => p.statut === s).sort((a, b) =>
+      (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
+    if (!list.length) continue;
+    const h = document.createElement('h2');
+    h.className = 'group';
+    h.innerHTML = `${title} <span class="count">${list.length}</span>`;
+    box.appendChild(h);
+    list.forEach(p => box.appendChild(pointCard(p)));
+  }
+}
+
+// --- Éléments à garder (variabilité, facturation, attention) -----------------
+const labels = {
+  variabilite: [['a_traiter', 'À reporter'], ['fait', 'Reporté'], ['ignore', 'Écarté']],
+  facturation: [['a_traiter', 'À traiter'], ['fait', 'Traité'], ['ignore', 'Écarté']],
+  attention: [['a_traiter', 'À voir'], ['fait', 'Vu'], ['ignore', 'Écarté']],
+  tam: [['a_traiter', 'À archiver'], ['fait', 'Archivé'], ['ignore', 'Écarté']]
+};
+
+async function setElement(el, statut, note, silent) {
+  const before = { statut: el.statut, note: el.noteMoi };
+  Object.assign(el, { statut, noteMoi: note, majPar: 'moi', majLe: new Date().toISOString() });
+  renderAll();
+  try {
+    const r = await api('POST', '/api/archives', { id: el.id, statut, note });
+    Object.assign(el, r.element);
+    const label = labels[el.type].find(s => s[0] === statut)[1].toLowerCase();
+    if (!silent) toast(`« ${el.element} » : ${label}`, () => setElement(el, before.statut, before.note, true));
+  } catch (e) {
+    Object.assign(el, { statut: before.statut, noteMoi: before.note });
+    renderAll();
+    toast(e.message, null, true);
+  }
+}
+
+function elementMonth(el) {
+  return String(el.mois || el.dateEffet || el.creeLe || '').slice(0, 7);
+}
+
+function elementCard(el) {
+  const card = document.createElement('div');
+  card.className = 'card' + (el.statut === 'a_traiter' ? '' : ' done');
+  const toCheck = el.certitude === 'a_verifier';
+  const url = ticketUrl(el.ticket);
+  const sens = el.sens === '+' ? '<span class="tag plus">+ ajout</span>' : el.sens === '−' || el.sens === '-' ? '<span class="tag minus">− retrait</span>' : el.sens ? `<span class="tag">${esc(el.sens)}</span>` : '';
+  const facts = [
+    el.quantite != null && el.quantite !== '' ? `Qté ${esc(el.quantite)}` : '',
+    el.montant ? esc(el.montant) : '',
+    el.dateEffet ? `effet ${fmtDay(el.dateEffet)}` : '',
+    el.source ? esc(el.source) : '',
+    url ? `<a href="${url}" target="_blank" rel="noopener">${esc(el.ticket)}</a>` : ''
+  ].filter(Boolean).join(' · ');
+  card.innerHTML = `
+    <div class="head">
+      <span class="title">${esc(el.element)}</span>
+      ${el.type !== 'attention' && el.client ? `<span class="tag">${esc(el.client)}</span>` : ''}
+      ${sens}
+      ${el.type === 'attention' || el.type === 'facturation' ? dueTag(el.echeance) : ''}
+      <span class="tag ${toCheck ? 'check' : 'sure'}">${toCheck ? 'à vérifier' : 'établi'}</span>
+    </div>
+    ${facts ? `<div class="meta" style="margin-top:.3rem">${facts}</div>` : ''}
+    ${toCheck && (el.indice || el.verifier) ? `<div class="clue">${el.indice ? `<b>Indice :</b> ${esc(el.indice)}` : ''}${el.indice && el.verifier ? '<br>' : ''}${el.verifier ? `<b>Vérifier :</b> ${esc(el.verifier)}` : ''}</div>` : ''}
+    ${!toCheck && el.indice ? `<div class="body">${esc(el.indice)}</div>` : ''}
+    ${el.dossier ? `<div class="meta">Classer : <span class="mono">${esc(el.dossier)}</span></div>` : ''}
+    <div class="foot"></div>`;
+  const foot = card.querySelector('.foot');
+  foot.appendChild(statusControl(labels[el.type] || labels.attention, el.statut, v => setElement(el, v, el.noteMoi || '')));
+  foot.appendChild(noteField(el.noteMoi, v => setElement(el, el.statut, v, true).then(() => toast('Note enregistrée.'))));
+  return card;
+}
+
+function renderVariabilite() {
+  const all = elements.filter(e => e.type === 'variabilite');
+  // Mois disponibles, du plus récent au plus ancien ; mois courant par défaut.
+  const months = [...new Set(all.map(elementMonth).filter(Boolean).concat([today.slice(0, 7)]))].sort().reverse();
+  const sel = $('mois');
+  const keep = sel.value || today.slice(0, 7);
+  sel.innerHTML = months.map(m => `<option value="${m}">${monthNames[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}</option>`).join('');
+  sel.value = months.includes(keep) ? keep : months[0];
+  const inMonth = all.filter(e => elementMonth(e) === sel.value);
+  const f = filters.variabilite;
+  const visible = inMonth.filter(e => (f === 'tous' || e.statut === 'a_traiter') && matches(e));
+
+  const sure = inMonth.filter(e => e.certitude !== 'a_verifier' && e.statut === 'a_traiter').length;
+  const check = inMonth.filter(e => e.certitude === 'a_verifier' && e.statut === 'a_traiter').length;
+  const done = inMonth.filter(e => e.statut === 'fait').length;
+  const clients = new Set(inMonth.filter(e => e.statut === 'a_traiter').map(e => e.client)).size;
+  $('sum-variabilite').innerHTML = [
+    [sure, 'établis à reporter'], [check, 'à vérifier'], [done, 'déjà reportés'], [clients, 'clients concernés']
+  ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+  const box = $('list-variabilite');
+  box.innerHTML = '';
+  if (!visible.length) { box.innerHTML = emptyState(f === 'tous' ? 'Rien ce mois-ci' : 'Tout est reporté', f === 'tous' ? 'Aucune information de variabilité reçue pour ce mois.' : 'Aucun élément à reporter pour ce mois.'); return; }
+  for (const [cert, title] of [['etabli', 'Établi'], ['a_verifier', 'Suggestions à vérifier']]) {
+    const list = visible.filter(e => (e.certitude === 'a_verifier') === (cert === 'a_verifier'));
+    if (!list.length) continue;
+    const h = document.createElement('h2');
+    h.className = 'group';
+    h.innerHTML = `${title} <span class="count">${list.length}</span>`;
+    box.appendChild(h);
+    const byClient = {};
+    list.forEach(e => (byClient[e.client || 'Client à identifier'] ||= []).push(e));
+    Object.keys(byClient).sort().forEach(c => {
+      const h3 = document.createElement('h3');
+      h3.className = 'client';
+      h3.textContent = c;
+      box.appendChild(h3);
+      byClient[c].forEach(e => box.appendChild(elementCard(e)));
+    });
+  }
+}
+
+function renderSimple(type, boxId, emptyOpen, emptyAll, sections) {
+  const f = filters[type];
+  const box = $(boxId);
+  box.innerHTML = '';
+  for (const [types, title] of sections) {
+    const list = elements.filter(e => types.includes(e.type) && (f === 'tous' || e.statut === 'a_traiter') && matches(e))
+      .sort((a, b) => String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(b.creeLe).localeCompare(String(a.creeLe)));
+    if (!list.length) continue;
+    const h = document.createElement('h2');
+    h.className = 'group';
+    h.innerHTML = `${title} <span class="count">${list.length}</span>`;
+    box.appendChild(h);
+    list.forEach(e => box.appendChild(elementCard(e)));
+  }
+  if (!box.children.length) box.innerHTML = emptyState(f === 'tous' ? emptyAll[0] : emptyOpen[0], f === 'tous' ? emptyAll[1] : emptyOpen[1]);
+}
+
+function renderCounts() {
+  const openPoints = points.filter(p => p.statut === 'a_faire').length;
+  const urgent = points.filter(p => p.statut === 'a_faire' && p.priorite === 'rouge').length;
+  const count = (t) => elements.filter(e => e.type === t && e.statut === 'a_traiter').length;
+  const set = (id, n, hot) => { const c = $(id); c.textContent = n; c.classList.toggle('hot', !!hot && n > 0); };
+  set('c-suivi', openPoints, urgent);
+  set('c-variabilite', count('variabilite'));
+  set('c-facturation', count('facturation'));
+  const lateAttention = elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && e.echeance && String(e.echeance).slice(0, 10) < today).length;
+  set('c-attention', count('attention') + count('tam'), lateAttention);
+  const waiting = points.filter(p => p.statut === 'attente_tiers').length;
+  const e = state && state.etat || {};
+  $('sub').textContent = `${openPoints} à faire${urgent ? ` dont ${urgent} urgents` : ''} · ${waiting} en attente` +
+    (e.derniereSynthese ? ` · synthèse du ${shortDate(e.derniereSynthese)}` : '');
+}
+
+function renderAll() {
+  renderCounts();
+  renderSuivi();
+  renderVariabilite();
+  renderSimple('facturation', 'list-facturation', ['Rien à traiter', 'Aucun élément de facturation en attente.'], ['Rien pour l’instant', 'Aucun élément de facturation enregistré.'],
+    [[['facturation'], 'Facturation']]);
+  renderSimple('attention', 'list-attention', ['Rien à voir', 'Aucun point d’attention ouvert.'], ['Rien pour l’instant', 'Aucun point d’attention enregistré.'],
+    [[['attention'], 'Points d’attention'], [['tam'], 'Informations TAM à archiver']]);
+}
+
+// --- Réglages ----------------------------------------------------------------
+let absences = [];
 function renderAbsences() {
-  const today = new Date().toISOString().slice(0, 10);
   const body = $('absences');
   body.innerHTML = '';
-  if (!absences.length) {
-    body.innerHTML = '<tr><td colspan="4" class="past">Aucune absence prévue.</td></tr>';
-    return;
-  }
+  if (!absences.length) { body.innerHTML = '<tr><td colspan="4" class="meta">Aucune absence prévue.</td></tr>'; return; }
   absences.forEach((a, i) => {
     const tr = document.createElement('tr');
-    if (a.fin < today) tr.className = 'past';
-    tr.innerHTML = `<td>${fmtDay(a.debut)}</td><td>${fmtDay(a.fin)}</td><td></td><td><button class="link" type="button">Retirer</button></td>`;
-    tr.children[2].textContent = a.libelle || '';
-    tr.querySelector('button').onclick = () => { absences.splice(i, 1); renderAbsences(); };
+    if (a.fin < today) tr.className = 'meta';
+    tr.innerHTML = `<td>${fmtDay(a.debut)}</td><td>${fmtDay(a.fin)}</td><td>${esc(a.libelle)}</td><td><button class="btn link" type="button">Retirer</button></td>`;
+    tr.querySelector('button').onclick = () => { absences.splice(i, 1); renderAbsences(); toast('Absence retirée : penser à enregistrer.'); };
     body.appendChild(tr);
   });
 }
 
-function render() {
+function renderSettings() {
   const c = state.config;
   $('actif').checked = !!c.actif;
   $('envoiMail').checked = !!c.envoiMail;
@@ -229,230 +627,90 @@ function render() {
   $('fenetreJours').value = c.fenetreJours;
   $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
   $('dossierPortefeuille').value = c.dossierPortefeuille || '';
-  const days = $('days');
-  days.innerHTML = '';
+  $('days').innerHTML = '';
   for (let d = 1; d <= 7; d++) {
-    const label = document.createElement('label');
-    label.innerHTML = `<input type="checkbox" value="${d}"> ${dayNames[d]}`;
-    label.querySelector('input').checked = (c.joursEnvoi || []).includes(d);
-    days.appendChild(label);
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="checkbox" value="${d}"> ${dayNames[d]}`;
+    l.querySelector('input').checked = (c.joursEnvoi || []).includes(d);
+    $('days').appendChild(l);
   }
   absences = (c.absences || []).map(a => ({ debut: a.debut, fin: a.fin, libelle: a.libelle }));
   renderAbsences();
 
   const n = state.prochaine;
-  if (!n) {
-    $('next').textContent = c.actif ? 'Aucune dans les 90 prochains jours' : 'Synthèse désactivée';
-  } else {
-    let text = fmtDate(n.moment);
-    if (n.absences && n.absences.length) {
-      text += ' — retour d’absence (' + n.absences.map(a => `${a.libelle || 'absence'} ${fmtDay(a.debut)} → ${fmtDay(a.fin)}`).join(', ') + ')';
-    }
-    $('next').innerHTML = '';
-    $('next').append(text);
-    if (n.depuis) {
-      const small = document.createElement('div');
-      small.className = 'hint';
-      small.textContent = `Nouveautés depuis le ${fmtDate(n.depuis)}, fenêtre de ${n.jours} jours.`;
-      $('next').appendChild(small);
-    }
-  }
-
+  $('next').textContent = !n ? (c.actif ? 'Aucune dans les 90 prochains jours' : 'Synthèse désactivée')
+    : fmtDate(n.moment) + (n.absences && n.absences.length ? ' — retour d’absence' : '');
   const e = state.etat || {};
-  $('last').textContent = e.derniereSynthese ? fmtDate(e.derniereSynthese) + (e.dernierMode === 'retour' ? ' (retour d’absence)' : '') : 'Aucune pour l’instant';
-
+  $('last').textContent = e.derniereSynthese ? fmtDate(e.derniereSynthese) : 'Aucune pour l’instant';
   const t = state.tache;
-  if (!t.installee) {
-    $('task').innerHTML = '<span class="pill">non installée</span>';
-  } else {
-    let text = `installée, tous les jours à ${t.heure}`;
-    if (t.derniereExecution) text += ` · dernière exécution ${fmtDate(t.derniereExecution)} (code ${t.dernierResultat})`;
-    text += t.pagePermanente ? ' · page permanente active' : ' · page permanente non installée';
-    $('task').textContent = text;
-  }
-  $('install').textContent = t.installee && t.pagePermanente ? 'Réinstaller les tâches planifiées' : 'Installer les tâches planifiées (synthèse + page permanente)';
-  $('quit').classList.toggle('hidden', !!state.service);
-
-  const files = $('files');
-  files.innerHTML = '';
-  if (!state.syntheses.length) files.innerHTML = '<li class="past">Aucune</li>';
+  $('task').textContent = !t.installee ? 'Non installées'
+    : `Synthèse à ${t.heure}` + (t.derniereExecution ? ` · dernière exécution ${fmtDate(t.derniereExecution)}` : '') + (t.pagePermanente ? ' · page permanente active' : ' · page permanente absente');
+  $('install').textContent = t.installee && t.pagePermanente ? 'Réinstaller les tâches planifiées' : 'Installer les tâches planifiées';
+  $('quit').hidden = !!state.service;
+  $('files').innerHTML = state.syntheses.length ? '' : '<li class="meta">Aucune</li>';
   state.syntheses.forEach(name => {
     const li = document.createElement('li');
-    const a = document.createElement('a');
-    a.href = `/synthese?d=${name}&t=${token}`;
-    a.target = '_blank';
-    a.textContent = fmtDay(name);
-    li.appendChild(a);
-    files.appendChild(li);
+    li.innerHTML = `<a href="/synthese?d=${name}&t=${token}" target="_blank" rel="noopener">${fmtDay(name)}</a>`;
+    $('files').appendChild(li);
   });
 }
 
 function collect() {
   return {
-    actif: $('actif').checked,
-    envoiMail: $('envoiMail').checked,
-    heure: $('heure').value,
-    fenetreJours: Number($('fenetreJours').value),
+    actif: $('actif').checked, envoiMail: $('envoiMail').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
-    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(),
-    dossierPortefeuille: $('dossierPortefeuille').value.trim(),
-    absences
+    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences
   };
 }
 
-async function load() {
-  try { state = await api('GET', '/api/etat'); render(); }
-  catch (e) { showMessage(e.message, false); }
-}
-
 $('absAdd').onclick = () => {
-  const debut = $('absDebut').value, fin = $('absFin').value || $('absDebut').value;
-  if (!debut) { showMessage('Indiquer au moins la date de début.', false); return; }
-  if (fin < debut) { showMessage('La fin précède le début.', false); return; }
+  const debut = $('absDebut').value, fin = $('absFin').value || debut;
+  if (!debut) { toast('Indiquer au moins la date de début.', null, true); return; }
+  if (fin < debut) { toast('La fin précède le début.', null, true); return; }
   absences.push({ debut, fin, libelle: $('absLibelle').value.trim() || 'Absence' });
   absences.sort((a, b) => a.debut.localeCompare(b.debut));
   $('absDebut').value = $('absFin').value = $('absLibelle').value = '';
   renderAbsences();
-  showMessage('Absence ajoutée : penser à enregistrer.', true);
+  toast('Absence ajoutée : penser à enregistrer.');
 };
-
 $('save').onclick = async () => {
-  try { const r = await api('POST', '/api/config', collect()); state = r.etat; render(); showMessage(r.message, true); }
-  catch (e) { showMessage(e.message, false); }
+  try { const r = await api('POST', '/api/config', collect()); state = r.etat; renderSettings(); renderCounts(); toast(r.message); }
+  catch (e) { toast(e.message, null, true); }
 };
-
 $('install').onclick = async () => {
-  try {
-    await api('POST', '/api/config', collect());
-    const r = await api('POST', '/api/tache');
-    state = r.etat; render(); showMessage(r.message, true);
-  } catch (e) { showMessage(e.message, false); }
+  try { await api('POST', '/api/config', collect()); const r = await api('POST', '/api/tache'); state = r.etat; renderSettings(); toast(r.message); }
+  catch (e) { toast(e.message, null, true); }
 };
-
 $('quit').onclick = async () => {
   try { await api('POST', '/api/quitter'); } catch (e) { }
-  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Page arrêtée. Pour la rouvrir : lien d’une synthèse ou Configurer-SyntheseMails.cmd.</p>';
+  document.querySelector('main').innerHTML = '<div class="empty"><b>Page arrêtée</b>Pour la rouvrir : raccourci « Synthèse mails – suivi » du menu Démarrer.</div>';
 };
 
-// --- Onglets ---------------------------------------------------------------
-function showTab(name) {
-  $('paneSuivi').classList.toggle('hidden', name !== 'suivi');
-  $('paneReglages').classList.toggle('hidden', name !== 'reglages');
-  $('tabSuivi').classList.toggle('on', name === 'suivi');
-  $('tabReglages').classList.toggle('on', name === 'reglages');
-}
-$('tabSuivi').onclick = () => showTab('suivi');
-$('tabReglages').onclick = () => showTab('reglages');
-
-// --- Suivi -----------------------------------------------------------------
-const statutLabels = { a_faire: 'À faire', attente_tiers: 'En attente d’un tiers', traite: 'Traité', ignore: 'Sans objet' };
-const prioOrder = { rouge: 0, orange: 1, vert: 2 };
-let points = [];
-let filtre = 'ouverts';
-
-const ticketUrl = (key) => /^[A-Z][A-Z0-9]+-\d+$/.test(key || '') ? `https://ansamgroup.atlassian.net/browse/${key}` : null;
-const shortDate = (iso) => iso ? new Date(iso).toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' }) : '';
-
-function renderPoints() {
-  const box = $('points');
-  box.innerHTML = '';
-  const q = $('recherche').value.trim().toLowerCase();
-  const visible = points.filter(p => {
-    const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
-    if (filtre === 'ouverts' && !open) return false;
-    if (filtre === 'regles' && open) return false;
-    if (!q) return true;
-    return [p.id, p.titre, p.client, p.ticket, p.action, p.noteMoi].join(' ').toLowerCase().includes(q);
-  });
-  if (!points.length) {
-    box.innerHTML = '<p class="past">Aucun point pour l’instant : le registre se remplit à la prochaine synthèse.</p>';
-    return;
+// --- Démarrage ---------------------------------------------------------------
+async function load() {
+  // Le serveur répond aux requêtes une à une : d'abord ce qu'on lit, ensuite les réglages.
+  try {
+    const p = await api('GET', '/api/suivi');
+    points = p.points || [];
+    const a = await api('GET', '/api/archives');
+    elements = a.elements || [];
+    renderAll();
+    state = await api('GET', '/api/etat');
+    renderSettings();
+    renderCounts();
+  } catch (e) {
+    $('sub').textContent = 'Erreur de chargement';
+    toast(e.message, null, true);
   }
-  if (!visible.length) { box.innerHTML = '<p class="past">Aucun point pour ce filtre.</p>'; return; }
-
-  const groups = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
-  for (const [statut, title] of groups) {
-    const list = visible.filter(p => p.statut === statut)
-      .sort((a, b) => (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
-    if (!list.length) continue;
-    const h = document.createElement('h3');
-    h.className = 'group';
-    h.textContent = `${title} (${list.length})`;
-    box.appendChild(h);
-    list.forEach(p => box.appendChild(renderPoint(p)));
-  }
-}
-
-function renderPoint(p) {
-  const div = document.createElement('div');
-  div.className = 'point';
-  const url = ticketUrl(p.ticket);
-  div.innerHTML = `
-    <div class="head">
-      <span class="dot ${p.priorite || 'aucune'}"></span>
-      <span class="id"></span>
-      <span class="title"></span>
-      <span class="meta"></span>
-    </div>
-    <div class="action"></div>
-    <div class="meta last"></div>
-    <div class="controls" style="margin-top:8px">
-      <select>${Object.entries(statutLabels).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
-      <input class="note" type="text" placeholder="Note (ex. traité par Teams le 28.10, relancé par téléphone…)">
-      <button type="button">Enregistrer</button>
-    </div>`;
-  const id = div.querySelector('.id');
-  if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.textContent = p.id; id.appendChild(a); }
-  else id.textContent = p.id;
-  div.querySelector('.title').textContent = p.titre || '';
-  div.querySelector('.head .meta').textContent = [p.client, p.echeance ? `échéance ${fmtDay(p.echeance)}` : ''].filter(Boolean).join(' · ');
-  div.querySelector('.action').textContent = p.action || '';
-  const last = (p.historique || []).slice(-1)[0];
-  const who = p.majPar === 'moi' ? 'marqué par moi' : 'par la synthèse';
-  div.querySelector('.last').textContent = [
-    p.source ? `Dernier mail : ${p.source}` : '',
-    p.majLe ? `${statutLabels[p.statut] || p.statut} ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + last.texte : ''}` : ''
-  ].filter(Boolean).join(' · ');
-  const select = div.querySelector('select');
-  const note = div.querySelector('.note');
-  select.value = p.statut;
-  note.value = p.noteMoi || '';
-  div.querySelector('button').onclick = async () => {
-    try {
-      const r = await api('POST', '/api/suivi', { id: p.id, statut: select.value, note: note.value.trim() });
-      Object.assign(p, r.point);
-      showSuivi(r.message, true);
-      renderPoints();
-    } catch (e) { showSuivi(e.message, false); }
-  };
-  return div;
-}
-
-function showSuivi(text, ok) {
-  const msg = $('msgSuivi');
-  msg.textContent = text;
-  msg.className = 'msg ' + (ok ? 'ok' : 'err');
-}
-
-document.querySelectorAll('[data-filtre]').forEach(b => b.onclick = () => {
-  filtre = b.dataset.filtre;
-  document.querySelectorAll('[data-filtre]').forEach(x => x.classList.toggle('on', x === b));
-  renderPoints();
-});
-$('recherche').oninput = renderPoints;
-
-async function loadSuivi() {
-  try { const r = await api('GET', '/api/suivi'); points = r.points || []; renderPoints(); }
-  catch (e) { showSuivi(e.message, false); }
 }
 
 if (location.protocol === 'file:' || !token) {
-  // Fichier ouvert directement : sans le serveur local, rien ne peut être lu ni enregistré.
-  document.querySelector('main').innerHTML = '<h1>Synthèse mails</h1><p class="sub">Cette page ne fonctionne que servie par son service local. ' +
-    'Ouvre-la avec le lien « Ouvrir mon suivi » d’une synthèse, ton favori http://127.0.0.1:8765/?t=…, ou Configurer-SyntheseMails.cmd.</p>';
+  document.querySelector('main').innerHTML = '<div class="empty"><b>Page à ouvrir par son service local</b>Utilise le raccourci « Synthèse mails – suivi » du menu Démarrer, ou le lien « Ouvrir mon suivi » d’une synthèse.</div>';
+  $('sub').textContent = '';
 } else {
+  try { const saved = localStorage.getItem('sm-tab'); if (saved && $('p-' + saved)) showTab(saved); } catch (e) { }
+  ['suivi', 'variabilite', 'facturation', 'attention'].forEach(t => { $('list-' + t) && ($('list-' + t).innerHTML = '<div class="empty">Chargement…</div>'); });
   load();
-  loadSuivi();
 }
 </script>
 </body>

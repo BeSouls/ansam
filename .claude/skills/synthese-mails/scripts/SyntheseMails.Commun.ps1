@@ -133,6 +133,12 @@ function Get-SmPlan($Config, $Etat, [datetime]$Moment = (Get-Date)) {
     $last = $null
     if ($Etat.derniereSynthese) { $last = [datetime]::Parse([string]$Etat.derniereSynthese, $SmInvariant) }
     if ($last -and $last.Date -eq $Moment.Date) { $plan.raison = "Synthèse déjà produite aujourd'hui à $($last.ToString('HH:mm'))."; return $plan }
+    # La tâche se déclenche aussi à l'ouverture de session et au déverrouillage : pas avant l'heure prévue.
+    $parts = $Config.heure -split ':'
+    if ($Moment -lt $Moment.Date.AddHours([int]$parts[0]).AddMinutes([int]$parts[1])) {
+        $plan.raison = "Avant l'heure prévue ($($Config.heure))."
+        return $plan
+    }
 
     if (-not $last) {
         # Première synthèse : depuis le jour d'envoi précédent, 7h00.
@@ -289,6 +295,102 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
     $point.majLe = (Get-Date).ToString('o')
     if ($changed) { Add-SmHistorique $point 'moi' $Statut $Note }
     $point
+}
+
+# Tableau JSON d'un bloc de fin de synthèse (« <!-- SUIVI --> », « <!-- ARCHIVES --> ») :
+# du marqueur jusqu'au marqueur suivant. $null si le bloc est absent.
+function Get-SmBlocJson([string]$Text, [string]$Marker) {
+    $at = $Text.IndexOf("<!-- $Marker -->")
+    if ($at -lt 0) { return $null }
+    $segment = $Text.Substring($at + $Marker.Length + 9)
+    $next = $segment.IndexOf('<!-- ')
+    if ($next -ge 0) { $segment = $segment.Substring(0, $next) }
+    $start = $segment.IndexOf('[')
+    $end = $segment.LastIndexOf(']')
+    if ($start -lt 0 -or $end -le $start) { throw "bloc $Marker sans tableau JSON" }
+    $parsed = $segment.Substring($start, $end - $start + 1) | ConvertFrom-Json
+    , @($parsed | ForEach-Object { $_ })   # PS 5.1 : un tableau JSON arrive comme un seul objet
+}
+
+# --- Registre des éléments à garder -----------------------------------------
+# archives.json garde ce qui sert plus tard : variabilité mensuelle, facturation,
+# suivi TAM, points d'attention. Chaque élément a un statut :
+#   a_traiter  à reporter (variabilité), à traiter (facturation), à voir (attention)
+#   fait       reporté / traité / vu
+#   ignore     écarté
+# « certitude » : etabli (le mail l'affirme) ou a_verifier (indice à contrôler).
+
+$SmArchiveTypes = @('variabilite', 'facturation', 'tam', 'attention')
+$SmArchiveStatuts = @('a_traiter', 'fait', 'ignore')
+
+function Get-SmArchives([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'archives.json')
+    $items = New-Object System.Collections.ArrayList
+    if ($saved) {
+        foreach ($item in @($saved.elements)) {
+            if (-not $item) { continue }
+            $copy = [ordered]@{}
+            foreach ($property in $item.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+            [void]$items.Add($copy)
+        }
+    }
+    [ordered]@{ majLe = $(if ($saved) { $saved.majLe }); elements = $items }
+}
+
+function Save-SmArchives($Archives, [string]$WorkDir = $SmWorkDir) {
+    $Archives.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Join-Path $WorkDir 'archives.json') ([ordered]@{ majLe = $Archives.majLe; elements = @($Archives.elements) })
+}
+
+# Intègre les éléments proposés par la synthèse ; renvoie le nombre de nouveaux.
+function Merge-SmArchives($Archives, $Updates) {
+    $added = 0
+    $today = (Get-Date).ToString('yyyyMMdd')
+    $prefixes = @{ variabilite = 'V'; facturation = 'F'; tam = 'T'; attention = 'A' }
+    foreach ($update in @($Updates)) {
+        if (-not $update -or -not $update.element) { continue }
+        $type = [string]$update.type
+        if ($SmArchiveTypes -notcontains $type) { $type = 'attention' }
+
+        $item = $null
+        if ($update.id) { $item = $Archives.elements | Where-Object { $_.id -eq $update.id } | Select-Object -First 1 }
+        if (-not $item) {
+            $prefix = "$($prefixes[$type])-$today-"
+            $n = @($Archives.elements | Where-Object { $_.id -like "$prefix*" }).Count + 1
+            $item = [ordered]@{ id = "$prefix$n"; type = $type; statut = 'a_traiter'; majPar = 'synthese'; majLe = (Get-Date).ToString('o');
+                                creeLe = (Get-Date).ToString('o'); noteMoi = '' }
+            [void]$Archives.elements.Add($item)
+            $added++
+        }
+        foreach ($field in 'certitude', 'client', 'element', 'sens', 'quantite', 'montant', 'dateEffet', 'mois', 'echeance',
+                           'source', 'indice', 'verifier', 'dossier', 'ticket') {
+            if ($update.PSObject.Properties.Name -contains $field) { $item[$field] = $update.$field }
+        }
+        # Une suggestion confirmée devient établie ; jamais l'inverse sans le dire.
+        if (-not $item.certitude) { $item.certitude = 'etabli' }
+    }
+
+    # Les éléments faits ou écartés depuis plus de 120 jours quittent le registre (variabilité : un mois et demi d'historique au moins).
+    $limit = (Get-Date).AddDays(-120)
+    $kept = New-Object System.Collections.ArrayList
+    foreach ($item in $Archives.elements) {
+        $updated = ConvertTo-SmDateTime $item.majLe
+        if ($item.statut -ne 'a_traiter' -and $updated -and $updated -lt $limit) { continue }
+        [void]$kept.Add($item)
+    }
+    $Archives.elements = $kept
+    $added
+}
+
+function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$Note) {
+    $item = $Archives.elements | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $item) { throw "Élément « $Id » introuvable." }
+    if ($SmArchiveStatuts -notcontains $Statut) { throw "Statut inconnu : $Statut." }
+    $item.statut = $Statut
+    $item.noteMoi = $Note
+    $item.majPar = 'moi'
+    $item.majLe = (Get-Date).ToString('o')
+    $item
 }
 
 # --- Markdown -> HTML (le sous-ensemble produit par la synthèse) -----------

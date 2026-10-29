@@ -39,14 +39,25 @@ qu'Outlook affiche déjà.
 
 ## Configuration
 
-Double-clic sur **`Configurer-SyntheseMails.cmd`** : une page locale
-s'ouvre dans le navigateur (servie sur 127.0.0.1 uniquement, fermée après
-30 minutes sans activité).
+La page locale de suivi et de configuration tourne en permanence une fois
+les tâches installées : elle démarre à l'ouverture de session, sur
+`http://127.0.0.1:8765/` avec un jeton propre au PC (un lien sans jeton est
+refusé). Pour l'ouvrir : le raccourci **« Synthèse mails – suivi »** du menu
+Démarrer, le lien « Ouvrir mon suivi » en bas de chaque synthèse, ou
+**`Configurer-SyntheseMails.cmd`** (qui démarre une page temporaire si le
+service ne tourne pas).
 
 Onglet **Suivi** : les points du registre, ouverts ou réglés. Pour chacun,
 choisir « À faire », « En attente d'un tiers » (ton action est faite),
 « Traité » ou « Sans objet », avec une note (« réglé par Teams le 28.10 »).
 Ton marquage tient jusqu'à ce qu'un nouveau message arrive sur le point.
+
+Vues **Variabilité**, **Facturation** et **Attention** : les éléments à
+garder relevés par les synthèses (`archives.json`), établis ou à vérifier
+(avec l'indice et la façon de vérifier). La variabilité se lit par mois et
+par client ; on marque chaque élément reporté, traité, vu ou écarté, d'un
+clic, avec possibilité d'annuler. Les informations TAM à archiver sont dans
+la vue Attention.
 
 Onglet **Réglages** :
 
@@ -96,6 +107,14 @@ Options utiles :
 
 - **Mail « Synthèse mails – échec du … »** : la chaîne a échoué ; le mail
   donne l'erreur et le chemin du journal.
+- **Pas de mail du tout** : regarder le résultat de la tâche dans le
+  Planificateur. Un PC en veille à 7h10 rattrape la synthèse à l'ouverture
+  de session ou au déverrouillage. `0xC000013A` ou `0x8007042B` : la console
+  du script a été tuée au démarrage ; les tâches passent par
+  `conhost.exe --headless` pour l'éviter (réinstaller les tâches depuis la
+  page si elles datent d'avant).
+- **« Accès refusé : lien incomplet »** sur la page : le lien n'a pas le
+  jeton ; utiliser le raccourci du menu Démarrer.
 - **`0x80080005` (CO_E_SERVER_EXEC_FAILURE)** : l'Outlook ouvert ne répond
   pas aux scripts. Fermer complètement Outlook (aucun `OUTLOOK.EXE` restant
   dans le Gestionnaire des tâches), le rouvrir, relancer.

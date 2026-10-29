@@ -46,6 +46,9 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
    précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
    `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand
    (`majLe`), ma note (`noteMoi`) et l'historique.
+   **Registre des éléments à garder** : `archives.json`, la variabilité,
+   la facturation, les faits TAM et les points d'attention déjà relevés,
+   avec leur statut (`a_traiter`, `fait`, `ignore`) : ne pas les recréer.
 5. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
    session : lire la même boîte directement.
 
@@ -116,8 +119,13 @@ interlocuteurs internes).
    nouveaux points, avec leur statut proposé et son motif. Le lanceur
    l'intègre au registre et le retire du mail.
 
-La réponse est **uniquement** la synthèse en Markdown suivie du bloc de
-suivi, sans préambule.
+8. **Puis le bloc des éléments à garder** : une ligne `<!-- ARCHIVES -->`
+   puis un tableau JSON avec chaque élément de variabilité, de
+   facturation, de suivi TAM et chaque point d'attention de la synthèse,
+   en reprenant l'`id` de ceux déjà présents dans `archives.json`.
+
+La réponse est **uniquement** la synthèse en Markdown suivie de ces deux
+blocs, sans préambule.
 
 ## Retour d'absence
 

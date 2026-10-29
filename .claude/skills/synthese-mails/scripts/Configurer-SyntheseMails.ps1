@@ -19,6 +19,10 @@
     je change le statut (à faire, en attente d'un tiers, traité, sans objet)
     avec une note ; la synthèse suivante en tient compte.
 
+    Vues « Variabilité », « Facturation » et « Attention » : les éléments à
+    garder (<WorkDir>\archives.json), établis ou à vérifier, que je marque
+    reportés / traités / vus ou écartés.
+
     Onglet « Réglages » : <WorkDir>\config.json : synthèse active, heure, jours
     d'envoi, fenêtre en jours, envoi par mail, absences, dossiers. Elle
     affiche la prochaine synthèse prévue, l'état de la tâche planifiée et les
@@ -53,7 +57,19 @@ function Test-PageRunning {
     try { $probe.Connect([Net.IPAddress]::Loopback, $port); $true } catch { $false } finally { $probe.Close() }
 }
 
-function Get-TaskState {
+# L'état des tâches planifiées coûte plusieurs secondes (CIM) : calculé au démarrage puis
+# gardé 5 minutes, et recalculé après une installation.
+$taskCache = $null
+$taskCacheAt = [datetime]::MinValue
+function Get-TaskState([switch]$Refresh) {
+    if ($Refresh -or -not $script:taskCache -or ((Get-Date) - $script:taskCacheAt).TotalMinutes -ge 5) {
+        $script:taskCache = Read-TaskState
+        $script:taskCacheAt = Get-Date
+    }
+    $script:taskCache
+}
+
+function Read-TaskState {
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $task) { return [ordered]@{ installee = $false } }
     $info = Get-ScheduledTaskInfo -TaskName $TaskName
@@ -180,6 +196,7 @@ function ConvertFrom-PageConfig([string]$Json) {
 
 function Install-Task {
     & (Join-Path $PSScriptRoot 'Installer-TacheSyntheseMails.ps1') -At (Get-SmConfig $WorkDir).heure -TaskName $TaskName | Out-Null
+    [void](Get-TaskState -Refresh)
 }
 
 if (Test-PageRunning) {
@@ -196,6 +213,9 @@ if ($Service) { Write-Host 'Mode permanent.' }
 else { Write-Host "Arrêt depuis la page, Ctrl+C ici, ou automatiquement après $IdleMinutes min sans activité." }
 if (-not $Service -and -not $PasDeNavigateur) { Start-Process $url }
 
+[void](Get-TaskState)   # premier calcul avant toute requête
+$pageHtml = $null
+$pageHtmlAt = [datetime]::MinValue
 $lastActivity = Get-Date
 $stop = $false
 try {
@@ -217,13 +237,17 @@ try {
             $host_ = $request.Headers['host']
             $tokenOk = ($request.Query['t'] -eq $token) -or ($request.Headers['x-token'] -eq $token)
             if (@("127.0.0.1:$port", "localhost:$port") -notcontains $host_ -or -not $tokenOk) {
-                Send-Response $stream 403 'text/plain' 'Accès refusé : ouvrir la page depuis le lien de la synthèse ou Configurer-SyntheseMails.cmd.'
+                Send-Response $stream 403 'text/plain' ("Accès refusé : lien incomplet ou ancien (il manque le jeton). Ouvrir la page avec le raccourci " +
+                    "« Synthèse mails – suivi » du menu Démarrer, le lien « Ouvrir mon suivi » d'une synthèse, ou Configurer-SyntheseMails.cmd.")
                 continue
             }
 
             switch -Regex ("$($request.Method) $($request.Path)") {
                 '^GET /$' {
-                    Send-Response $stream 200 'text/html' ([IO.File]::ReadAllText($pagePath, [Text.Encoding]::UTF8))
+                    # Page relue seulement si le fichier a changé.
+                    $written = (Get-Item $pagePath).LastWriteTime
+                    if (-not $pageHtml -or $written -ne $pageHtmlAt) { $pageHtml = [IO.File]::ReadAllText($pagePath, [Text.Encoding]::UTF8); $pageHtmlAt = $written }
+                    Send-Response $stream 200 'text/html' $pageHtml
                 }
                 '^GET /api/etat$' { Send-Json $stream 200 (Get-State) }
                 '^POST /api/config$' {
@@ -245,6 +269,17 @@ try {
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point })
+                }
+                '^GET /api/archives$' {
+                    $archives = Get-SmArchives $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ majLe = $archives.majLe; elements = @($archives.elements) })
+                }
+                '^POST /api/archives$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    $archives = Get-SmArchives $WorkDir
+                    $item = Set-SmArchiveStatut $archives ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
+                    Save-SmArchives $archives $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = 'Enregistré.'; element = $item })
                 }
                 '^POST /api/tache$' {
                     Install-Task

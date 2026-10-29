@@ -69,13 +69,13 @@ $synthesisDir = Join-Path $WorkDir 'syntheses'
 $logDir = Join-Path $WorkDir 'logs'
 New-Item -ItemType Directory -Force -Path $exportDir, $synthesisDir, $logDir | Out-Null
 
-$config = Get-SmConfig $WorkDir
-$etat = Get-SmEtat $WorkDir
-$plan = Get-SmPlan $config $etat $start
-
 Start-Transcript -Path (Join-Path $logDir "$today.log") -Append | Out-Null
 $address = $null
+$config = $null
 try {
+    $config = Get-SmConfig $WorkDir
+    $etat = Get-SmEtat $WorkDir
+    $plan = Get-SmPlan $config $etat $start
     if (-not $plan.lancer) {
         if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; return }
         Write-Host "Lancement forcé malgré : $($plan.raison)"
@@ -84,42 +84,50 @@ try {
 
     $exportArgs = @{ Days = $plan.jours; OutputDir = $exportDir }
     if ($Mailbox) { $exportArgs.Mailbox = $Mailbox }
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : export Outlook ($($plan.jours) jours)"
     $exportFile = & (Join-Path $PSScriptRoot 'Export-OutlookMails.ps1') @exportArgs | Select-Object -Last 1
     $threadFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-fils.txt'
     $address = (Read-SmJson $exportFile).address
 
     $contextFile = Join-Path $WorkDir 'contexte-ansam.json'
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : contexte AnsamDiag"
     & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ExportFile $exportFile `
         -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
 
     # Tickets Jira assignés (lecture seule) ; en cas d'échec, la synthèse continue sans eux.
     $jiraFile = Join-Path $WorkDir 'jira-assignes.json'
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"
     $jiraOk = & (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1') -OutputFile $jiraFile -ClaudeExe $ClaudeExe | Select-Object -Last 1
     $jiraNote = $(if ($jiraOk) { "tickets Jira assignés : $jiraFile" }
                   elseif (Test-Path $jiraFile) { "tickets Jira assignés : $jiraFile (lecture du jour en échec : liste de la veille, à signaler)" }
                   else { "tickets Jira assignés : indisponibles aujourd'hui (à signaler dans les points d'attention)" })
 
-    # Registre de suivi : les points restent ouverts d'une synthèse à l'autre.
+    # Registres : les points restent ouverts d'une synthèse à l'autre, les éléments à garder aussi.
     $suivi = Get-SmSuivi $WorkDir
     $suiviFile = Join-Path $WorkDir 'suivi.json'
     if (-not (Test-Path $suiviFile)) { Save-SmSuivi $suivi $WorkDir }
+    $archivesFile = Join-Path $WorkDir 'archives.json'
+    if (-not (Test-Path $archivesFile)) { Save-SmArchives (Get-SmArchives $WorkDir) $WorkDir }
 
     $since = $plan.depuis.ToString('dd.MM.yyyy HH:mm')
     $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
               "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile ; " +
-              "$jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points). " +
+              "$jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
+              "registre des éléments à garder : $archivesFile. " +
               "Nouveautés depuis la dernière synthèse : $since."
     $absences = @($plan.absences)
     if ($absences.Count) {
         $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
         $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
     }
-    $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (marqueur <!-- SUIVI --> puis le tableau JSON)."
+    $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
+               "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
 
     # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
     Push-Location $RepoDir
     try {
+        Write-Host "$(Get-Date -Format HH:mm:ss) Étape : rédaction par Claude Code"
         $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
         if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
     } finally {
@@ -131,28 +139,32 @@ try {
     $titleAt = [regex]::Match($markdown, '(?m)^# ')
     if ($titleAt.Success) { $markdown = $markdown.Substring($titleAt.Index) }
 
-    # Bloc de suivi : intégré au registre, retiré du mail.
-    $marker = $markdown.IndexOf('<!-- SUIVI -->')
-    if ($marker -lt 0) {
-        Write-Warning 'Bloc de suivi absent : registre inchangé.'
-        $markdown += "`n`n> ⚠ Registre de suivi non mis à jour aujourd'hui (bloc de suivi absent)."
-    } else {
-        $block = $markdown.Substring($marker)
-        $markdown = $markdown.Substring(0, $marker).TrimEnd()
-        try {
-            $jsonStart = $block.IndexOf('[')
-            $jsonEnd = $block.LastIndexOf(']')
-            if ($jsonStart -lt 0 -or $jsonEnd -le $jsonStart) { throw 'tableau JSON introuvable' }
-            $updates = $block.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
-            $changes = Merge-SmSuivi $suivi $updates
-            Save-SmSuivi $suivi $WorkDir
-            Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
-        } catch {
-            Write-Warning "Bloc de suivi illisible, registre inchangé : $($_.Exception.Message)"
-            $markdown += "`n`n> ⚠ Registre de suivi non mis à jour aujourd'hui (bloc de suivi illisible)."
-        }
+    # Blocs de fin (suivi, éléments à garder) : intégrés aux registres, retirés du mail.
+    $raw = $markdown
+    $firstBlock = [regex]::Match($markdown, '<!-- (SUIVI|ARCHIVES) -->')
+    if ($firstBlock.Success) { $markdown = $markdown.Substring(0, $firstBlock.Index).TrimEnd() }
+    try {
+        $updates = Get-SmBlocJson $raw 'SUIVI'
+        if ($null -eq $updates) { throw 'bloc absent' }
+        $changes = Merge-SmSuivi $suivi $updates
+        Save-SmSuivi $suivi $WorkDir
+        Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
+    } catch {
+        Write-Warning "Registre de suivi inchangé : $($_.Exception.Message)"
+        $markdown += "`n`n> ⚠ Registre de suivi non mis à jour aujourd'hui ($($_.Exception.Message))."
     }
-    $markdown += "`n`n---`n[Ouvrir mon suivi]($(Get-SmPageUrl $WorkDir)) pour marquer un point traité, en attente d'un tiers ou sans objet."
+    try {
+        $kept = Get-SmBlocJson $raw 'ARCHIVES'
+        if ($null -eq $kept) { throw 'bloc absent' }
+        $archives = Get-SmArchives $WorkDir
+        $added = Merge-SmArchives $archives $kept
+        Save-SmArchives $archives $WorkDir
+        Write-Host "Éléments à garder : $(@($kept).Count) revus, $added nouveaux, $(@($archives.elements).Count) au registre."
+    } catch {
+        Write-Warning "Registre des éléments à garder inchangé : $($_.Exception.Message)"
+        $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
+    }
+    $markdown += "`n`n---`n[Ouvrir mon suivi]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     $synthesisFile = Join-Path $synthesisDir "$today.md"
     [IO.File]::WriteAllText($synthesisFile, $markdown, (New-Object Text.UTF8Encoding($false)))
     Write-Host "Synthèse prête : $synthesisFile"
