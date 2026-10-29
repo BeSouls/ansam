@@ -45,7 +45,10 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
 4. **Registre de suivi** : `suivi.json`, les points des synthèses
    précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
    `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand
-   (`majLe`), ma note (`noteMoi`) et l'historique.
+   (`majLe`), ma note (`noteMoi`) et l'historique. Certains points sont
+   des **groupes** (`estGroupe`) qui rassemblent des sous-tâches (`parent`) :
+   les revues récurrentes, un même chantier (voir « Regrouper les points »
+   dans les règles).
    **Registre des éléments à garder** : `archives.json`, la variabilité,
    la facturation, les faits TAM et les points d'attention déjà relevés,
    avec leur statut (`a_traiter`, `fait`, `ignore`) : ne pas les recréer.

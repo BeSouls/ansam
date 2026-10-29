@@ -298,7 +298,50 @@ try {
                     $suivi = Get-SmSuivi $WorkDir
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
-                    Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point })
+                    Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
+                }
+                '^POST /api/groupe$' {
+                    # Groupement manuel : créer, ajouter, retirer, renommer, dissoudre.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $ids = @($posted.ids | Where-Object { $_ } | ForEach-Object { [string]$_ })
+                    switch ([string]$posted.action) {
+                        'creer' {
+                            if (-not $ids.Count) { throw 'Aucune tâche sélectionnée.' }
+                            $titre = ([string]$posted.titre).Trim()
+                            if (-not $titre) { throw 'Donner un nom au groupe.' }
+                            $group = Get-SmGroupe $suivi $titre
+                            if (-not $group) { $group = New-SmGroupe $suivi $titre 'moi' }
+                            Set-SmParent $suivi $ids $group.id
+                            $message = "Groupe « $($group.titre) » : $($ids.Count) tâche(s) ajoutée(s)."
+                        }
+                        'ajouter' {
+                            $group = $suivi.points | Where-Object { $_.id -eq [string]$posted.groupe -and $_.estGroupe } | Select-Object -First 1
+                            if (-not $group) { throw 'Groupe introuvable.' }
+                            Set-SmParent $suivi $ids $group.id
+                            $message = "$($ids.Count) tâche(s) ajoutée(s) à « $($group.titre) »."
+                        }
+                        'retirer' {
+                            Set-SmParent $suivi $ids $null
+                            $message = "$($ids.Count) tâche(s) sortie(s) du groupe."
+                        }
+                        'renommer' {
+                            $group = $suivi.points | Where-Object { $_.id -eq [string]$posted.groupe -and $_.estGroupe } | Select-Object -First 1
+                            $titre = ([string]$posted.titre).Trim()
+                            if (-not $group -or -not $titre) { throw 'Groupe ou nom manquant.' }
+                            $group.titre = $titre
+                            $group.creePar = 'moi'
+                            $message = "Groupe renommé « $titre »."
+                        }
+                        'dissoudre' {
+                            $children = @($suivi.points | Where-Object { $_.parent -eq [string]$posted.groupe } | ForEach-Object { $_.id })
+                            Set-SmParent $suivi $children $null
+                            $message = "Groupe dissous : $($children.Count) tâche(s) remise(s) dans la liste."
+                        }
+                        default { throw "Action inconnue : $($posted.action)." }
+                    }
+                    Save-SmSuivi $suivi $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = $message; points = @($suivi.points) })
                 }
                 '^GET /api/lancement$' { Send-Json $stream 200 (Get-RunState) }
                 '^POST /api/lancement$' {

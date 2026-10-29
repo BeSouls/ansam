@@ -192,6 +192,7 @@ function Resolve-SmClaude([string]$ClaudeExe) {
 # un message plus récent que mon marquage arrive sur le point.
 
 $SmStatuts = @('a_faire', 'attente_tiers', 'traite', 'ignore')
+# Les groupes (estGroupe) rassemblent des sous-tâches (parent) : voir « Groupes de points ».
 
 function Get-SmSuivi([string]$WorkDir = $SmWorkDir) {
     $saved = Read-SmJson (Join-Path $WorkDir 'suivi.json')
@@ -238,6 +239,7 @@ function Merge-SmSuivi($Suivi, $Updates) {
 
         $point = $null
         if ($update.id) { $point = $Suivi.points | Where-Object { $_.id -eq $update.id } | Select-Object -First 1 }
+        if ($point -and $point.estGroupe) { continue }   # l'état d'un groupe se déduit de ses sous-tâches
         if (-not $point -and $update.ticket) {
             $point = $Suivi.points | Where-Object { $_.ticket -eq $update.ticket -and $_.statut -ne 'traite' -and $_.statut -ne 'ignore' } | Select-Object -First 1
         }
@@ -254,6 +256,14 @@ function Merge-SmSuivi($Suivi, $Updates) {
         # Champs descriptifs : toujours mis à jour.
         foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
+        }
+
+        # Regroupement proposé par la synthèse ; un groupement fait ou défait par moi prime.
+        if ($update.groupe -and $point.parentPar -ne 'moi') {
+            $group = Get-SmGroupe $Suivi ([string]$update.groupe)
+            if (-not $group) { $group = New-SmGroupe $Suivi ([string]$update.groupe) 'synthese' }
+            $point.parent = $group.id
+            $point.parentPar = 'synthese'
         }
 
         if ($point.statut -eq $statut) { continue }
@@ -276,25 +286,102 @@ function Merge-SmSuivi($Suivi, $Updates) {
     $kept = New-Object System.Collections.ArrayList
     foreach ($point in $Suivi.points) {
         $updated = ConvertTo-SmDateTime $point.majLe
-        if (($point.statut -eq 'traite' -or $point.statut -eq 'ignore') -and $updated -and $updated -lt $limit) { continue }
+        if (-not $point.estGroupe -and ($point.statut -eq 'traite' -or $point.statut -eq 'ignore') -and $updated -and $updated -lt $limit) { continue }
         [void]$kept.Add($point)
     }
     $Suivi.points = $kept
+    Update-SmGroupes $Suivi
     , $changes
 }
 
-# Marquage d'un point par moi (page de suivi).
+# Marquage par moi (page de suivi). Sur un groupe, le statut s'applique à toutes ses sous-tâches.
 function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) {
     $point = $Suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
     if (-not $point) { throw "Point « $Id » introuvable." }
     if ($SmStatuts -notcontains $Statut) { throw "Statut inconnu : $Statut." }
+    if ($point.estGroupe) {
+        # Seules les sous-tâches encore ouvertes changent : « tout marquer traité » ne rouvre rien.
+        foreach ($child in @($Suivi.points | Where-Object { $_.parent -eq $Id -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') })) {
+            [void](Set-SmSuiviStatut $Suivi $child.id $Statut $child.noteMoi)
+        }
+        $point.noteMoi = $Note
+        Update-SmGroupes $Suivi
+        return $point
+    }
     $changed = $point.statut -ne $Statut
     $point.statut = $Statut
     $point.noteMoi = $Note
     $point.majPar = 'moi'
     $point.majLe = (Get-Date).ToString('o')
     if ($changed) { Add-SmHistorique $point 'moi' $Statut $Note }
+    Update-SmGroupes $Suivi
     $point
+}
+
+# --- Groupes de points --------------------------------------------------------
+# Un groupe (estGroupe = $true, id G-AAAAMMJJ-n) rassemble des sous-tâches (parent = id du
+# groupe). Son statut, sa priorité et son échéance se déduisent des sous-tâches ouvertes.
+# parentPar dit qui a rangé le point : 'moi' (jamais déplacé par la synthèse) ou 'synthese'.
+
+function ConvertTo-SmCle([string]$Text) {
+    ($Text.ToLowerInvariant().Normalize([Text.NormalizationForm]::FormD) -replace '\p{Mn}', '' -replace '[^a-z0-9]+', ' ').Trim()
+}
+
+function Get-SmGroupe($Suivi, [string]$Titre) {
+    $key = ConvertTo-SmCle $Titre
+    $Suivi.points | Where-Object { $_.estGroupe -and (ConvertTo-SmCle $_.titre) -eq $key } | Select-Object -First 1
+}
+
+function New-SmGroupe($Suivi, [string]$Titre, [string]$Par) {
+    $prefix = 'G-' + (Get-Date).ToString('yyyyMMdd') + '-'
+    $n = @($Suivi.points | Where-Object { $_.id -like "$prefix*" }).Count + 1
+    while ($Suivi.points | Where-Object { $_.id -eq "$prefix$n" }) { $n++ }
+    $group = [ordered]@{
+        id = "$prefix$n"; estGroupe = $true; titre = $Titre.Trim(); creePar = $Par; creeLe = (Get-Date).ToString('o')
+        statut = 'a_faire'; majPar = $Par; majLe = (Get-Date).ToString('o'); noteMoi = ''; historique = @()
+    }
+    [void]$Suivi.points.Add($group)
+    $group
+}
+
+# Range des points dans un groupe (ou les sort de tout groupe avec $GroupeId vide), par moi.
+function Set-SmParent($Suivi, [string[]]$Ids, [string]$GroupeId) {
+    foreach ($id in $Ids) {
+        $point = $Suivi.points | Where-Object { $_.id -eq $id -and -not $_.estGroupe } | Select-Object -First 1
+        if (-not $point) { continue }
+        $point.parent = $(if ($GroupeId) { $GroupeId } else { $null })
+        $point.parentPar = 'moi'
+    }
+    Update-SmGroupes $Suivi
+}
+
+# Recalcule chaque groupe depuis ses sous-tâches ; supprime les groupes vides.
+function Update-SmGroupes($Suivi) {
+    $groupIds = @($Suivi.points | Where-Object { $_.estGroupe } | ForEach-Object { $_.id })
+    foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.parent })) {
+        if ($groupIds -notcontains $point.parent) { $point.parent = $null }
+    }
+    $rank = @{ rouge = 0; orange = 1; vert = 2 }
+    $kept = New-Object System.Collections.ArrayList
+    foreach ($point in $Suivi.points) {
+        if (-not $point.estGroupe) { [void]$kept.Add($point); continue }
+        $children = @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.parent -eq $point.id })
+        if (-not $children.Count) { continue }
+        $open = @($children | Where-Object { $_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers' })
+        $point.statut = $(if ($children | Where-Object { $_.statut -eq 'a_faire' }) { 'a_faire' }
+                          elseif ($open.Count) { 'attente_tiers' }
+                          elseif (-not ($children | Where-Object { $_.statut -ne 'ignore' })) { 'ignore' }
+                          else { 'traite' })
+        $best = $open | Where-Object { $_.priorite } | Sort-Object { $rank[[string]$_.priorite] } | Select-Object -First 1
+        $point.priorite = $(if ($best) { $best.priorite } else { $null })
+        $due = $open | Where-Object { $_.echeance } | ForEach-Object { [string]$_.echeance } | Sort-Object | Select-Object -First 1
+        $point.echeance = $(if ($due) { $due } else { $null })
+        $point.clients = @($children | Where-Object { $_.client } | ForEach-Object { [string]$_.client } | Sort-Object -Unique)
+        $point.nbTotal = $children.Count
+        $point.nbOuverts = $open.Count
+        [void]$kept.Add($point)
+    }
+    $Suivi.points = $kept
 }
 
 # Tableau JSON d'un bloc de fin de synthèse (« <!-- SUIVI --> », « <!-- ARCHIVES --> ») :

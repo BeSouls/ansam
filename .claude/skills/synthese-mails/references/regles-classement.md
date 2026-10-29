@@ -50,6 +50,34 @@ Une **réponse du client sur un ticket en attente du client** (Jira
 « En attente du client », AnsamDiag `EnAttente`, ou point `attente_tiers`)
 fait repasser le point en `a_faire` : c'est à moi de reprendre.
 
+## Regrouper les points
+
+Un point peut appartenir à un **groupe** : une tâche plus large dont il est
+une sous-tâche. Le groupe se lit d'un coup d'œil (« Revues des tickets :
+3/5 ») et s'ouvre pour voir ses sous-tâches.
+
+Regrouper quand plusieurs points relèvent d'**une même activité** :
+
+- **Revues récurrentes** : toutes les tâches « Revue des tickets » de mes
+  clients (une par client, deux fois par semaine) vont dans le groupe
+  **« Revues des tickets »** ; toutes les « Revue des variabilités » dans
+  **« Revues des variabilités »**. Chaque client reste une sous-tâche avec
+  son propre statut.
+- **Même chantier** : plusieurs points qui font partie d'un même projet,
+  d'une même migration ou d'une même demande de la direction (« 8 tickets à
+  faire avancer » et les tickets qu'elle cite) vont dans un groupe au nom du
+  chantier.
+
+Ne pas regrouper deux points sans lien autre que le client : un client a
+souvent plusieurs sujets indépendants.
+
+Dans le registre, un groupe a `estGroupe` = vrai ; une sous-tâche a
+`parent` (id du groupe) et `parentPar` (`moi` ou `synthese`). **Un point
+rangé ou sorti d'un groupe par moi (`parentPar` = `moi`) ne se déplace
+plus** : ne pas lui proposer d'autre groupe. Pour ranger un point, donner le
+nom du groupe dans le champ `groupe` du bloc de suivi ; le lanceur retrouve
+le groupe existant de même nom ou le crée.
+
 ## Statut d'un point
 
 | Statut | Sens |

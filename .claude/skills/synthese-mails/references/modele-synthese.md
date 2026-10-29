@@ -25,6 +25,11 @@ Tous les points `a_faire` du registre et les nouveaux, par priorité. « Nouveau
 |---|---|---|---|---|---|---|
 | 🔴 | `ASD-12345` nouveau | ABC – Jean Dupont | Onduleur, [ASD-12345](https://ansamgroup.atlassian.net/browse/ASD-12345) (`Boîte de réception · 28.10 10:47`) | 0 j | Répondre sur l'onduleur (batterie en fin de vie) et retrouver l'installateur grâce à la facture jointe | aujourd'hui |
 
+Un **groupe** tient sur une seule ligne : son nom, l'avancement et les
+sous-tâches ouvertes en résumé, par exemple :
+
+| 🟠 | `G-20261029-1` | 5 clients | Revues des tickets (0/5 faites) | 2 j | Revues ouvertes : STJAC, SWPI, SLV, PREST, ZENIT | 30.10 |
+
 ### En attente d'un tiers
 | Point | Client | Sujet | J'attends | Depuis | Source du statut |
 |---|---|---|---|---|---|
@@ -91,6 +96,9 @@ bloc de code ou non) avec :
 Champs : `id` (celui du registre ; pour un nouveau point, la clé du ticket
 s'il y en a un, sinon `null`), `titre`, `client`, `ticket` (ou `null`),
 `statut` (`a_faire`, `attente_tiers`, `traite` ; jamais `ignore`),
+`groupe` (nom du groupe où ranger le point, par exemple « Revues des
+tickets », ou `null` : voir « Regrouper les points » dans les règles ; ne
+jamais renvoyer les groupes eux-mêmes, leur état se calcule),
 `priorite` (`rouge`, `orange`, `vert`), `action` (ce qu'on attend de moi, ou
 ce que j'attends), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
 et date du mail le plus récent), `dernierMessage` (date ISO du dernier

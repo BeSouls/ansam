@@ -153,6 +153,58 @@
   dl.state dd { margin: .1rem 0 0; font-size: .9375rem; }
   ul.files { margin: 0; padding-left: 1.1rem; }
 
+  /* Sélection et groupes */
+  .sel { width: 1.25rem; height: 1.25rem; border-radius: 50%; border: 1.5px solid var(--muted); background: none; flex: none; align-self: center;
+    cursor: pointer; padding: 0; display: grid; place-items: center; transition: background-color .15s, border-color .15s, transform .1s ease-out; }
+  .sel:active { transform: scale(.9); }
+  .sel[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
+  .sel[aria-pressed="true"]::after { content: ''; width: .5rem; height: .27rem; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
+  .card.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+  .card.grp { cursor: pointer; transition: border-color .2s, transform .1s ease-out; }
+  .card.grp:hover { border-color: var(--accent); }
+  .card.grp:active { transform: scale(.99); }
+  .card.grp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .prog { height: 4px; border-radius: 2px; background: var(--surface-2); margin: .6rem 0 .5rem; overflow: hidden; }
+  .prog > span { display: block; height: 100%; width: 0; background: var(--green); border-radius: 2px; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+  .kids { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .kid { font-size: .75rem; font-weight: 600; padding: .12rem .5rem; border-radius: 6px; background: var(--surface-2); }
+  .kid.a_faire { box-shadow: inset 3px 0 0 var(--accent); }
+  .kid.attente_tiers { box-shadow: inset 3px 0 0 var(--orange); }
+  .kid.traite, .kid.ignore { color: var(--muted); text-decoration: line-through; }
+
+  /* Barre d'actions de la sélection : matériau translucide flottant */
+  .bar {
+    position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); z-index: 25; width: min(46rem, calc(100% - 2rem));
+    display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; padding: .55rem .6rem .55rem .95rem; border-radius: 16px;
+    background: var(--chrome); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--line); box-shadow: 0 10px 34px rgba(0, 0, 0, .18); animation: rise .22s cubic-bezier(.2, .8, .2, 1);
+  }
+  .bar[hidden] { display: none; }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, .6rem); } to { opacity: 1; transform: translateX(-50%); } }
+  .bar-count { font-weight: 600; font-size: .875rem; white-space: nowrap; }
+  .bar .field { width: auto; flex: 1 1 9rem; padding: .4rem .6rem; }
+  .bar select.field { flex: 0 1 12rem; }
+  .btn.link.plain { color: var(--muted); }
+  .bar:not([hidden]) ~ .toast { bottom: 5.5rem; }
+
+  /* Fenêtre d'un groupe : feuille qui naît de la carte, fond assombri pour la concentration */
+  .scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .32); opacity: 0; transition: opacity .25s ease; }
+  .scrim.open { opacity: 1; }
+  .scrim[hidden], .sheet[hidden] { display: none; }
+  .sheet {
+    position: fixed; left: 50%; top: 5vh; z-index: 31; width: min(46rem, calc(100% - 2rem)); max-height: 90vh; overflow: auto;
+    background: var(--bg); border-radius: 20px; box-shadow: 0 24px 70px rgba(0, 0, 0, .35); padding: 1rem 1.1rem 1.3rem;
+    transform: translateX(-50%) scale(.92); opacity: 0;
+    transition: transform .34s cubic-bezier(.2, .9, .25, 1), opacity .2s ease;
+  }
+  .sheet.open { transform: translateX(-50%) scale(1); opacity: 1; }
+  .sheet-head { display: flex; gap: .6rem; align-items: center; margin-bottom: .2rem; }
+  .sheet-title { flex: 1; font: inherit; font-size: 1.375rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; border: 1px solid transparent;
+    border-radius: 8px; padding: .15rem .35rem; margin-left: -.35rem; background: none; color: var(--text); outline: none; }
+  .sheet-title:hover { border-color: var(--line); }
+  .sheet-title:focus { border-color: var(--accent); background: var(--surface); }
+  .close { width: 2rem; height: 2rem; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--muted); font-size: .9rem; cursor: pointer; flex: none; }
+
   /* Toast d'annulation */
   .toast {
     position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; z-index: 20;
@@ -171,12 +223,15 @@
   @media (prefers-reduced-motion: reduce) {
     .pane { animation: none; }
     .spinner { animation: none; border-color: var(--accent); }
+    .bar { animation: none; }
+    .sheet { transform: translateX(-50%); }
     *, *::before, *::after { transition-duration: .01ms !important; }
     button:active, .chip:active, .opt:active { transform: none; }
   }
   @media (prefers-reduced-transparency: reduce) {
     header { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
     .toast { background: #1d1d1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .bar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
   @media (prefers-contrast: more) {
     :root { --line: rgba(127, 127, 127, .6); --muted: var(--text); }
@@ -299,6 +354,29 @@
   </section>
 </main>
 
+<div class="bar" id="bar" role="toolbar" aria-label="Tâches sélectionnées" hidden>
+  <span class="bar-count" id="barCount"></span>
+  <input class="field" id="barName" type="text" placeholder="Nom du nouveau groupe" aria-label="Nom du groupe">
+  <button class="btn primary" type="button" id="barGroup">Grouper</button>
+  <select class="field" id="barAdd" aria-label="Ajouter à un groupe existant"></select>
+  <button class="btn link plain" type="button" id="barClear">Annuler</button>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-head">
+    <input class="sheet-title" id="sheetTitle" type="text" aria-label="Nom du groupe (modifiable)">
+    <button class="close" type="button" id="sheetClose" aria-label="Fermer">✕</button>
+  </div>
+  <div class="meta" id="sheetSub"></div>
+  <div class="prog"><span id="sheetProg"></span></div>
+  <div class="actions" style="margin:.2rem 0 .9rem">
+    <button class="btn" type="button" id="sheetDone">Tout marquer traité</button>
+    <button class="btn link" type="button" id="sheetDissolve">Dissoudre le groupe</button>
+  </div>
+  <div id="sheetList"></div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastText"></span><button type="button" id="toastUndo" hidden>Annuler</button></div>
 
 <script>
@@ -411,14 +489,22 @@ function emptyState(title, text) {
 const pointStatus = [['a_faire', 'À faire'], ['attente_tiers', 'En attente'], ['traite', 'Traité'], ['ignore', 'Sans objet']];
 const prioOrder = { rouge: 0, orange: 1, vert: 2 };
 
+const isOpen = (p) => p.statut === 'a_faire' || p.statut === 'attente_tiers';
+const leaves = () => points.filter(p => !p.estGroupe);
+const childrenOf = (g) => points.filter(p => !p.estGroupe && p.parent === g.id);
+const selected = new Set();   // tâches cochées pour les grouper
+let openGroupId = null;       // groupe affiché dans la fenêtre
+
 async function setPoint(p, statut, note, silent) {
   const before = { statut: p.statut, note: p.noteMoi };
   Object.assign(p, { statut, noteMoi: note, majPar: 'moi', majLe: new Date().toISOString() });
   renderAll();
   try {
     const r = await api('POST', '/api/suivi', { id: p.id, statut, note });
-    Object.assign(p, r.point);
-    if (!silent) toast(`« ${p.titre} » : ${pointStatus.find(s => s[0] === statut)[1].toLowerCase()}`, () => setPoint(p, before.statut, before.note, true));
+    if (r.points) points = r.points; else Object.assign(p, r.point);   // l'état des groupes suit
+    renderAll();
+    const label = pointStatus.find(s => s[0] === statut)[1].toLowerCase();
+    if (!silent) toast(`« ${p.titre} » : ${label}`, () => setPoint(points.find(x => x.id === p.id) || p, before.statut, before.note, true));
   } catch (e) {
     Object.assign(p, { statut: before.statut, noteMoi: before.note });
     renderAll();
@@ -426,10 +512,202 @@ async function setPoint(p, statut, note, silent) {
   }
 }
 
-function pointCard(p) {
+// --- Groupes ------------------------------------------------------------------
+async function groupAction(body, undo) {
+  try {
+    const r = await api('POST', '/api/groupe', body);
+    points = r.points;
+    selected.clear();
+    renderAll();
+    toast(r.message, undo);
+    return r;
+  } catch (e) { toast(e.message, null, true); }
+}
+
+// Annulation : chaque tâche retourne dans son groupe d'avant (ou hors groupe).
+function restoreParents(previous) {
+  return async () => {
+    const byParent = {};
+    previous.forEach(([id, parent]) => (byParent[parent || ''] ||= []).push(id));
+    for (const [parent, ids] of Object.entries(byParent)) {
+      await api('POST', '/api/groupe', parent ? { action: 'ajouter', groupe: parent, ids } : { action: 'retirer', ids }).catch(() => { });
+    }
+    points = (await api('GET', '/api/suivi')).points || points;
+    renderAll();
+  };
+}
+const parentsOf = (ids) => ids.map(id => [id, (points.find(p => p.id === id) || {}).parent || null]);
+
+async function setGroupDone(g) {
+  const before = childrenOf(g).filter(isOpen).map(c => [c.id, c.statut, c.noteMoi || '']);
+  try {
+    const r = await api('POST', '/api/suivi', { id: g.id, statut: 'traite', note: g.noteMoi || '' });
+    points = r.points;
+    renderAll();
+    toast(`« ${g.titre} » : ${before.length} sous-tâche(s) traitée(s)`, async () => {
+      for (const [id, statut, note] of before) await api('POST', '/api/suivi', { id, statut, note }).catch(() => { });
+      points = (await api('GET', '/api/suivi')).points || points;
+      renderAll();
+    });
+  } catch (e) { toast(e.message, null, true); }
+}
+
+// Nom proposé : les premiers mots communs des titres (« Revue des tickets STJAC » … → « Revues des tickets »).
+function suggestName(ids) {
+  const words = ids.map(id => ((points.find(p => p.id === id) || {}).titre || '').split(/\s+/)).filter(w => w[0]);
+  if (words.length < 2) return '';
+  const common = [];
+  for (let i = 0; i < words[0].length; i++) {
+    const w = words[0][i];
+    if (words.every(ws => (ws[i] || '').toLowerCase() === w.toLowerCase())) common.push(w); else break;
+  }
+  const name = common.join(' ').replace(/[\s:–\-,]+$/, '');
+  return name.split(' ').length >= 2 ? name.replace(/^(Revue|Tâche|Relance)\b/, '$1s') : '';
+}
+
+function renderBar() {
+  const bar = $('bar');
+  bar.hidden = selected.size === 0;
+  if (bar.hidden) return;
+  $('barCount').textContent = `${selected.size} sélectionnée${selected.size > 1 ? 's' : ''}`;
+  const name = $('barName');
+  if (!name.dataset.touched) name.value = suggestName([...selected]);
+  const groups = points.filter(p => p.estGroupe);
+  $('barAdd').innerHTML = '<option value="">Ajouter à un groupe…</option>' +
+    groups.map(g => `<option value="${esc(g.id)}">${esc(g.titre)}</option>`).join('');
+  $('barAdd').hidden = !groups.length;
+}
+
+$('barName').addEventListener('input', () => { $('barName').dataset.touched = '1'; });
+$('barName').addEventListener('keydown', e => { if (e.key === 'Enter') $('barGroup').click(); });
+$('barGroup').addEventListener('click', () => {
+  const ids = [...selected];
+  const titre = $('barName').value.trim();
+  if (!titre) { $('barName').focus(); toast('Donne un nom au groupe.', null, true); return; }
+  const previous = parentsOf(ids);
+  delete $('barName').dataset.touched;
+  groupAction({ action: 'creer', titre, ids }, restoreParents(previous));
+});
+$('barAdd').addEventListener('change', () => {
+  const groupe = $('barAdd').value;
+  if (!groupe) return;
+  const ids = [...selected];
+  groupAction({ action: 'ajouter', groupe, ids }, restoreParents(parentsOf(ids)));
+});
+$('barClear').addEventListener('click', () => { selected.clear(); delete $('barName').dataset.touched; renderAll(); });
+
+function selectButton(p) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'sel';
+  b.setAttribute('aria-pressed', String(selected.has(p.id)));
+  b.setAttribute('aria-label', 'Sélectionner pour grouper');
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    selected.has(p.id) ? selected.delete(p.id) : selected.add(p.id);
+    renderAll();
+  });
+  return b;
+}
+
+function groupCard(g) {
+  const kids = childrenOf(g);
+  const done = kids.filter(k => !isOpen(k)).length;
   const card = document.createElement('div');
-  const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
-  card.className = 'card' + (open ? '' : ' done');
+  card.className = 'card grp' + (isOpen(g) ? '' : ' done');
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `Ouvrir le groupe ${g.titre}`);
+  const clients = g.clients || [];
+  const order = { a_faire: 0, attente_tiers: 1, traite: 2, ignore: 3 };
+  const preview = [...kids].sort((a, b) => order[a.statut] - order[b.statut]).slice(0, 8);
+  card.innerHTML = `
+    <div class="head">
+      <span class="dot ${esc(g.priorite)}"></span>
+      <span class="title">${esc(g.titre)}</span>
+      <span class="tag">${done}/${kids.length} faites</span>
+      ${dueTag(g.echeance)}
+      <span class="mono">${esc(g.id)}</span>
+    </div>
+    <div class="prog" aria-hidden="true"><span style="width:${kids.length ? Math.round(done / kids.length * 100) : 0}%"></span></div>
+    <div class="kids">${preview.map(k => `<span class="kid ${esc(k.statut)}">${esc(k.client || k.id)}</span>`).join('')}${kids.length > preview.length ? `<span class="kid">+${kids.length - preview.length}</span>` : ''}</div>
+    <div class="meta" style="margin-top:.45rem">${clients.length ? esc(clients.join(', ')) + ' · ' : ''}${g.creePar === 'moi' ? 'groupe créé par moi' : 'groupé par la synthèse'} · ouvrir pour voir les sous-tâches</div>`;
+  const open = () => openSheet(g.id, card);
+  card.addEventListener('click', open);
+  card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  return card;
+}
+
+// --- Fenêtre d'un groupe -------------------------------------------------------
+let sheetOrigin = null;
+function openSheet(id, origin) {
+  openGroupId = id;
+  sheetOrigin = origin;
+  const sheet = $('sheet'), scrim = $('scrim');
+  sheet.hidden = scrim.hidden = false;
+  renderSheet();
+  // La fenêtre naît de la carte touchée (origine de l'agrandissement = la carte).
+  const r = origin.getBoundingClientRect(), s = sheet.getBoundingClientRect();
+  sheet.style.transformOrigin = `${r.left + r.width / 2 - s.left}px ${r.top + r.height / 2 - s.top}px`;
+  requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open'); });
+  $('sheetClose').focus();
+}
+
+function closeSheet() {
+  const sheet = $('sheet'), scrim = $('scrim');
+  if (sheet.hidden) return;
+  openGroupId = null;
+  sheet.classList.remove('open');
+  scrim.classList.remove('open');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(() => { if (!openGroupId) { sheet.hidden = scrim.hidden = true; } }, reduce ? 0 : 260);
+  if (sheetOrigin && document.body.contains(sheetOrigin)) sheetOrigin.focus();
+}
+$('sheetClose').addEventListener('click', closeSheet);
+$('scrim').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('sheet').hidden) closeSheet();
+  else if (selected.size) { selected.clear(); renderAll(); }
+});
+
+function renderSheet() {
+  const g = points.find(p => p.id === openGroupId && p.estGroupe);
+  if (!g) { closeSheet(); return; }
+  const kids = childrenOf(g);
+  const open = kids.filter(isOpen).length;
+  const title = $('sheetTitle');
+  if (document.activeElement !== title) title.value = g.titre;
+  $('sheetSub').textContent = `${kids.length - open}/${kids.length} faites · ${open} ouverte${open > 1 ? 's' : ''}` + (g.clients && g.clients.length ? ' · ' + g.clients.join(', ') : '');
+  $('sheetProg').style.width = (kids.length ? Math.round((kids.length - open) / kids.length * 100) : 0) + '%';
+  $('sheetDone').hidden = !open;
+  const list = $('sheetList');
+  list.innerHTML = '';
+  const order = { a_faire: 0, attente_tiers: 1, traite: 2, ignore: 3 };
+  [...kids].sort((a, b) => order[a.statut] - order[b.statut] || (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3))
+    .forEach(c => list.appendChild(pointCard(c, true)));
+}
+$('sheetTitle').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('sheetTitle').addEventListener('blur', () => {
+  const g = points.find(p => p.id === openGroupId);
+  const titre = $('sheetTitle').value.trim();
+  if (!g || !titre || titre === g.titre) return;
+  const old = g.titre;
+  groupAction({ action: 'renommer', groupe: g.id, titre }, () => groupAction({ action: 'renommer', groupe: g.id, titre: old }));
+});
+$('sheetDone').addEventListener('click', () => { const g = points.find(p => p.id === openGroupId); if (g) setGroupDone(g); });
+$('sheetDissolve').addEventListener('click', () => {
+  const g = points.find(p => p.id === openGroupId);
+  if (!g) return;
+  const ids = childrenOf(g).map(c => c.id), titre = g.titre;
+  closeSheet();
+  groupAction({ action: 'dissoudre', groupe: g.id }, () => groupAction({ action: 'creer', titre, ids }));
+});
+
+function pointCard(p, inSheet) {
+  const card = document.createElement('div');
+  const open = isOpen(p);
+  card.className = 'card' + (open ? '' : ' done') + (selected.has(p.id) ? ' picked' : '');
   const url = ticketUrl(p.ticket);
   const last = (p.historique || []).slice(-1)[0];
   const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
@@ -447,6 +725,16 @@ function pointCard(p) {
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
+  if (inSheet) {
+    const out = document.createElement('button');
+    out.type = 'button';
+    out.className = 'btn link';
+    out.textContent = 'Sortir du groupe';
+    out.addEventListener('click', () => groupAction({ action: 'retirer', ids: [p.id] }, restoreParents([[p.id, p.parent]])));
+    foot.appendChild(out);
+  } else {
+    card.querySelector('.head').prepend(selectButton(p));
+  }
   return card;
 }
 
@@ -455,21 +743,22 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
-  const visible = points.filter(p => {
-    const open = p.statut === 'a_faire' || p.statut === 'attente_tiers';
-    return (f === 'tous' || (f === 'ouverts') === open) && matches(p);
-  });
+  // Premier niveau : les groupes et les points hors groupe ; un groupe correspond si l'une de ses sous-tâches correspond.
+  const visible = points.filter(p => (p.estGroupe || !p.parent) &&
+    (f === 'tous' || (f === 'ouverts') === isOpen(p)) &&
+    (matches(p) || (p.estGroupe && childrenOf(p).some(matches))));
   if (!visible.length) { box.innerHTML = emptyState('Rien ici', f === 'ouverts' ? 'Aucun point ouvert ne correspond.' : 'Aucun point réglé ne correspond.'); return; }
-  const groups = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
-  for (const [s, title] of groups) {
+  const sections = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
+  for (const [s, title] of sections) {
     const list = visible.filter(p => p.statut === s).sort((a, b) =>
+      (b.estGroupe ? 1 : 0) - (a.estGroupe ? 1 : 0) ||
       (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
     if (!list.length) continue;
     const h = document.createElement('h2');
     h.className = 'group';
     h.innerHTML = `${title} <span class="count">${list.length}</span>`;
     box.appendChild(h);
-    list.forEach(p => box.appendChild(pointCard(p)));
+    list.forEach(p => box.appendChild(p.estGroupe ? groupCard(p) : pointCard(p)));
   }
 }
 
@@ -593,8 +882,9 @@ function renderSimple(type, boxId, emptyOpen, emptyAll, sections) {
 }
 
 function renderCounts() {
-  const openPoints = points.filter(p => p.statut === 'a_faire').length;
-  const urgent = points.filter(p => p.statut === 'a_faire' && p.priorite === 'rouge').length;
+  // Les compteurs portent sur les tâches réelles, pas sur les groupes.
+  const openPoints = leaves().filter(p => p.statut === 'a_faire').length;
+  const urgent = leaves().filter(p => p.statut === 'a_faire' && p.priorite === 'rouge').length;
   const count = (t) => elements.filter(e => e.type === t && e.statut === 'a_traiter').length;
   const set = (id, n, hot) => { const c = $(id); c.textContent = n; c.classList.toggle('hot', !!hot && n > 0); };
   set('c-suivi', openPoints, urgent);
@@ -602,7 +892,7 @@ function renderCounts() {
   set('c-facturation', count('facturation'));
   const lateAttention = elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && e.echeance && String(e.echeance).slice(0, 10) < today).length;
   set('c-attention', count('attention') + count('tam'), lateAttention);
-  const waiting = points.filter(p => p.statut === 'attente_tiers').length;
+  const waiting = leaves().filter(p => p.statut === 'attente_tiers').length;
   const e = state && state.etat || {};
   $('sub').textContent = `${openPoints} à faire${urgent ? ` dont ${urgent} urgents` : ''} · ${waiting} en attente` +
     (e.derniereSynthese ? ` · synthèse du ${shortDate(e.derniereSynthese)}` : '') +
@@ -613,6 +903,8 @@ function renderCounts() {
 function renderAll() {
   renderCounts();
   renderSuivi();
+  renderBar();
+  if (openGroupId) renderSheet();
   renderVariabilite();
   renderSimple('facturation', 'list-facturation', ['Rien à traiter', 'Aucun élément de facturation en attente.'], ['Rien pour l’instant', 'Aucun élément de facturation enregistré.'],
     [[['facturation'], 'Facturation']]);
