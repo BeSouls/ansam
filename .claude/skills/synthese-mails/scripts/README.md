@@ -52,6 +52,22 @@ choisir « À faire », « En attente d'un tiers » (ton action est faite),
 « Traité » ou « Sans objet », avec une note (« réglé par Teams le 28.10 »).
 Ton marquage tient jusqu'à ce qu'un nouveau message arrive sur le point.
 
+**Groupes** : les tâches d'une même activité se rangent sous une tâche
+plus large (par exemple « Revues des tickets », une sous-tâche par client).
+La synthèse regroupe d'elle-même les revues récurrentes et les chantiers ;
+à la main, cocher les tâches (rond à gauche) puis « Grouper » ou « Ajouter
+à un groupe » dans la barre qui apparaît en bas. Un clic sur un groupe
+ouvre sa fenêtre : statut des sous-tâches, « Sortir du groupe », nom
+modifiable, « Tout marquer traité », « Dissoudre le groupe ». Un point
+rangé ou sorti à la main n'est plus déplacé par la synthèse.
+
+Filtre **À contacter** : les tâches qui attendent un appel ou un mail de
+ta part. « Préparer le mail » ouvre le brouillon (destinataire, objet,
+texte) à relire, puis « Créer le brouillon Outlook » (rien n'est envoyé),
+« Ouvrir dans ma messagerie » ou « Copier ». « Préparer l'appel » donne le
+numéro et les points à aborder, et garde le compte rendu dans la note du
+point.
+
 Vues **Variabilité**, **Facturation** et **Attention** : les éléments à
 garder relevés par les synthèses (`archives.json`), établis ou à vérifier
 (avec l'indice et la façon de vérifier). La variabilité se lit par mois et

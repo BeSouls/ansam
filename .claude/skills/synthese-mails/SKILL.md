@@ -39,9 +39,11 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
      dernières notes datées (où j'en suis) et `cloture` (clôture préparée) ;
    - `portefeuille` : codes des clients suivis en tant que TAM.
    S'il manque, classer quand même et le signaler.
-3. **Tickets Jira assignés** : `jira-assignes.json`, mes tickets ouverts
-   (clé, titre, statut Jira, rapporteur, dates), lus le matin même en
-   lecture seule. Si la demande dit qu'ils sont indisponibles, le signaler.
+3. **Tickets Jira** : `jira-assignes.json`, lu le matin même en lecture
+   seule : `tickets`, mes tickets ouverts (clé, titre, statut, rapporteur,
+   dates) ; `suivis`, le statut réel (catégorie, résolution, assigné) des
+   tickets des points ouverts du registre, même clos ou réassignés. Si la
+   demande dit qu'ils sont indisponibles, le signaler.
 4. **Registre de suivi** : `suivi.json`, les points des synthèses
    précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
    `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand

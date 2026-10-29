@@ -300,6 +300,21 @@ try {
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
                 }
+                '^POST /api/brouillon$' {
+                    # Brouillon Outlook d'une prise de contact : enregistré dans Brouillons et ouvert pour relecture,
+                    # jamais envoyé par le script.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $to = ([string]$posted.a).Trim()
+                    if ($to -and $to -notmatch '^[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+([;,]\s*[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+)*$') { throw "Adresse invalide : $to" }
+                    $outlook = New-Object -ComObject Outlook.Application
+                    $draft = $outlook.CreateItem(0)   # olMailItem
+                    $draft.To = $to
+                    $draft.Subject = [string]$posted.objet
+                    $draft.Body = [string]$posted.message
+                    $draft.Save()
+                    try { $draft.Display($false) } catch { }
+                    Send-Json $stream 200 ([ordered]@{ message = 'Brouillon créé dans Outlook (dossier Brouillons) : relis-le puis envoie-le toi-même.' })
+                }
                 '^POST /api/groupe$' {
                     # Groupement manuel : créer, ajouter, retirer, renommer, dissoudre.
                     $posted = $request.Body | ConvertFrom-Json

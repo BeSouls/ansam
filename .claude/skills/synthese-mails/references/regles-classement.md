@@ -95,14 +95,34 @@ Sources, de la plus forte à la plus faible :
 2. **AnsamDiag** : statut `Resolu` ou note « RESOLU » → `traite` ; statut
    `EnAttente` ou note qui dit que l'action est faite et que j'attends →
    `attente_tiers` ; clôture préparée (`cloture`) → `traite`.
-3. **Jira** : ticket absent de la liste des assignés ouverts, ou statut
-   « Résolu » / « Clos » → `traite` ; « En attente du client », « En
+3. **Jira** (`suivis` donne le statut réel de chaque ticket suivi, même
+   clos ou réassigné) : statut de catégorie « Terminé » (« Résolu »,
+   « Clos »…) → `traite` ; ticket réassigné à quelqu'un d'autre → `traite`
+   avec le motif « réassigné à X » ; « En attente du client », « En
    attente du fournisseur », « En attente Interne », « Awaiting CAB »,
    « Planifié » → `attente_tiers` (préciser qui ou quoi) ; « En cours »,
    « Ouvert », « À traiter » → `a_faire`.
 4. **Les mails** : ma réponse est le dernier message et elle n'appelle
    rien de ma part → `attente_tiers` ; elle clôt le sujet → `traite` ; un
    message plus récent que le mien me demande quelque chose → `a_faire`.
+
+### Commentaire du client après la clôture
+
+À la clôture d'un ticket, le client répond presque toujours (« accepté »,
+« merci », questionnaire de satisfaction, notification « nouveau
+commentaire sur le ticket clôturé »). **Ce n'est pas une tâche.** Quand il
+refuse la résolution, Jira rouvre le ticket : il réapparaît alors ouvert
+dans `suivis` ou dans mes tickets.
+
+- Ticket **Terminé** dans `suivis` (ou clôture préparée dans AnsamDiag) et
+  dernier événement = commentaire du client → `traite`, motif
+  « commentaire après clôture, ticket toujours clos ». Ne jamais rouvrir le
+  point pour ça, ni créer de tâche dérivée (« documenter… »).
+- Exception : le commentaire, lisible dans le mail, **demande clairement
+  autre chose** (nouveau problème, refus explicite) alors que le ticket est
+  resté clos → `a_faire`, motif « nouvelle demande après clôture : … ».
+- Ticket **rouvert** (statut ouvert dans `suivis` après une note « RESOLU »)
+  → `a_faire`, motif « rouvert par le client ».
 
 Quand les sources se contredisent, prendre la plus forte et signaler la
 contradiction dans le motif (« Jira dit En cours, AnsamDiag dit Résolu »).
@@ -151,6 +171,32 @@ retard, ou si un mail ou une note le concerne.
 Une **relance** remonte toujours d'un cran. Sans échéance, une attente de
 plus de 3 jours ouvrés passe au moins en 🟠. En cas d'hésitation entre deux
 niveaux, prendre le plus élevé et dire pourquoi.
+
+### Prise de contact
+
+Un point demande une **prise de contact** quand, pour avancer, je dois
+moi-même appeler ou écrire à quelqu'un : relance restée sans réponse,
+information à obtenir, rendez-vous ou date à fixer, décision ou accord à
+demander, test à faire avec l'utilisateur. Le point reçoit alors un objet
+`contact` (voir le modèle) :
+
+- `mode` : `appel` quand c'est urgent, qu'un échange de mails a déjà
+  échoué, que la personne a demandé à être appelée ou qu'il faut agir avec
+  elle ; sinon `mail` ;
+- `nom`, `role`, `email`, `telephone` : la bonne personne, pas la boîte
+  générique, avec son adresse et son numéro tels qu'ils figurent dans les
+  mails (signature), la fiche client (contacts) ou le ticket. Rien
+  d'inventé : une donnée introuvable reste `null` ;
+- pour un mail : `objet` (avec la clé du ticket s'il y en a une) et
+  `message`, le brouillon complet, prêt à envoyer : en français, vouvoiement
+  pour les clients, court, qui rappelle le contexte en une phrase, pose la
+  ou les questions précises, et se termine comme mes mails envoyés
+  (formule et signature) ;
+- pour un appel : `points`, les 3 à 6 points à aborder, dans l'ordre, et ce
+  qu'il faut obtenir à la fin de l'appel.
+
+Jamais de mot de passe, de lien de mot de passe ni de secret dans un
+brouillon. Le brouillon est une proposition : rien n'est envoyé sans moi.
 
 ### Ce qu'on attend de moi
 

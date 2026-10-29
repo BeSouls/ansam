@@ -38,7 +38,7 @@
   .top { display: flex; align-items: center; gap: .75rem; padding: .9rem 0 .6rem; flex-wrap: wrap; }
   h1 { font-size: 1.5rem; line-height: 1.1; letter-spacing: -.02em; margin: 0; font-weight: 700; }
   .sub { color: var(--muted); font-size: .8125rem; margin-top: .15rem; }
-  .search { margin-left: auto; flex: 1 1 14rem; max-width: 20rem; }
+  .search { margin-left: auto; flex: 1 1 9rem; max-width: 18rem; }
   .search input {
     width: 100%; font: inherit; font-size: .9375rem; padding: .45rem .8rem; border-radius: 10px;
     border: 1px solid transparent; background: var(--surface-2); color: var(--text); outline: none;
@@ -205,6 +205,21 @@
   .sheet-title:focus { border-color: var(--accent); background: var(--surface); }
   .close { width: 2rem; height: 2rem; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--muted); font-size: .9rem; cursor: pointer; flex: none; }
 
+  /* Prise de contact */
+  .contact { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .5rem 0 .1rem; padding: .5rem .65rem; border-radius: 10px; background: var(--blue-soft); font-size: .875rem; }
+  .contact .who { flex: 1 1 12rem; }
+  .contact .who b { font-weight: 600; }
+  .contact .btn { font-size: .8125rem; padding: .32rem .75rem; background: var(--surface); }
+  .sheet-h { flex: 1; font-size: 1.375rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin: 0; }
+  #csheet { z-index: 32; }
+  #csheet textarea.field { resize: vertical; line-height: 1.5; font-size: .9375rem; }
+  #csheet a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .callcard { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: .8rem; padding: .8rem 1rem;
+    border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+  .phone { font-size: 1.375rem; font-weight: 700; letter-spacing: .01em; color: var(--accent); }
+  ol.talk { margin: .2rem 0 1rem; padding-left: 1.3rem; font-size: .9375rem; }
+  ol.talk li { margin-bottom: .3rem; }
+
   /* Toast d'annulation */
   .toast {
     position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); opacity: 0; pointer-events: none; z-index: 20;
@@ -266,6 +281,7 @@
   <section class="pane" id="p-suivi">
     <div class="toolbar">
       <button class="chip" data-f="ouverts" aria-pressed="true">Ouverts</button>
+      <button class="chip" data-f="contact" aria-pressed="false">À contacter <span class="count" id="c-contact">0</span></button>
       <button class="chip" data-f="regles" aria-pressed="false">Réglés</button>
       <button class="chip" data-f="tous" aria-pressed="false">Tous</button>
     </div>
@@ -363,6 +379,38 @@
 </div>
 
 <div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="csheet" role="dialog" aria-modal="true" aria-labelledby="csTitle" hidden>
+  <div class="sheet-head">
+    <h2 class="sheet-h" id="csTitle"></h2>
+    <button class="close" type="button" id="csClose" aria-label="Fermer">✕</button>
+  </div>
+  <div class="meta" id="csSub"></div>
+  <div id="csMail">
+    <label class="f" for="csTo">À</label><input class="field" id="csTo" type="text">
+    <label class="f" for="csSubject" style="margin-top:.6rem">Objet</label><input class="field" id="csSubject" type="text">
+    <label class="f" for="csBody" style="margin-top:.6rem">Message</label><textarea class="field" id="csBody" rows="12"></textarea>
+    <div class="actions" style="margin-top:.8rem">
+      <button class="btn primary" type="button" id="csDraft">Créer le brouillon Outlook</button>
+      <a class="btn" id="csMailto" href="#">Ouvrir dans ma messagerie</a>
+      <button class="btn" type="button" id="csCopyMail">Copier le texte</button>
+    </div>
+    <p class="hint" style="margin-top:.6rem">Rien n'est envoyé : le brouillon s'ouvre pour relecture, c'est toi qui l'envoies.</p>
+  </div>
+  <div id="csCall">
+    <div class="callcard">
+      <div><div class="title" id="csName"></div><div class="meta" id="csRole"></div></div>
+      <a class="phone" id="csPhone" href="#"></a>
+    </div>
+    <label class="f" style="margin-top:.9rem">Points à aborder</label>
+    <ol class="talk" id="csPoints"></ol>
+    <label class="f" for="csReport">Compte rendu (enregistré comme note du point)</label>
+    <textarea class="field" id="csReport" rows="4" placeholder="Ce qui a été dit, ce qui a été décidé…"></textarea>
+    <div class="actions" style="margin-top:.8rem">
+      <button class="btn primary" type="button" id="csSaveCall">Enregistrer le compte rendu</button>
+      <button class="btn" type="button" id="csCopyCall">Copier les points</button>
+    </div>
+  </div>
+</div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
   <div class="sheet-head">
     <input class="sheet-title" id="sheetTitle" type="text" aria-label="Nom du groupe (modifiable)">
@@ -658,16 +706,18 @@ function closeSheet() {
   if (sheet.hidden) return;
   openGroupId = null;
   sheet.classList.remove('open');
-  scrim.classList.remove('open');
+  const other = !$('csheet').hidden;   // la fenêtre de contact peut être ouverte par-dessus
+  if (!other) scrim.classList.remove('open');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  setTimeout(() => { if (!openGroupId) { sheet.hidden = scrim.hidden = true; } }, reduce ? 0 : 260);
+  setTimeout(() => { if (!openGroupId) { sheet.hidden = true; if ($('csheet').hidden) scrim.hidden = true; } }, reduce ? 0 : 260);
   if (sheetOrigin && document.body.contains(sheetOrigin)) sheetOrigin.focus();
 }
 $('sheetClose').addEventListener('click', closeSheet);
-$('scrim').addEventListener('click', closeSheet);
+$('scrim').addEventListener('click', () => { if (!$('csheet').hidden) closeContact(); else closeSheet(); });
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (!$('sheet').hidden) closeSheet();
+  if (!$('csheet').hidden) closeContact();
+  else if (!$('sheet').hidden) closeSheet();
   else if (selected.size) { selected.clear(); renderAll(); }
 });
 
@@ -704,6 +754,92 @@ $('sheetDissolve').addEventListener('click', () => {
   groupAction({ action: 'dissoudre', groupe: g.id }, () => groupAction({ action: 'creer', titre, ids }));
 });
 
+// --- Prise de contact (appel ou mail) ------------------------------------------
+const needsContact = (p) => isOpen(p) && p.contact && (p.contact.mode === 'appel' || p.contact.mode === 'mail');
+
+function contactStrip(c) {
+  const call = c.mode === 'appel';
+  const who = [c.nom, c.role].filter(Boolean).map(esc).join(', ') || 'Contact à identifier';
+  const how = call ? (c.telephone ? esc(c.telephone) : 'numéro à trouver') : (c.email ? esc(c.email) : 'adresse à trouver');
+  return `<div class="contact"><span class="who">${call ? 'Appeler' : 'Écrire à'} <b>${who}</b> · ${how}</span>` +
+         `<button class="btn" type="button">${call ? 'Préparer l’appel' : 'Préparer le mail'}</button></div>`;
+}
+
+let contactPoint = null, contactOrigin = null;
+function openContact(p, origin) {
+  contactPoint = p;
+  contactOrigin = origin;
+  const c = p.contact, call = c.mode === 'appel';
+  $('csTitle').textContent = call ? `Appeler ${c.nom || ''}`.trim() : `Écrire à ${c.nom || c.email || ''}`.trim();
+  $('csSub').textContent = `${p.titre}${p.ticket ? ' · ' + p.ticket : ''}${p.client ? ' · ' + p.client : ''}`;
+  $('csMail').hidden = call;
+  $('csCall').hidden = !call;
+  if (call) {
+    $('csName').textContent = c.nom || 'Contact à identifier';
+    $('csRole').textContent = c.role || '';
+    $('csPhone').textContent = c.telephone || 'Numéro introuvable dans les mails';
+    $('csPhone').href = c.telephone ? 'tel:' + c.telephone.replace(/[^\d+]/g, '') : '#';
+    $('csPoints').innerHTML = (c.points || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>Points à préparer</li>';
+    $('csReport').value = '';
+  } else {
+    $('csTo').value = c.email || '';
+    $('csSubject').value = c.objet || '';
+    $('csBody').value = c.message || '';
+    updateMailto();
+  }
+  const sheet = $('csheet'), scrim = $('scrim');
+  sheet.hidden = scrim.hidden = false;
+  const r = origin.getBoundingClientRect(), s = sheet.getBoundingClientRect();
+  sheet.style.transformOrigin = `${r.left + r.width / 2 - s.left}px ${r.top + r.height / 2 - s.top}px`;
+  requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open'); });
+  $('csClose').focus();
+}
+
+function closeContact() {
+  const sheet = $('csheet');
+  if (sheet.hidden) return;
+  contactPoint = null;
+  sheet.classList.remove('open');
+  if ($('sheet').hidden) $('scrim').classList.remove('open');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(() => { if (!contactPoint) { sheet.hidden = true; if ($('sheet').hidden) $('scrim').hidden = true; } }, reduce ? 0 : 260);
+  if (contactOrigin && document.body.contains(contactOrigin)) contactOrigin.focus();
+}
+
+function updateMailto() {
+  $('csMailto').href = `mailto:${$('csTo').value.trim()}?subject=${encodeURIComponent($('csSubject').value)}&body=${encodeURIComponent($('csBody').value)}`;
+}
+['csTo', 'csSubject', 'csBody'].forEach(id => $(id).addEventListener('input', updateMailto));
+$('csClose').addEventListener('click', closeContact);
+
+async function copyText(text, label) {
+  try { await navigator.clipboard.writeText(text); toast(label); }
+  catch (e) { toast('Copie impossible : sélectionne le texte à la main.', null, true); }
+}
+$('csCopyMail').addEventListener('click', () => copyText(`À : ${$('csTo').value}\nObjet : ${$('csSubject').value}\n\n${$('csBody').value}`, 'Mail copié.'));
+$('csCopyCall').addEventListener('click', () => {
+  const c = contactPoint && contactPoint.contact || {};
+  copyText(`${c.nom || ''} ${c.telephone || ''}\n` + (c.points || []).map((x, i) => `${i + 1}. ${x}`).join('\n'), 'Points copiés.');
+});
+$('csDraft').addEventListener('click', async () => {
+  const b = $('csDraft');
+  b.disabled = true;
+  try {
+    const r = await api('POST', '/api/brouillon', { a: $('csTo').value.trim(), objet: $('csSubject').value, message: $('csBody').value });
+    toast(r.message);
+  } catch (e) { toast(e.message, null, true); }
+  b.disabled = false;
+});
+$('csSaveCall').addEventListener('click', () => {
+  const p = contactPoint;
+  const report = $('csReport').value.trim();
+  if (!p || !report) { toast('Écris d’abord le compte rendu.', null, true); return; }
+  const stamp = new Date().toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' });
+  const note = [p.noteMoi, `Appel du ${stamp} : ${report}`].filter(Boolean).join(' · ');
+  closeContact();
+  setPoint(p, p.statut, note, true).then(() => toast('Compte rendu enregistré dans la note du point.'));
+});
+
 function pointCard(p, inSheet) {
   const card = document.createElement('div');
   const open = isOpen(p);
@@ -720,8 +856,11 @@ function pointCard(p, inSheet) {
       <span class="mono">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(p.id)}</a>` : esc(p.id)}</span>
     </div>
     ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
+    ${needsContact(p) ? contactStrip(p.contact) : ''}
     <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
     <div class="foot"></div>`;
+  const prep = card.querySelector('.contact .btn');
+  if (prep) prep.addEventListener('click', e => { e.stopPropagation(); openContact(p, card); });
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
@@ -743,6 +882,22 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
+  if (f === 'contact') {
+    // Vue à plat : toutes les tâches ouvertes qui attendent un appel ou un mail de ma part, groupes compris.
+    const list = leaves().filter(p => needsContact(p) && matches(p))
+      .sort((a, b) => (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
+    if (!list.length) { box.innerHTML = emptyState('Personne à contacter', 'Aucune tâche ouverte n’attend d’appel ni de mail de ta part.'); return; }
+    for (const [mode, title] of [['appel', 'À appeler'], ['mail', 'À écrire']]) {
+      const part = list.filter(p => (p.contact.mode === 'appel') === (mode === 'appel'));
+      if (!part.length) continue;
+      const h = document.createElement('h2');
+      h.className = 'group';
+      h.innerHTML = `${title} <span class="count">${part.length}</span>`;
+      box.appendChild(h);
+      part.forEach(p => box.appendChild(pointCard(p)));
+    }
+    return;
+  }
   // Premier niveau : les groupes et les points hors groupe ; un groupe correspond si l'une de ses sous-tâches correspond.
   const visible = points.filter(p => (p.estGroupe || !p.parent) &&
     (f === 'tous' || (f === 'ouverts') === isOpen(p)) &&
@@ -888,6 +1043,7 @@ function renderCounts() {
   const count = (t) => elements.filter(e => e.type === t && e.statut === 'a_traiter').length;
   const set = (id, n, hot) => { const c = $(id); c.textContent = n; c.classList.toggle('hot', !!hot && n > 0); };
   set('c-suivi', openPoints, urgent);
+  set('c-contact', leaves().filter(needsContact).length);
   set('c-variabilite', count('variabilite'));
   set('c-facturation', count('facturation'));
   const lateAttention = elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && e.echeance && String(e.echeance).slice(0, 10) < today).length;

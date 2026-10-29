@@ -111,7 +111,10 @@ try {
     # Tickets Jira assignés (lecture seule) ; en cas d'échec, la synthèse continue sans eux.
     $jiraFile = Join-Path $WorkDir 'jira-assignes.json'
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"
-    $jiraOk = & (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1') -OutputFile $jiraFile -ClaudeExe $ClaudeExe | Select-Object -Last 1
+    # Statut réel des tickets des points ouverts : clos, rouvert, réassigné.
+    $trackedKeys = @((Get-SmSuivi $WorkDir).points | Where-Object { $_.ticket -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') } |
+        ForEach-Object { [string]$_.ticket })
+    $jiraOk = & (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1') -OutputFile $jiraFile -ClaudeExe $ClaudeExe -Cles $trackedKeys | Select-Object -Last 1
     $jiraNote = $(if ($jiraOk) { "tickets Jira assignés : $jiraFile" }
                   elseif (Test-Path $jiraFile) { "tickets Jira assignés : $jiraFile (lecture du jour en échec : liste de la veille, à signaler)" }
                   else { "tickets Jira assignés : indisponibles aujourd'hui (à signaler dans les points d'attention)" })

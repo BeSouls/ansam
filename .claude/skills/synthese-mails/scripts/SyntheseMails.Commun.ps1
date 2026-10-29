@@ -254,7 +254,7 @@ function Merge-SmSuivi($Suivi, $Updates) {
         }
 
         # Champs descriptifs : toujours mis à jour.
-        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
+        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage', 'contact') {
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
         }
 

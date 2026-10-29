@@ -30,6 +30,12 @@ sous-tâches ouvertes en résumé, par exemple :
 
 | 🟠 | `G-20261029-1` | 5 clients | Revues des tickets (0/5 faites) | 2 j | Revues ouvertes : STJAC, SWPI, SLV, PREST, ZENIT | 30.10 |
 
+### À contacter
+Les points qui attendent un appel ou un mail de ma part ; le brouillon ou
+les points à aborder sont dans la page de suivi (filtre « À contacter »).
+- 📞 `ASD-12345` Appeler Jean Dupont (ABC, 079 123 45 67) : fixer la date du test.
+- ✉ `ASD-12346` Écrire à marie.martin@abc.ch : « ASD-12346 – Validation du devis ».
+
 ### En attente d'un tiers
 | Point | Client | Sujet | J'attends | Depuis | Source du statut |
 |---|---|---|---|---|---|
@@ -99,6 +105,9 @@ s'il y en a un, sinon `null`), `titre`, `client`, `ticket` (ou `null`),
 `groupe` (nom du groupe où ranger le point, par exemple « Revues des
 tickets », ou `null` : voir « Regrouper les points » dans les règles ; ne
 jamais renvoyer les groupes eux-mêmes, leur état se calcule),
+`contact` (`null`, ou la prise de contact nécessaire, voir « Prise de
+contact » dans les règles :
+`{"mode": "mail" | "appel", "nom", "role", "email", "telephone", "objet", "message", "points": []}`),
 `priorite` (`rouge`, `orange`, `vert`), `action` (ce qu'on attend de moi, ou
 ce que j'attends), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
 et date du mail le plus récent), `dernierMessage` (date ISO du dernier
