@@ -195,8 +195,13 @@ niveaux, prendre le plus élevé et dire pourquoi.
 Un point demande une **prise de contact** quand, pour avancer, je dois
 moi-même appeler ou écrire à quelqu'un : relance restée sans réponse,
 information à obtenir, rendez-vous ou date à fixer, décision ou accord à
-demander, test à faire avec l'utilisateur. Le point reçoit alors un objet
-`contact` (voir le modèle) :
+demander, test à faire avec l'utilisateur, **information à transmettre à
+un tiers** (opérateur, fournisseur, éditeur : « transmettre à Swisscom
+l'adresse de livraison », « confirmer au fournisseur la date »). Le point
+reçoit alors un objet `contact` (voir le modèle). Une action qui commence
+par transmettre, relancer, appeler, contacter, écrire, demander, informer
+ou confirmer à quelqu'un a toujours un `contact` ; à défaut, le lanceur en
+crée un vide, à rédiger. Le `contact` :
 
 - `mode` : `appel` quand c'est urgent, qu'un échange de mails a déjà
   échoué, que la personne a demandé à être appelée ou qu'il faut agir avec
@@ -205,6 +210,12 @@ demander, test à faire avec l'utilisateur. Le point reçoit alors un objet
   générique, avec son adresse et son numéro tels qu'ils figurent dans les
   mails (signature), la fiche client (contacts) ou le ticket. Rien
   d'inventé : une donnée introuvable reste `null` ;
+- pour un **tiers de l'annuaire** (donné dans la demande : nom, mots-clés,
+  adresse, numéro, sujet), son canal officiel est la bonne adresse, même
+  générique : `nom` = le nom de l'annuaire, `email` et `telephone` repris
+  tels quels, sauf si le fil donne un interlocuteur nommé chez ce tiers pour
+  ce dossier. L'annuaire vaut aussi chez un client BWS (ligne, raccordement,
+  commande) ; seul un cas ServiceNow ouvert (CS…) se suit dans ServiceNow ;
 - pour un mail : `objet` (avec la clé du ticket s'il y en a une) et
   `message`, le brouillon complet, prêt à envoyer : en français, vouvoiement
   pour les clients, court, qui rappelle le contexte en une phrase, pose la

@@ -138,7 +138,8 @@ try {
     $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
               "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile ; " +
               "$jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
-              "registre des éléments à garder : $archivesFile. " +
+              "registre des éléments à garder : $archivesFile ; " +
+              "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers). " +
               "Nouveautés depuis la dernière synthèse : $since."
     $absences = @($plan.absences)
     if ($absences.Count) {
@@ -173,6 +174,8 @@ try {
         if ($null -eq $updates) { throw 'bloc absent' }
         $changes = Merge-SmSuivi $suivi $updates
         if ($jira) { [void](Sync-SmJira $suivi $jira $contextData) }   # Jira a le dernier mot sur ce qui est encore ouvert
+        $completed = Update-SmContacts $suivi $config
+        if ($completed) { Write-Host "Prises de contact complétées : $completed." }
         Save-SmSuivi $suivi $WorkDir
         Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
     } catch {

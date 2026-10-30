@@ -192,6 +192,7 @@ function ConvertFrom-PageConfig([string]$Json) {
     $config.absences = @(@($config.absences) | Where-Object { $_ } | ForEach-Object {
         [ordered]@{ debut = [string]$_.debut; fin = [string]$_.fin; libelle = ([string]$_.libelle).Trim() }
     } | Sort-Object { $_.debut })
+    $config.contactsTiers = @(ConvertTo-SmContactsTiers $config.contactsTiers)
     $config
 }
 

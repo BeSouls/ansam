@@ -68,6 +68,8 @@ try {
               $(if ($ticketDir) { "le dossier $ticketDir (toutes les notes de ticket.json, TICKET.md, POUR-AGENT.md, brief-*.md, message-*.md, cloture.md, et chaque <horodatage>_<Outil>\resume.md : ce qui a été testé et trouvé) ; " } else { '' }) +
               $(if ($point.ticket) { "le ticket Jira $($point.ticket) avec tous ses commentaires (connecteur Atlassian, lecture seule) ; " } else { '' }) +
               $(if ($export) { "dans $($export.FullName), tous les mails du fil (même objet, même ticket, mêmes interlocuteurs), corps complets ; " } else { '' }) +
+              "Annuaire des tiers (si c'est l'un d'eux qu'il faut contacter, utilise son adresse et son numéro) : " +
+              "$(Format-SmContactsTiers $config.contactsTiers). " +
               "Ne repose pas une question à laquelle on a déjà répondu, ne redemande pas un test déjà fait, tiens compte du plan de résolution. " +
               "Garde le mode (mail ou appel) sauf si le dossier montre clairement que l'autre convient mieux. " +
               "Réponds UNIQUEMENT par un objet JSON : {""mode"":""mail|appel"",""nom"":"""",""role"":"""",""email"":null,""telephone"":null," +
@@ -99,6 +101,7 @@ try {
     $target = $suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
     if (-not $target) { throw "Point « $Id » disparu du registre." }
     $target.contact = $contact
+    [void](Update-SmContacts $suivi $config)   # adresse et numéro officiels d'un tiers de l'annuaire, s'ils manquent
     Save-SmSuivi $suivi $WorkDir
     Set-Status 'ok' $(if ($contact.mode -eq 'appel') { 'Points d''appel rédigés avec tout le dossier.' } else { 'Brouillon rédigé avec tout le dossier.' })
 } catch {

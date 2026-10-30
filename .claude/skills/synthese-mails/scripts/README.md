@@ -67,7 +67,10 @@ modifiable, « Tout marquer traité », « Dissoudre le groupe ». Un point
 rangé ou sorti à la main n'est plus déplacé par la synthèse.
 
 Filtre **À contacter** : les tâches qui attendent un appel ou un mail de
-ta part. « Préparer le mail » ouvre le brouillon (destinataire, objet,
+ta part. Une tâche dont l'action est d'écrire ou d'appeler à quelqu'un
+(« transmettre à Swisscom », « relancer », « répondre à »…) y figure même
+si la synthèse a oublié la prise de contact : elle reçoit alors un brouillon
+vide, à rédiger avec tout le dossier. « Préparer le mail » ouvre le brouillon (destinataire, objet,
 texte) à relire, puis « Créer le brouillon Outlook » (rien n'est envoyé),
 « Ouvrir dans ma messagerie » ou « Copier ». « Préparer l'appel » donne le
 numéro et les points à aborder, et garde le compte rendu dans la note du
@@ -115,6 +118,11 @@ Onglet **Réglages** :
 - fenêtre relue (14 jours par défaut) ;
 - **absences** (vacances, formation…) : pas de synthèse pendant
   l'absence, puis une synthèse de retour qui couvre toute la période ;
+- **contacts des tiers** : canal officiel d'un opérateur ou d'un
+  fournisseur (par défaut Swisscom Partner Management,
+  partner.management@swisscom.com, +41 800 800 650). Une tâche qui demande
+  de contacter ce tiers (reconnu par ses mots-clés) reçoit cette adresse et
+  ce numéro ; un cas ServiceNow (CS…) reste suivi dans ServiceNow ;
 - dossier des données AnsamDiag et dossier Outlook du portefeuille.
 
 La page affiche aussi la prochaine synthèse prévue, l'état de la tâche

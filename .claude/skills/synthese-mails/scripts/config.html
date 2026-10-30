@@ -145,6 +145,9 @@
   th, td { text-align: left; padding: .45rem .3rem; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
   .row-add { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: .5rem; margin-top: .7rem; align-items: end; }
+  .row-add.six { grid-template-columns: 1.4fr 1fr 1.6fr 1.1fr 1.4fr auto; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-scroll td { overflow-wrap: anywhere; }
   .btn { font: inherit; font-size: .9375rem; font-weight: 600; border-radius: 9px; padding: .5rem 1rem; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; transition: transform .1s ease-out; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .btn.link { border: 0; background: none; color: var(--red); padding: .2rem .4rem; font-size: .875rem; }
@@ -255,9 +258,10 @@
   .toast button { font: inherit; font-weight: 600; color: #ff8ab4; background: none; border: 0; cursor: pointer; padding: .2rem .3rem; }
 
   @media (max-width: 40rem) {
-    .row-add { grid-template-columns: 1fr 1fr; }
+    .row-add, .row-add.six { grid-template-columns: 1fr 1fr; }
     .search { max-width: none; flex-basis: 100%; }
   }
+  @media (max-width: 22.5rem) { .row-add, .row-add.six { grid-template-columns: minmax(0, 1fr); } }
   @media (prefers-reduced-motion: reduce) {
     .pane { animation: none; }
     .spinner { animation: none; border-color: var(--accent); }
@@ -369,15 +373,35 @@
     <div class="panel">
       <h2>Absences</h2>
       <p class="hint">Pas de synthèse pendant une absence ; au retour, une seule synthèse couvre toute la période.</p>
-      <table>
-        <thead><tr><th>Du</th><th>Au</th><th>Libellé</th><th></th></tr></thead>
-        <tbody id="absences"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Du</th><th>Au</th><th>Libellé</th><th></th></tr></thead>
+          <tbody id="absences"></tbody>
+        </table>
+      </div>
       <div class="row-add">
         <div><label class="f" for="absDebut">Du</label><input class="field" type="date" id="absDebut"></div>
         <div><label class="f" for="absFin">Au</label><input class="field" type="date" id="absFin"></div>
         <div><label class="f" for="absLibelle">Libellé</label><input class="field" type="text" id="absLibelle" placeholder="Vacances, formation…"></div>
         <div><button class="btn" type="button" id="absAdd">Ajouter</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Contacts des tiers</h2>
+      <p class="hint">Canal officiel d’un fournisseur ou d’un opérateur : une tâche qui demande de le contacter reçoit cette adresse et ce numéro. Les mots-clés (séparés par des virgules) sont le nom du tiers tel qu’il apparaît dans les tâches.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Nom</th><th>Mots-clés</th><th>Adresse</th><th>Téléphone</th><th>Pour</th><th></th></tr></thead>
+          <tbody id="tiers"></tbody>
+        </table>
+      </div>
+      <div class="row-add six">
+        <div><label class="f" for="tiNom">Nom</label><input class="field" type="text" id="tiNom" placeholder="Swisscom Partner Management"></div>
+        <div><label class="f" for="tiMots">Mots-clés</label><input class="field" type="text" id="tiMots" placeholder="Swisscom"></div>
+        <div><label class="f" for="tiEmail">Adresse</label><input class="field" type="email" id="tiEmail"></div>
+        <div><label class="f" for="tiTel">Téléphone</label><input class="field" type="tel" id="tiTel"></div>
+        <div><label class="f" for="tiNote">Pour</label><input class="field" type="text" id="tiNote" placeholder="Lignes, commandes…"></div>
+        <div><button class="btn" type="button" id="tiAdd">Ajouter</button></div>
       </div>
     </div>
     <div class="panel">
@@ -856,7 +880,8 @@ const needsContact = (p) => isOpen(p) && p.contact && (p.contact.mode === 'appel
 function contactStrip(c) {
   const call = c.mode === 'appel';
   const who = [c.nom, c.role].filter(Boolean).map(esc).join(', ') || 'Contact à identifier';
-  const how = call ? (c.telephone ? esc(c.telephone) : 'numéro à trouver') : (c.email ? esc(c.email) : 'adresse à trouver');
+  const how = call ? (c.telephone ? esc(c.telephone) : 'numéro à trouver')
+                   : (c.email ? esc(c.email) : 'adresse à trouver') + (c.telephone ? ` · ${esc(c.telephone)}` : '');
   return `<div class="contact"><span class="who">${call ? 'Appeler' : 'Écrire à'} <b>${who}</b> · ${how}</span>` +
          `<button class="btn" type="button">${call ? 'Préparer l’appel' : 'Préparer le mail'}</button></div>`;
 }
@@ -880,7 +905,7 @@ function fillContact(p) {
   $('csResume').textContent = c.resume || '';
   $('csRedige').textContent = c.redigeLe
     ? `rédigé avec tout le dossier le ${shortDate(c.redigeLe)} à ${new Date(c.redigeLe).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}`
-    : 'brouillon de la synthèse du matin';
+    : (!c.message && !(c.points || []).length ? 'à rédiger : « Rédiger avec tout le dossier »' : 'brouillon de la synthèse du matin');
   $('csTitle').textContent = call ? `Appeler ${c.nom || ''}`.trim() : `Écrire à ${c.nom || c.email || ''}`.trim();
   $('csSub').textContent = `${p.titre}${p.ticket ? ' · ' + p.ticket : ''}${p.client ? ' · ' + p.client : ''}`;
   $('csMail').hidden = call;
@@ -1225,6 +1250,20 @@ function renderAbsences() {
   });
 }
 
+let tiers = [];
+function renderTiers() {
+  const body = $('tiers');
+  body.innerHTML = '';
+  if (!tiers.length) { body.innerHTML = '<tr><td colspan="6" class="meta">Aucun contact de tiers.</td></tr>'; return; }
+  tiers.forEach((t, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(t.nom)}</td><td>${esc(t.motsCles)}</td><td>${esc(t.email)}</td><td>${esc(t.telephone)}</td><td class="meta">${esc(t.note)}</td>` +
+                   `<td><button class="btn link" type="button">Retirer</button></td>`;
+    tr.querySelector('button').onclick = () => { tiers.splice(i, 1); renderTiers(); toast('Contact retiré : penser à enregistrer.'); };
+    body.appendChild(tr);
+  });
+}
+
 function renderSettings() {
   const c = state.config;
   $('actif').checked = !!c.actif;
@@ -1243,6 +1282,8 @@ function renderSettings() {
   }
   absences = (c.absences || []).map(a => ({ debut: a.debut, fin: a.fin, libelle: a.libelle }));
   renderAbsences();
+  tiers = [].concat(c.contactsTiers || []).map(t => ({ nom: t.nom || '', motsCles: t.motsCles || '', email: t.email || '', telephone: t.telephone || '', note: t.note || '' }));
+  renderTiers();
 
   const n = state.prochaine;
   $('next').textContent = !n ? (c.actif ? 'Aucune dans les 90 prochains jours' : 'Synthèse désactivée')
@@ -1266,9 +1307,20 @@ function collect() {
   return {
     actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
-    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences
+    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences,
+    contactsTiers: tiers
   };
 }
+
+$('tiAdd').onclick = () => {
+  const t = { nom: $('tiNom').value.trim(), motsCles: $('tiMots').value.trim(), email: $('tiEmail').value.trim(), telephone: $('tiTel').value.trim(), note: $('tiNote').value.trim() };
+  if (!t.nom || !t.motsCles) { toast('Indiquer le nom et au moins un mot-clé.', null, true); return; }
+  if (!t.email && !t.telephone) { toast('Indiquer une adresse ou un numéro.', null, true); return; }
+  tiers.push(t);
+  ['tiNom', 'tiMots', 'tiEmail', 'tiTel', 'tiNote'].forEach(id => { $(id).value = ''; });
+  renderTiers();
+  toast('Contact ajouté : penser à enregistrer.');
+};
 
 $('absAdd').onclick = () => {
   const debut = $('absDebut').value, fin = $('absFin').value || debut;

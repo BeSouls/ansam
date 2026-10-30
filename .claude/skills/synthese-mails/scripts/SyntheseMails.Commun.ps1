@@ -21,7 +21,27 @@ function Get-SmDefaultConfig {
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
         reveilPC            = $true              # réveiller le PC de sa veille à l'heure prévue (sur secteur)
+        # Annuaire des tiers : canal officiel quand c'est ce tiers qu'il faut contacter (motsCles : séparés par des virgules).
+        contactsTiers       = @(
+            [ordered]@{ nom = 'Swisscom Partner Management'; motsCles = 'Swisscom'; email = 'partner.management@swisscom.com'
+                        telephone = '+41 800 800 650'; note = 'Lignes et raccordements (résiliation cuivre, fibre, commandes partenaire)' }
+        )
     }
+}
+
+function ConvertTo-SmContactsTiers($List) {
+    @(@($List) | Where-Object { $_ -and ([string]$_.nom).Trim() } | ForEach-Object {
+        [ordered]@{ nom = ([string]$_.nom).Trim(); motsCles = ([string]$_.motsCles).Trim(); email = ([string]$_.email).Trim()
+                    telephone = ([string]$_.telephone).Trim(); note = ([string]$_.note).Trim() }
+    })
+}
+
+# Annuaire en une ligne pour un prompt (sans guillemets : PS 5.1 les passe mal aux programmes natifs).
+function Format-SmContactsTiers($List) {
+    $lines = @(ConvertTo-SmContactsTiers $List | ForEach-Object {
+        "$($_.nom) [mots-clés : $($_.motsCles)] : " + ((@($_.email, $_.telephone, $_.note) | Where-Object { $_ }) -join ', ')
+    })
+    $(if ($lines.Count) { $lines -join ' | ' } else { 'vide' })
 }
 
 # Jeton de la page locale, créé une fois et gardé dans <WorkDir>\page.token :
@@ -65,6 +85,7 @@ function Get-SmConfig([string]$WorkDir = $SmWorkDir) {
     $config.absences = @($config.absences | Where-Object { $_ } | ForEach-Object {
         [ordered]@{ debut = [string]$_.debut; fin = [string]$_.fin; libelle = [string]$_.libelle }
     })
+    $config.contactsTiers = @(ConvertTo-SmContactsTiers $config.contactsTiers)   # @() : un seul contact reste une liste
     $config
 }
 
@@ -81,6 +102,11 @@ function Test-SmConfig($Config) {
         $end = ConvertTo-SmDate $absence.fin
         if (-not $start -or -not $end) { $errors += "Absence « $($absence.libelle) » : dates invalides (AAAA-MM-JJ)." }
         elseif ($end -lt $start) { $errors += "Absence « $($absence.libelle) » : la fin précède le début." }
+    }
+    foreach ($tiers in @($Config.contactsTiers)) {
+        if (-not $tiers.motsCles) { $errors += "Contact « $($tiers.nom) » : indiquer au moins un mot-clé (nom du tiers tel qu'il apparaît dans les tâches)." }
+        if (-not $tiers.email -and -not $tiers.telephone) { $errors += "Contact « $($tiers.nom) » : indiquer une adresse ou un numéro." }
+        if ($tiers.email -and $tiers.email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { $errors += "Contact « $($tiers.nom) » : adresse invalide." }
     }
     , $errors
 }
@@ -510,6 +536,54 @@ function Update-SmGroupes($Suivi) {
         [void]$kept.Add($point)
     }
     $Suivi.points = $kept
+}
+
+# Prise de contact garantie, après chaque fusion :
+#  - une tâche ouverte dont l'action est d'écrire ou d'appeler à quelqu'un (« transmettre à Swisscom »,
+#    « relancer », « appeler »…) reçoit une prise de contact, même si la synthèse l'a oubliée (auto : brouillon
+#    à rédiger avec tout le dossier) ;
+#  - un tiers de l'annuaire (Réglages) reçoit son adresse et son numéro officiels là où ils manquent.
+# Renvoie le nombre de points complétés.
+function Update-SmContacts($Suivi, $Config) {
+    $verbs = '(?i)(^|[\s;,(])(transmettre|relancer|appeler|rappeler|contacter|recontacter|reprendre contact|écrire|demander|communiquer|informer|prévenir|confirmer|répondre à|donner à|faire le point avec|valider avec|voir avec)\b'
+    $callVerbs = '(?i)\b(appeler|rappeler|faire le point avec)\b'
+    $emailPattern = '[\w.+-]+@[\w-]+(\.[\w-]+)+'
+    $jiraOnly = '(?i)(dans|sur|en commentaire)( le ticket)? Jira'
+    $serviceNow = '(?i)\bCS\d{6,}\b|ServiceNow'   # un cas ServiceNow (BWS) se suit dans ServiceNow, pas par l'annuaire
+    $tiers = @(ConvertTo-SmContactsTiers $Config.contactsTiers | ForEach-Object {
+        $words = @(([string]$_.motsCles) -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if ($words.Count) { $_.motif = '(?i)\b(' + (($words | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')\b'; $_ }
+    })
+    $count = 0
+    foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.statut -eq 'a_faire' })) {
+        $action = [string]$point.action
+        $contact = $point.contact
+        $changed = $false
+        if (-not $contact) {
+            if ($action -notmatch $verbs -or $action -match $jiraOnly) { continue }
+            $emails = @([regex]::Matches($action, $emailPattern) | ForEach-Object { $_.Value } | Select-Object -Unique)
+            $contact = [ordered]@{ mode = $(if ($action -match $callVerbs) { 'appel' } else { 'mail' }); nom = $null; role = $null
+                                   email = $(if ($emails.Count -eq 1) { $emails[0] } else { $null }); telephone = $null
+                                   objet = (@($point.ticket, $point.titre) | Where-Object { $_ }) -join ' – '; message = $null; points = @(); auto = $true }
+            $changed = $true
+        } else {
+            $copy = [ordered]@{}
+            foreach ($property in $contact.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+            $contact = $copy
+        }
+        # Le tiers se reconnaît à la personne visée ; à défaut de personne, à l'action.
+        $who = (@($contact.nom, $contact.role, $contact.email) | Where-Object { $_ }) -join ' '
+        $text = $(if ($who) { $who } else { "$action $($point.titre)" })
+        $match = $(if ("$action $who" -notmatch $serviceNow) { $tiers | Where-Object { $text -match $_.motif } | Select-Object -First 1 })
+        if ($match) {
+            if (-not $contact.nom) { $contact.nom = $match.nom; $changed = $true }
+            if (-not $contact.email -and $match.email) { $contact.email = $match.email; $changed = $true }
+            if (-not $contact.telephone -and $match.telephone) { $contact.telephone = $match.telephone; $changed = $true }
+            if ($contact.tiers -ne $match.nom) { $contact.tiers = $match.nom; $changed = $true }
+        }
+        if ($changed) { $point.contact = [pscustomobject]$contact; $count++ }
+    }
+    $count
 }
 
 # Tableau JSON d'un bloc de fin de synthèse (« <!-- SUIVI --> », « <!-- ARCHIVES --> ») :
