@@ -355,6 +355,7 @@
         <div>
           <label class="switch"><input type="checkbox" id="actif"> Synthèse active</label>
           <label class="switch"><input type="checkbox" id="envoiMail"> Envoyer par mail à moi-même</label>
+          <label class="switch" title="Sinon, la synthèse part au déverrouillage du PC"><input type="checkbox" id="reveilPC"> Réveiller le PC à l'heure prévue (sur secteur)</label>
         </div>
         <div><label class="f" for="heure">Heure</label><input class="field" type="time" id="heure"></div>
         <div><label class="f" for="fenetreJours">Fenêtre relue (jours)</label><input class="field" type="number" id="fenetreJours" min="1" max="60"></div>
@@ -1228,6 +1229,7 @@ function renderSettings() {
   const c = state.config;
   $('actif').checked = !!c.actif;
   $('envoiMail').checked = !!c.envoiMail;
+  $('reveilPC').checked = c.reveilPC !== false;
   $('heure').value = c.heure;
   $('fenetreJours').value = c.fenetreJours;
   $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
@@ -1262,7 +1264,7 @@ function renderSettings() {
 
 function collect() {
   return {
-    actif: $('actif').checked, envoiMail: $('envoiMail').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
+    actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
     dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences
   };

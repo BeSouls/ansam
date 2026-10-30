@@ -158,8 +158,12 @@ Options utiles :
 - **Mail « Synthèse mails – échec du … »** : la chaîne a échoué ; le mail
   donne l'erreur et le chemin du journal.
 - **Pas de mail du tout** : regarder le résultat de la tâche dans le
-  Planificateur. Un PC en veille à 7h10 rattrape la synthèse à l'ouverture
-  de session ou au déverrouillage. `0xC000013A` ou `0x8007042B` : la console
+  Planificateur. En veille moderne, Windows ne lance aucune tâche : avec
+  « Réveiller le PC à l'heure prévue » (Réglages, activé par défaut), la
+  tâche réveille le PC les jours d'envoi, si le plan d'alimentation
+  l'autorise (en général sur secteur seulement). Sinon (batterie, PC
+  éteint), la synthèse part à l'ouverture de session ou au déverrouillage,
+  environ 8 minutes plus tard. `0xC000013A` ou `0x8007042B` : la console
   du script a été tuée au démarrage ; les tâches passent par
   `conhost.exe --headless` pour l'éviter (réinstaller les tâches depuis la
   page si elles datent d'avant).

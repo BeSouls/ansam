@@ -52,18 +52,26 @@ $unlock = New-CimInstance -CimClass $unlockClass -ClientOnly
 $unlock.StateChange = 8   # TASK_SESSION_UNLOCK
 $unlock.UserId = $user
 $unlock.Delay = 'PT1M'
+# Heure prévue : seulement les jours d'envoi (pas de réveil du PC le week-end pour rien).
+$dayNames = @{ 1 = 'Monday'; 2 = 'Tuesday'; 3 = 'Wednesday'; 4 = 'Thursday'; 5 = 'Friday'; 6 = 'Saturday'; 7 = 'Sunday' }
+$sendDays = @((Get-SmConfig).joursEnvoi | ForEach-Object { $dayNames[[int]$_] } | Where-Object { $_ })
+if (-not $sendDays.Count) { $sendDays = @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday') }
 $triggers = @(
-    (New-ScheduledTaskTrigger -Daily -At $At),
+    (New-ScheduledTaskTrigger -Weekly -DaysOfWeek $sendDays -At $At),
     (New-ScheduledTaskTrigger -AtLogOn -User $user),
     $unlock
 )
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 45) `
+# Réveil : un PC en veille moderne ne lance aucune tâche. Windows ne réveille le PC que si le plan
+# d'alimentation l'autorise (souvent sur secteur seulement) : pas de réveil dans un sac, sur batterie.
+$wake = [bool](Get-SmConfig).reveilPC
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun:$wake -ExecutionTimeLimit (New-TimeSpan -Minutes 45) `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
     -Settings $settings -Principal $principal -Force | Out-Null
-Write-Host "Tâche « $TaskName » créée : tous les jours à $At, rattrapée à l'ouverture de session et au déverrouillage."
+Write-Host ("Tâche « $TaskName » créée : les jours d'envoi à $At" + $(if ($wake) { ' (réveil du PC si le plan d''alimentation l''autorise)' } else { '' }) +
+            ", rattrapée à l'ouverture de session et au déverrouillage.")
 
 # Page de suivi permanente : démarrée à l'ouverture de session, sans limite de durée.
 $pageTask = "$TaskName - page"

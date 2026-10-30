@@ -186,6 +186,7 @@ function ConvertFrom-PageConfig([string]$Json) {
     }
     $config.actif = [bool]$config.actif
     $config.envoiMail = [bool]$config.envoiMail
+    $config.reveilPC = [bool]$config.reveilPC
     $config.fenetreJours = [int]$config.fenetreJours
     $config.joursEnvoi = @($config.joursEnvoi | ForEach-Object { [int]$_ } | Sort-Object -Unique)
     $config.absences = @(@($config.absences) | Where-Object { $_ } | ForEach-Object {

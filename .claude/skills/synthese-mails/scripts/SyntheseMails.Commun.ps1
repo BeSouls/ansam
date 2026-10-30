@@ -20,6 +20,7 @@ function Get-SmDefaultConfig {
         dossierPortefeuille = 'Boîte de réception\MES CLIENTS'
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
+        reveilPC            = $true              # réveiller le PC de sa veille à l'heure prévue (sur secteur)
     }
 }
 
