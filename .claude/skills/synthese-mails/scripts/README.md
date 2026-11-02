@@ -107,6 +107,12 @@ l'analyse (mails, AnsamDiag, Jira) et met à jour les points et les
 envoyés ou reçus depuis la synthèse du matin. La synthèse du jour et sa
 date ne changent pas : celle du lendemain couvre toujours tout depuis le
 dernier envoi. Le texte produit est gardé dans `syntheses\actualisations`.
+Comme l'analyse du jour a déjà tout traité, l'actualisation ne fait relire
+à Claude que les fils qui ont un message depuis la dernière analyse, en
+entier et avec les fils du même ticket (section « Actualisation » du
+skill) ; sans nouveau message, Claude n'est pas lancé. Jira est lu en
+parallèle de l'export Outlook. Compter 1 à 3 minutes avec Outlook ouvert
+(un Outlook qui démarre impose 3 minutes d'attente de synchronisation).
 
 Bouton **« Envoyer la synthèse »** (en haut de la page, deux clics pour
 confirmer) : relance tout de suite la synthèse complète avec les statuts
