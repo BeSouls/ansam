@@ -67,7 +67,7 @@ try {
                              action = $point.action; source = $point.source; noteMoi = $point.noteMoi } | ConvertTo-Json -Compress
 
     $prompt = "Tu prépares une prise de contact pour un point de ma synthèse mails ANSAM (skill synthese-mails : applique " +
-              "« Prise de contact » de references/regles-classement.md). Point : $pointInfo. Prise de contact actuelle : $current. " +
+              "« Prise de contact » et « Style des messages » de references/regles-classement.md : qui lit, information ou demande, ton cordial et clair). Point : $pointInfo. Prise de contact actuelle : $current. " +
               "Avant d'écrire, relis TOUT le contexte disponible : " +
               $(if ($ticketDir) { "le dossier $ticketDir (toutes les notes de ticket.json, TICKET.md, POUR-AGENT.md, brief-*.md, message-*.md, cloture.md, et chaque <horodatage>_<Outil>\resume.md : ce qui a été testé et trouvé) ; " } else { '' }) +
               $(if ($point.ticket) { "le ticket Jira $($point.ticket) avec tous ses commentaires (connecteur Atlassian, lecture seule) ; " } else { '' }) +

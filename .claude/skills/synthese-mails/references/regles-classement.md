@@ -217,15 +217,64 @@ crée un vide, à rédiger. Le `contact` :
   ce dossier. L'annuaire vaut aussi chez un client BWS (ligne, raccordement,
   commande) ; seul un cas ServiceNow ouvert (CS…) se suit dans ServiceNow ;
 - pour un mail : `objet` (avec la clé du ticket s'il y en a une) et
-  `message`, le brouillon complet, prêt à envoyer : en français, vouvoiement
-  pour les clients, court, qui rappelle le contexte en une phrase, pose la
-  ou les questions précises, et se termine comme mes mails envoyés
-  (formule et signature) ;
+  `message`, le brouillon complet, prêt à envoyer, écrit selon « Style des
+  messages » ci-dessous ;
 - pour un appel : `points`, les 3 à 6 points à aborder, dans l'ordre, et ce
   qu'il faut obtenir à la fin de l'appel.
 
 Jamais de mot de passe, de lien de mot de passe ni de secret dans un
 brouillon. Le brouillon est une proposition : rien n'est envoyé sans moi.
+
+### Style des messages
+
+Avant d'écrire, deux questions :
+
+- **Qui lit ?** Destinataires et copies, d'après les signatures, la fiche
+  client et le fil : technicien, prestataire, administration, direction.
+  Avec un public mélangé, on écrit pour celui qui n'est pas technicien.
+- **Quel genre de message ?** Une information (c'est prêt, c'est fait, voici
+  la suite), une demande, une relance. Dans un mail d'information,
+  l'information vient d'abord ; une demande éventuelle vient ensuite,
+  adressée nommément à la personne concernée.
+
+Le ton : celui d'un prestataire qui connaît bien son client. Cordial et
+posé, ni froid ni enthousiaste. On dit merci, on dit que c'est avec
+plaisir, on se tient à disposition, sans en faire trop (pas de points
+d'exclamation en série, pas de formules creuses).
+
+- En français, vouvoiement pour les clients et les tiers.
+- Ouverture : « Bonjour Monsieur X, » ou, à plusieurs, « Bonjour à
+  toutes et à tous, » ; puis le contexte en une phrase, sur un ton neutre :
+  « Pour faire suite à votre message du 27 octobre et à notre échange du
+  29, … », jamais « vous m'avez relancé ».
+- Le fond en langage clair : ce que cela change pour eux, ce qui se passe
+  ensuite et qui fait quoi. Le détail technique seulement s'il sert au
+  lecteur, en une phrase ou une courte liste ; pas de jargon sans
+  explication (« protégé par notre solution de sécurité » plutôt que
+  « EDR »).
+- Des phrases liées, de longueur normale : pas une suite de phrases
+  courtes qui commencent toutes par « Il ».
+- Fin : une phrase de disponibilité (« Je reste volontiers à votre
+  disposition pour toute question. ») puis la formule et la signature de
+  mes mails envoyés.
+
+Exemple, mail d'information à un public mélangé :
+
+> Bonjour à toutes et à tous,
+>
+> Comme convenu lors de notre point du 14 octobre, la nouvelle imprimante
+> multifonction du secrétariat est installée et prête à l'emploi depuis ce
+> matin. Elle apparaît automatiquement sur vos postes, sans manipulation
+> de votre part ; le scan vers e-mail fonctionne également.
+>
+> Madame Rochat, pourriez-vous me confirmer l'adresse à laquelle le
+> fournisseur doit envoyer les relevés de compteur ? Je lui transmettrai
+> l'information.
+>
+> Je reste volontiers à votre disposition pour toute question.
+
+Cet exemple montre le ton et l'ordre (l'information, puis la demande
+adressée à une personne) ; il ne se recopie pas.
 
 ### Ce qu'on attend de moi
 
