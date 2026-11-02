@@ -188,7 +188,9 @@ function Get-ItemCount($folder) {
 
 # Le cache local se remplit pendant les premières minutes d'Outlook : on
 # attend qu'il ait au moins 3 minutes et que le nombre d'éléments ne bouge
-# plus sur deux relevés consécutifs.
+# plus sur deux relevés consécutifs. Outlook ouvert depuis plus de 10 minutes
+# (cas courant en journée) a un cache à jour : après l'envoi/réception, un
+# relevé identique à 10 secondes d'intervalle suffit.
 function Wait-OutlookSync($root) {
     $start = Get-Date
     $deadline = $start.AddSeconds($SyncTimeoutSeconds)
@@ -200,14 +202,15 @@ function Wait-OutlookSync($root) {
         if ($current -eq $previous) { $stablePolls++ } else { $stablePolls = 0; $previous = $current }
 
         $outlookStart = (Get-Process OUTLOOK -ErrorAction SilentlyContinue | Sort-Object StartTime | Select-Object -First 1).StartTime
-        $oldEnough = $outlookStart -and ((Get-Date) - $outlookStart).TotalSeconds -ge 180
-        if ($stablePolls -ge 2 -and $oldEnough) { $status = 'stable'; break }
+        $age = $(if ($outlookStart) { ((Get-Date) - $outlookStart).TotalSeconds } else { 0 })
+        $warm = $age -ge 600
+        if (($warm -and $stablePolls -ge 1) -or ($stablePolls -ge 2 -and $age -ge 180)) { $status = 'stable'; break }
         if ((Get-Date) -ge $deadline) {
             $status = 'timeout'
             Write-Warning "Synchronisation d'Outlook non confirmée après $SyncTimeoutSeconds s : l'export peut être incomplet."
             break
         }
-        Start-Sleep -Seconds 20
+        Start-Sleep -Seconds $(if ($warm) { 10 } else { 20 })
     }
     [ordered]@{
         status           = $status
@@ -218,12 +221,18 @@ function Wait-OutlookSync($root) {
 
 # --- Boîte principale -------------------------------------------------------
 
-try {
-    $outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
-} catch {
-    throw ("Outlook ne répond pas (souvent une instance bloquée) : ferme complètement Outlook, " +
-           "vérifie qu'il ne reste aucun OUTLOOK.EXE dans le Gestionnaire des tâches, rouvre-le et relance. " +
-           "Détail : $($_.Exception.Message)")
+# Outlook occupé (fenêtre ouverte, démarrage, synchronisation) rejette l'appel (RPC_E_CALL_REJECTED) :
+# on réessaie quelques fois avant de conclure à une instance bloquée.
+for ($attempt = 1; ; $attempt++) {
+    try {
+        $outlook = New-Object -ComObject Outlook.Application   # se rattache à Outlook s'il est ouvert
+        break
+    } catch {
+        if ($attempt -lt 6 -and $_.Exception.Message -match '0x80010001|0x8001010A|rejet|reject') { Start-Sleep -Seconds 10; continue }
+        throw ("Outlook ne répond pas (souvent une instance bloquée) : ferme complètement Outlook, " +
+               "vérifie qu'il ne reste aucun OUTLOOK.EXE dans le Gestionnaire des tâches, rouvre-le et relance. " +
+               "Détail : $($_.Exception.Message)")
+    }
 }
 $namespace = $outlook.GetNamespace('MAPI')
 

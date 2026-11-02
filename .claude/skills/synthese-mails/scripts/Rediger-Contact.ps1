@@ -74,7 +74,9 @@ try {
               $(if ($export) { "dans $($export.FullName), tous les mails du fil (même objet, même ticket, mêmes interlocuteurs), corps complets ; " } else { '' }) +
               "Annuaire des tiers (si c'est l'un d'eux qu'il faut contacter, utilise son adresse et son numéro) : " +
               "$(Format-SmContactsTiers $config.contactsTiers). " +
-              $(if ($infos) { "Ce que je sais en plus, pas encore dans les mails ni dans Jira (c'est le plus récent : en cas de contradiction, cela prime sur le dossier, et le message en tient compte) : « $infos ». " } else { '' }) +
+              $(if ($infos) { "Mes informations et consignes pour cette rédaction (les plus récentes : elles priment sur le dossier). Les faits s'intègrent au message ; " +
+                              "les consignes (simplifier, ajouter tel élément, ton, longueur) s'appliquent toutes, une par une, et chaque élément demandé doit figurer dans le message, " +
+                              "en le déduisant du dossier si besoin (par exemple des dates à partir d'un plan et d'une date de départ) : « $infos ». " } else { '' }) +
               "Ne repose pas une question à laquelle on a déjà répondu, ne redemande pas un test déjà fait, tiens compte du plan de résolution. " +
               "Garde le mode (mail ou appel) sauf si le dossier montre clairement que l'autre convient mieux. " +
               "Réponds UNIQUEMENT par un objet JSON : {""mode"":""mail|appel"",""nom"":"""",""role"":"""",""email"":null,""telephone"":null," +

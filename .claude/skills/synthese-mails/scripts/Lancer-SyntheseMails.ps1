@@ -98,9 +98,21 @@ try {
         if (-not $plan.depuis) { $plan.depuis = $start.Date.AddDays(-1).AddHours(7) }
     }
 
+    # Tickets Jira assignés (lecture seule), lus en parallèle de l'export Outlook : les deux sont
+    # indépendants. En cas d'échec, la synthèse continue sans eux.
+    $jiraFile = Join-Path $WorkDir 'jira-assignes.json'
+    # Statut réel des tickets des points ouverts : clos, rouvert, réassigné.
+    $trackedKeys = @((Get-SmSuivi $WorkDir).points | Where-Object { $_.ticket -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') } |
+        ForEach-Object { [string]$_.ticket })
+    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : export Outlook ($($plan.jours) jours) et tickets Jira"
+    $jiraJob = Start-Job -ScriptBlock {
+        param($Script, $OutputFile, $Claude, $Keys)
+        Set-ExecutionPolicy -Scope Process Bypass -Force
+        & $Script -OutputFile $OutputFile -ClaudeExe $Claude -Cles $Keys | Select-Object -Last 1
+    } -ArgumentList (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1'), $jiraFile, $ClaudeExe, $trackedKeys
+
     $exportArgs = @{ Days = $plan.jours; OutputDir = $exportDir }
     if ($Mailbox) { $exportArgs.Mailbox = $Mailbox }
-    Write-Host "$(Get-Date -Format HH:mm:ss) Étape : export Outlook ($($plan.jours) jours)"
     $exportFile = & (Join-Path $PSScriptRoot 'Export-OutlookMails.ps1') @exportArgs | Select-Object -Last 1
     $threadFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-fils.txt'
     $address = (Read-SmJson $exportFile).address
@@ -110,13 +122,9 @@ try {
     & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ExportFile $exportFile `
         -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
 
-    # Tickets Jira assignés (lecture seule) ; en cas d'échec, la synthèse continue sans eux.
-    $jiraFile = Join-Path $WorkDir 'jira-assignes.json'
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"
-    # Statut réel des tickets des points ouverts : clos, rouvert, réassigné.
-    $trackedKeys = @((Get-SmSuivi $WorkDir).points | Where-Object { $_.ticket -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') } |
-        ForEach-Object { [string]$_.ticket })
-    $jiraOk = & (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1') -OutputFile $jiraFile -ClaudeExe $ClaudeExe -Cles $trackedKeys | Select-Object -Last 1
+    $jiraOk = $jiraJob | Wait-Job | Receive-Job | Select-Object -Last 1
+    Remove-Job $jiraJob -Force
     $jiraNote = $(if ($jiraOk) { "tickets Jira assignés : $jiraFile" }
                   elseif (Test-Path $jiraFile) { "tickets Jira assignés : $jiraFile (lecture du jour en échec : liste de la veille, à signaler)" }
                   else { "tickets Jira assignés : indisponibles aujourd'hui (à signaler dans les points d'attention)" })
@@ -136,42 +144,71 @@ try {
     $archivesFile = Join-Path $WorkDir 'archives.json'
     if (-not (Test-Path $archivesFile)) { Save-SmArchives (Get-SmArchives $WorkDir) $WorkDir }
 
-    $since = $plan.depuis.ToString('dd.MM.yyyy HH:mm')
-    $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
-              "Vue par fil : $threadFile ; détail complet : $exportFile ; contexte AnsamDiag : $contextFile ; " +
-              "$jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
-              "registre des éléments à garder : $archivesFile ; " +
-              "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers). " +
-              "Nouveautés depuis la dernière synthèse : $since."
+    # Actualisation en cours de journée (bouton « Actualiser ») : l'analyse du jour a déjà tout
+    # traité ; seuls les fils qui ont du nouveau depuis la dernière analyse sont relus, en entier.
+    # Sans aucun nouveau message, Claude n'est pas lancé (Jira et les contacts sont tout de même à jour).
+    $delta = $null
+    $lastAnalysis = ConvertTo-SmDateTime $etat.derniereAnalyse
+    if ($PasDeMail -and $lastAnalysis -and $lastAnalysis.Date -eq $start.Date) {
+        $deltaSince = $lastAnalysis.AddMinutes(-5)
+        $deltaFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-delta.txt'
+        $delta = New-SmFilsDelta $threadFile $deltaSince $deltaFile
+        Write-Host "Actualisation : $($delta.nouveaux) fils avec du nouveau depuis $($deltaSince.ToString('HH:mm')) ($($delta.selection) fils relus sur $($delta.total))."
+    }
+
+    $sources = "contexte AnsamDiag : $contextFile ; $jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
+               "registre des éléments à garder : $archivesFile ; " +
+               "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers)."
+    if ($delta) {
+        $prompt = "Utilise le skill synthese-mails en mode « Actualisation » (section du skill) sur ma boîte mail pro ANSAM. " +
+                  "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " +
+                  "vue de tous les fils : $threadFile ; détail complet : $exportFile ; $sources " +
+                  "Réponds uniquement avec le compte rendu court en Markdown, suivi du bloc de suivi (<!-- SUIVI --> puis son tableau JSON, " +
+                  "seulement les points nouveaux ou modifiés) et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON, " +
+                  "seulement les éléments nouveaux ou modifiés)."
+    } else {
+        $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
+                  "Vue par fil : $threadFile ; détail complet : $exportFile ; $sources " +
+                  "Nouveautés depuis la dernière synthèse : $($plan.depuis.ToString('dd.MM.yyyy HH:mm'))."
+        $absences = @($plan.absences)
+        if ($absences.Count) {
+            $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
+            $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
+        }
+        $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
+                   "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
+    }
     $absences = @($plan.absences)
-    if ($absences.Count) {
-        $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
-        $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
+
+    if ($delta -and -not $delta.nouveaux) {
+        $markdown = "# Actualisation – $($start.ToString('dd.MM.yyyy HH:mm'))`n`nAucun nouveau message depuis $($deltaSince.ToString('HH:mm')) : " +
+                    "statuts Jira et prises de contact mis à jour, rien d'autre à relire."
+        $raw = $null
+        $completed = Update-SmContacts $suivi $config
+        Save-SmSuivi $suivi $WorkDir
+    } else {
+        # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        Push-Location $RepoDir
+        try {
+            Write-Host "$(Get-Date -Format HH:mm:ss) Étape : $(if ($delta) { 'analyse des nouveautés' } else { 'rédaction' }) par Claude Code"
+            $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
+            if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
+        } finally {
+            Pop-Location
+        }
+
+        # La synthèse commence au premier titre ; tout préambule éventuel est retiré.
+        $markdown = $synthesis -join "`n"
+        $titleAt = [regex]::Match($markdown, '(?m)^# ')
+        if ($titleAt.Success) { $markdown = $markdown.Substring($titleAt.Index) }
+
+        # Blocs de fin (suivi, éléments à garder) : intégrés aux registres, retirés du mail.
+        $raw = $markdown
+        $firstBlock = [regex]::Match($markdown, '<!-- (SUIVI|ARCHIVES) -->')
+        if ($firstBlock.Success) { $markdown = $markdown.Substring(0, $firstBlock.Index).TrimEnd() }
     }
-    $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
-               "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
-
-    # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
-    Push-Location $RepoDir
-    try {
-        Write-Host "$(Get-Date -Format HH:mm:ss) Étape : rédaction par Claude Code"
-        $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
-        if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
-    } finally {
-        Pop-Location
-    }
-
-    # La synthèse commence au premier titre ; tout préambule éventuel est retiré.
-    $markdown = $synthesis -join "`n"
-    $titleAt = [regex]::Match($markdown, '(?m)^# ')
-    if ($titleAt.Success) { $markdown = $markdown.Substring($titleAt.Index) }
-
-    # Blocs de fin (suivi, éléments à garder) : intégrés aux registres, retirés du mail.
-    $raw = $markdown
-    $firstBlock = [regex]::Match($markdown, '<!-- (SUIVI|ARCHIVES) -->')
-    if ($firstBlock.Success) { $markdown = $markdown.Substring(0, $firstBlock.Index).TrimEnd() }
-    try {
+    if ($raw) { try {
         $updates = Get-SmBlocJson $raw 'SUIVI'
         if ($null -eq $updates) { throw 'bloc absent' }
         $changes = Merge-SmSuivi $suivi $updates
@@ -194,7 +231,7 @@ try {
     } catch {
         Write-Warning "Registre des éléments à garder inchangé : $($_.Exception.Message)"
         $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
-    }
+    } }
     # Réunion squad : préparée le matin du jour de réunion, hors absence et jour férié ; le mail y mène.
     if ($config.squadActif -and -not $PasDeMail -and (Get-SmJourSemaine $start) -eq $config.squadJour -and -not (Get-SmSquadEmpechement $config $start)) {
         $squadUrl = "$(Get-SmPageUrl $WorkDir)#squad"

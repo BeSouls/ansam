@@ -539,7 +539,7 @@ try {
                     if ($request.Body) { $mail = [bool]($request.Body | ConvertFrom-Json).mail }
                     Start-Run -Mail:$mail
                     $message = $(if ($mail) { 'Synthèse lancée : environ 8 minutes, puis le mail arrive.' }
-                                 else { 'Actualisation lancée : environ 7 minutes, sans mail.' })
+                                 else { 'Actualisation lancée : seulement les nouveautés depuis la dernière analyse, quelques minutes, sans mail.' })
                     Send-Json $stream 200 ([ordered]@{ message = $message })
                 }
                 '^GET /api/archives$' {

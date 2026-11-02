@@ -752,6 +752,41 @@ function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$N
     $item
 }
 
+# --- Actualisation en cours de journée ------------------------------------------
+# Vue par fil réduite aux fils qui ont un message depuis $Since, complets, avec les fils qui
+# portent la même clé de ticket dans leur titre (Outlook coupe une conversation au moindre
+# changement d'objet). Renvoie les compteurs ; le fichier n'est écrit que s'il y a du nouveau.
+function New-SmFilsDelta([string]$ThreadFile, [datetime]$Since, [string]$OutFile) {
+    $text = [IO.File]::ReadAllText($ThreadFile, [Text.Encoding]::UTF8)
+    $parts = [regex]::Split($text, '(?m)^(?=######## FIL : )')
+    $header = $parts[0].Trim()
+    $blocks = @($parts | Select-Object -Skip 1)
+    $keyPattern = '\b[A-Z][A-Z0-9]+-\d+\b'
+    $fresh = New-Object System.Collections.Generic.HashSet[int]
+    $keys = New-Object System.Collections.Generic.HashSet[string]
+    for ($i = 0; $i -lt $blocks.Count; $i++) {
+        foreach ($m in [regex]::Matches($blocks[$i], '(?m)^--- \[[^\]]*\] (\S+) \|')) {
+            $at = [datetimeoffset]::MinValue
+            if ([datetimeoffset]::TryParse($m.Groups[1].Value, $SmInvariant, 'None', [ref]$at) -and $at.LocalDateTime -ge $Since) {
+                [void]$fresh.Add($i)
+                $title = ($blocks[$i] -split "`n", 2)[0]
+                foreach ($k in [regex]::Matches($title, $keyPattern)) { [void]$keys.Add($k.Value) }
+                break
+            }
+        }
+    }
+    $selected = @(for ($i = 0; $i -lt $blocks.Count; $i++) {
+        $title = ($blocks[$i] -split "`n", 2)[0]
+        if ($fresh.Contains($i) -or @([regex]::Matches($title, $keyPattern) | Where-Object { $keys.Contains($_.Value) }).Count) { $blocks[$i].TrimEnd() }
+    })
+    if ($fresh.Count) {
+        $intro = "$header`nActualisation : fils avec un message depuis $($Since.ToString('yyyy-MM-ddTHH:mm')) : $($fresh.Count) " +
+                 "(+ $($selected.Count - $fresh.Count) fils du même ticket), sur $($blocks.Count) fils de l'export."
+        [IO.File]::WriteAllText($OutFile, "$intro`n`n" + ($selected -join "`n`n") + "`n", (New-Object Text.UTF8Encoding($false)))
+    }
+    [ordered]@{ total = $blocks.Count; nouveaux = $fresh.Count; selection = $selected.Count }
+}
+
 # --- Réunion squad -------------------------------------------------------------
 # Une fiche par réunion : <WorkDir>\squad\AAAA-MM-JJ.json. Les sujets suivent le formulaire de la
 # squad ; « parPersonne » : une rubrique par initiales de l'équipe (RDV clients, visites).
