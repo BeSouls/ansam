@@ -22,6 +22,7 @@ function Get-SmDefaultConfig {
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
         reveilPC            = $true              # réveiller le PC de sa veille à l'heure prévue (sur secteur)
         cantonFeries        = 'VD'               # jours fériés sans synthèse ni réunion : VD, GE ou aucun
+        analyseCompleteJour = 1                  # jour de l'analyse complète de la fenêtre (les autres : incrémentale)
         # Réunion squad hebdomadaire : préparée le matin du jour de réunion, avec la synthèse.
         squadActif          = $true
         squadJour           = 1                  # 1 = lundi
@@ -96,6 +97,7 @@ function Get-SmConfig([string]$WorkDir = $SmWorkDir) {
     $config.contactsTiers = @(ConvertTo-SmContactsTiers $config.contactsTiers)   # @() : un seul contact reste une liste
     $config.squadActif = [bool]$config.squadActif
     $config.squadJour = [int]$config.squadJour
+    $config.analyseCompleteJour = [int]$config.analyseCompleteJour
     foreach ($key in 'cantonFeries', 'squadMoi', 'squadPrenom', 'squadEquipe', 'squadParticipants') { $config[$key] = ([string]$config[$key]).Trim() }
     $config
 }

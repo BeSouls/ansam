@@ -114,6 +114,16 @@ skill) ; sans nouveau message, Claude n'est pas lancé. Jira est lu en
 parallèle de l'export Outlook. Compter 1 à 3 minutes avec Outlook ouvert
 (un Outlook qui démarre impose 3 minutes d'attente de synchronisation).
 
+**Synthèse incrémentale** : de même, la synthèse du matin ne relit en
+entier que les fils qui ont du nouveau depuis la dernière analyse ; les
+points ouverts sont revus depuis le registre et Jira, sans relire leurs
+anciens mails, et la synthèse reste complète pour le lecteur. Une **analyse
+complète** de toute la fenêtre a lieu le lundi (réglage
+`analyseCompleteJour` de `config.json`), au retour d'absence et après plus
+de 3 jours sans analyse ; elle rattrape un fil qui aurait été mal classé.
+`Lancer-SyntheseMails.ps1 -Complet` la force, `-Essai` produit une
+synthèse dans `syntheses\essais` sans l'envoyer.
+
 Bouton **« Envoyer la synthèse »** (en haut de la page, deux clics pour
 confirmer) : relance tout de suite la synthèse complète avec les statuts
 à jour et l'envoie par mail, par exemple après avoir marqué les points

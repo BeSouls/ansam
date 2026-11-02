@@ -142,6 +142,39 @@ synthèse couvre toute la période depuis la dernière synthèse et suit la
 variante « retour d'absence » du modèle : à faire en priorité, ce qui a été
 réglé pendant l'absence, et les mails archivables sans action.
 
+## Synthèse incrémentale
+
+Les registres (suivi, éléments à garder) sont à jour jusqu'à la dernière
+analyse. Quand la demande indique le mode « Synthèse incrémentale » (les
+matins sans analyse complète), la synthèse est **la même que d'habitude**
+pour le lecteur, mais la lecture change :
+
+- seuls les fils du fichier « fils avec du nouveau » sont lus, **en
+  entier** (avec les fils de la même clé de ticket) ; la méthode s'y
+  applique complètement (rattacher, statut, bruit, classement A / B,
+  prise de contact, éléments à garder). La vue de tous les fils et le
+  détail complet ne servent qu'au contexte ;
+- chaque point ouvert du registre est **revu depuis le registre** (statut,
+  action, priorité, échéance, dernier message, historique, ma note, prise
+  de contact) et depuis les tickets Jira, sans relire ses anciens mails :
+  échéance dépassée ou proche, relance due quand une attente dure, ticket
+  clos ou rouvert. Un ancien mail ne se relit que s'il manque une
+  information pour la synthèse ;
+- la synthèse suit le modèle : tous les points ouverts y figurent, et les
+  « nouveautés » sont ce qui est arrivé depuis la dernière synthèse (fils
+  nouveaux, et points du registre créés ou modifiés depuis cette date,
+  par exemple lors d'une actualisation) ; variabilité, facturation et
+  points d'attention viennent du registre des éléments à garder (à
+  traiter) et des fils nouveaux ; le bruit ne liste que les fils nouveaux ;
+- bloc de suivi : seulement les points nouveaux ou dont le statut,
+  l'action, la priorité, l'échéance ou la prise de contact change ; les
+  autres sont gardés tels quels. Bloc des éléments à garder : seulement les
+  nouveaux ou modifiés. Formats inchangés.
+
+Une analyse complète de toute la fenêtre a lieu chaque semaine (le lundi
+par défaut), au retour d'absence et après plus de 3 jours sans analyse :
+elle rattrape un fil qui aurait été mal classé.
+
 ## Actualisation
 
 Quand la demande indique le mode « Actualisation » (bouton « Actualiser »

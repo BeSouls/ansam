@@ -27,6 +27,15 @@
     .\Lancer-SyntheseMails.ps1              # comme la tâche planifiée
     .\Lancer-SyntheseMails.ps1 -Force       # même un jour non prévu ou déjà traité
     .\Lancer-SyntheseMails.ps1 -Force -PasDeMail   # actualisation (bouton « Actualiser » de la page)
+    .\Lancer-SyntheseMails.ps1 -Force -Essai       # synthèse d'essai, sans mail
+    .\Lancer-SyntheseMails.ps1 -Force -Complet     # analyse complète, même un jour incrémental
+
+    Trois modes d'analyse (section du skill correspondante) :
+    - complète : toute la fenêtre (14 jours) est relue. Le jour « analyseCompleteJour » (lundi),
+      au retour d'absence, sans analyse depuis plus de 3 jours, ou avec -Complet ;
+    - incrémentale (les autres matins) : seuls les fils qui ont du nouveau depuis la dernière
+      analyse sont relus ; les points ouverts sont repris du registre ;
+    - actualisation (-PasDeMail, analyse déjà faite le jour même) : idem, compte rendu court.
 #>
 [CmdletBinding()]
 param(
@@ -39,9 +48,14 @@ param(
     [string]$ClaudeExe,
     # Lance même un jour non prévu, pendant une absence ou déjà traité.
     [switch]$Force,
-    # Actualisation : analyse complète et registres mis à jour, sans mail. La synthèse du jour et la
-    # date de la dernière synthèse ne changent pas ; le résultat va dans syntheses\actualisations.
-    [switch]$PasDeMail
+    # Actualisation : registres mis à jour, sans mail. La synthèse du jour et la date de la
+    # dernière synthèse ne changent pas ; le résultat va dans syntheses\actualisations.
+    [switch]$PasDeMail,
+    # Analyse complète de la fenêtre, même un jour où la synthèse serait incrémentale.
+    [switch]$Complet,
+    # Essai : synthèse produite comme le matin (même mode), gardée dans syntheses\essais,
+    # sans mail ; la date de la dernière synthèse ne change pas.
+    [switch]$Essai
 )
 
 $ErrorActionPreference = 'Stop'
@@ -144,25 +158,40 @@ try {
     $archivesFile = Join-Path $WorkDir 'archives.json'
     if (-not (Test-Path $archivesFile)) { Save-SmArchives (Get-SmArchives $WorkDir) $WorkDir }
 
-    # Actualisation en cours de journée (bouton « Actualiser ») : l'analyse du jour a déjà tout
-    # traité ; seuls les fils qui ont du nouveau depuis la dernière analyse sont relus, en entier.
-    # Sans aucun nouveau message, Claude n'est pas lancé (Jira et les contacts sont tout de même à jour).
-    $delta = $null
+    # Mode d'analyse. Les registres gardent l'état de chaque point d'une analyse à l'autre : hors
+    # analyse complète, seuls les fils qui ont du nouveau depuis la dernière analyse sont relus, en
+    # entier. L'analyse complète hebdomadaire (et au retour d'absence) rattrape un fil mal classé.
+    $absences = @($plan.absences)
     $lastAnalysis = ConvertTo-SmDateTime $etat.derniereAnalyse
-    if ($PasDeMail -and $lastAnalysis -and $lastAnalysis.Date -eq $start.Date) {
+    $recent = $lastAnalysis -and ($start - $lastAnalysis).TotalDays -lt 3
+    $mode = $(if ($PasDeMail -and $lastAnalysis -and $lastAnalysis.Date -eq $start.Date) { 'actualisation' }
+              elseif ($PasDeMail -or $Complet -or -not $recent -or $absences.Count -or (Get-SmJourSemaine $start) -eq $config.analyseCompleteJour) { 'complete' }
+              else { 'incrementale' })
+    $delta = $null
+    if ($mode -ne 'complete') {
         $deltaSince = $lastAnalysis.AddMinutes(-5)
         $deltaFile = [IO.Path]::ChangeExtension($exportFile, $null).TrimEnd('.') + '-delta.txt'
         $delta = New-SmFilsDelta $threadFile $deltaSince $deltaFile
-        Write-Host "Actualisation : $($delta.nouveaux) fils avec du nouveau depuis $($deltaSince.ToString('HH:mm')) ($($delta.selection) fils relus sur $($delta.total))."
+        Write-Host "Analyse $mode : $($delta.nouveaux) fils avec du nouveau depuis $($deltaSince.ToString('dd.MM HH:mm')) ($($delta.selection) fils relus sur $($delta.total))."
+    } else {
+        Write-Host "Analyse complète de la fenêtre."
     }
 
     $sources = "contexte AnsamDiag : $contextFile ; $jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
                "registre des éléments à garder : $archivesFile ; " +
                "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers)."
-    if ($delta) {
+    $deltaNote = $(if ($delta -and $delta.nouveaux) { "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " }
+                   elseif ($delta) { "Aucun fil n'a de message depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')) ; " })
+    if ($mode -eq 'incrementale') {
+        $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM, en mode « Synthèse incrémentale » (section du skill). " +
+                  $deltaNote + "vue de tous les fils : $threadFile et détail complet : $exportFile, pour le contexte seulement ; $sources " +
+                  "Nouveautés depuis la dernière synthèse : $($plan.depuis.ToString('dd.MM.yyyy HH:mm')). " +
+                  "Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON, " +
+                  "seulement les points nouveaux ou modifiés) et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON, " +
+                  "seulement les éléments nouveaux ou modifiés)."
+    } elseif ($mode -eq 'actualisation') {
         $prompt = "Utilise le skill synthese-mails en mode « Actualisation » (section du skill) sur ma boîte mail pro ANSAM. " +
-                  "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " +
-                  "vue de tous les fils : $threadFile ; détail complet : $exportFile ; $sources " +
+                  $deltaNote + "vue de tous les fils : $threadFile ; détail complet : $exportFile ; $sources " +
                   "Réponds uniquement avec le compte rendu court en Markdown, suivi du bloc de suivi (<!-- SUIVI --> puis son tableau JSON, " +
                   "seulement les points nouveaux ou modifiés) et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON, " +
                   "seulement les éléments nouveaux ou modifiés)."
@@ -170,7 +199,6 @@ try {
         $prompt = "Utilise le skill synthese-mails pour produire la synthèse matinale de ma boîte mail pro ANSAM. " +
                   "Vue par fil : $threadFile ; détail complet : $exportFile ; $sources " +
                   "Nouveautés depuis la dernière synthèse : $($plan.depuis.ToString('dd.MM.yyyy HH:mm'))."
-        $absences = @($plan.absences)
         if ($absences.Count) {
             $periods = ($absences | ForEach-Object { "$($_.libelle) du $($_.debut) au $($_.fin)" }) -join ', '
             $prompt += " Retour d'absence ($periods) : utilise la variante « retour d'absence » du modèle."
@@ -178,9 +206,7 @@ try {
         $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
                    "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
     }
-    $absences = @($plan.absences)
-
-    if ($delta -and -not $delta.nouveaux) {
+    if ($mode -eq 'actualisation' -and -not $delta.nouveaux) {
         $markdown = "# Actualisation – $($start.ToString('dd.MM.yyyy HH:mm'))`n`nAucun nouveau message depuis $($deltaSince.ToString('HH:mm')) : " +
                     "statuts Jira et prises de contact mis à jour, rien d'autre à relire."
         $raw = $null
@@ -191,7 +217,7 @@ try {
         [Console]::OutputEncoding = [Text.Encoding]::UTF8
         Push-Location $RepoDir
         try {
-            Write-Host "$(Get-Date -Format HH:mm:ss) Étape : $(if ($delta) { 'analyse des nouveautés' } else { 'rédaction' }) par Claude Code"
+            Write-Host "$(Get-Date -Format HH:mm:ss) Étape : $(@{ complete = 'rédaction'; incrementale = 'rédaction (nouveautés)'; actualisation = 'analyse des nouveautés' }[$mode]) par Claude Code"
             $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
             if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
         } finally {
@@ -233,7 +259,7 @@ try {
         $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
     } }
     # Réunion squad : préparée le matin du jour de réunion, hors absence et jour férié ; le mail y mène.
-    if ($config.squadActif -and -not $PasDeMail -and (Get-SmJourSemaine $start) -eq $config.squadJour -and -not (Get-SmSquadEmpechement $config $start)) {
+    if ($config.squadActif -and -not $PasDeMail -and -not $Essai -and (Get-SmJourSemaine $start) -eq $config.squadJour -and -not (Get-SmSquadEmpechement $config $start)) {
         $squadUrl = "$(Get-SmPageUrl $WorkDir)#squad"
         Write-Host "$(Get-Date -Format HH:mm:ss) Étape : réunion squad"
         try {
@@ -247,9 +273,10 @@ try {
     $markdown += "`n`n---`n[Ouvrir Panoramix]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     # Une actualisation (-PasDeMail) ne remplace pas la synthèse du jour : fichier à part, et la date de
     # la dernière synthèse reste celle du dernier envoi, sinon celle du matin serait sautée ou raccourcie.
-    $analysisOnly = $PasDeMail.IsPresent
+    # Un essai (-Essai) non plus : fichier dans syntheses\essais, sans mail.
+    $analysisOnly = $PasDeMail.IsPresent -or $Essai.IsPresent
     if ($analysisOnly) {
-        $refreshDir = Join-Path $synthesisDir 'actualisations'
+        $refreshDir = Join-Path $synthesisDir $(if ($Essai) { 'essais' } else { 'actualisations' })
         New-Item -ItemType Directory -Force -Path $refreshDir | Out-Null
         $synthesisFile = Join-Path $refreshDir ('{0:yyyy-MM-dd_HHmm}.md' -f $start)
     } else {
@@ -277,7 +304,8 @@ try {
     }
     Save-SmEtat $newEtat $WorkDir
     $outcome.resultat = 'ok'
-    $outcome.message = $(if ($analysisOnly) { 'Analyse actualisée (sans mail).' }
+    $outcome.message = $(if ($Essai) { "Synthèse d'essai enregistrée (sans mail)." }
+                         elseif ($analysisOnly) { 'Analyse actualisée (sans mail).' }
                          elseif ($config.envoiMail) { 'Synthèse envoyée.' }
                          else { 'Synthèse enregistrée (envoi par mail désactivé).' })
 } catch {
