@@ -21,6 +21,14 @@ function Get-SmDefaultConfig {
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
         reveilPC            = $true              # réveiller le PC de sa veille à l'heure prévue (sur secteur)
+        cantonFeries        = 'VD'               # jours fériés sans synthèse ni réunion : VD, GE ou aucun
+        # Réunion squad hebdomadaire : préparée le matin du jour de réunion, avec la synthèse.
+        squadActif          = $true
+        squadJour           = 1                  # 1 = lundi
+        squadMoi            = 'GBR'              # mes initiales dans le formulaire
+        squadPrenom         = 'Gillian'          # mon prénom dans la liste des participants
+        squadEquipe         = 'LLN, ESL, CSO, FCF, GBR'   # initiales des lignes « RDV clients » et « Visites »
+        squadParticipants   = 'Laurent, Enzo, François, Cristiano, Gillian, David, Guest star'
         # Annuaire des tiers : canal officiel quand c'est ce tiers qu'il faut contacter (motsCles : séparés par des virgules).
         contactsTiers       = @(
             [ordered]@{ nom = 'Swisscom Partner Management'; motsCles = 'Swisscom'; email = 'partner.management@swisscom.com'
@@ -86,6 +94,9 @@ function Get-SmConfig([string]$WorkDir = $SmWorkDir) {
         [ordered]@{ debut = [string]$_.debut; fin = [string]$_.fin; libelle = [string]$_.libelle }
     })
     $config.contactsTiers = @(ConvertTo-SmContactsTiers $config.contactsTiers)   # @() : un seul contact reste une liste
+    $config.squadActif = [bool]$config.squadActif
+    $config.squadJour = [int]$config.squadJour
+    foreach ($key in 'cantonFeries', 'squadMoi', 'squadPrenom', 'squadEquipe', 'squadParticipants') { $config[$key] = ([string]$config[$key]).Trim() }
     $config
 }
 
@@ -107,6 +118,12 @@ function Test-SmConfig($Config) {
         if (-not $tiers.motsCles) { $errors += "Contact « $($tiers.nom) » : indiquer au moins un mot-clé (nom du tiers tel qu'il apparaît dans les tâches)." }
         if (-not $tiers.email -and -not $tiers.telephone) { $errors += "Contact « $($tiers.nom) » : indiquer une adresse ou un numéro." }
         if ($tiers.email -and $tiers.email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { $errors += "Contact « $($tiers.nom) » : adresse invalide." }
+    }
+    if (@($SmCantons.Keys) -notcontains $Config.cantonFeries) { $errors += "Jours fériés : canton inconnu « $($Config.cantonFeries) »." }
+    if ($Config.squadActif) {
+        if ([int]$Config.squadJour -lt 1 -or [int]$Config.squadJour -gt 5) { $errors += 'Réunion squad : choisir un jour du lundi au vendredi.' }
+        if ($Config.squadMoi -notmatch '^[A-Za-z]{2,5}$') { $errors += 'Réunion squad : indiquer tes initiales (2 à 5 lettres).' }
+        if (-not @(ConvertTo-SmListe $Config.squadParticipants).Count) { $errors += 'Réunion squad : indiquer les participants.' }
     }
     , $errors
 }
@@ -136,6 +153,57 @@ function Get-SmJourSemaine([datetime]$Date) {
     if ($day -eq 0) { 7 } else { $day }
 }
 
+# Liste « a, b, c » : à envelopper dans @() à l'appel (un seul élément reste une liste).
+function ConvertTo-SmListe([string]$Text) {
+    ([string]$Text -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+}
+
+# --- Jours fériés -------------------------------------------------------------
+# Pas de synthèse ni de réunion squad un jour férié du canton choisi.
+$SmCantons = [ordered]@{ VD = 'Vaud'; GE = 'Genève'; aucun = 'aucun' }
+
+# Dimanche de Pâques (calendrier grégorien, algorithme de Meeus).
+function Get-SmPaques([int]$Year) {
+    $a = $Year % 19; $b = [math]::Floor($Year / 100); $c = $Year % 100
+    $d = [math]::Floor($b / 4); $e = $b % 4; $f = [math]::Floor(($b + 8) / 25); $g = [math]::Floor(($b - $f + 1) / 3)
+    $h = (19 * $a + $b - $d - $g + 15) % 30; $i = [math]::Floor($c / 4); $k = $c % 4
+    $l = (32 + 2 * $e + 2 * $i - $h - $k) % 7; $m = [math]::Floor(($a + 11 * $h + 22 * $l) / 451)
+    $n = $h + $l - 7 * $m + 114
+    New-Object DateTime $Year, ([int][math]::Floor($n / 31)), ([int]($n % 31) + 1)
+}
+
+function Get-SmFeries([string]$Canton, [int]$Year) {
+    $list = [ordered]@{}
+    if (-not $Canton -or $Canton -eq 'aucun') { return $list }
+    $easter = Get-SmPaques $Year
+    $sept1 = New-Object DateTime $Year, 9, 1
+    $firstSunday = $sept1.AddDays((7 - [int]$sept1.DayOfWeek) % 7)
+    $days = @(
+        @((New-Object DateTime $Year, 1, 1), 'Nouvel An'),
+        @($easter.AddDays(-2), 'Vendredi saint'),
+        @($easter.AddDays(1), 'Lundi de Pâques'),
+        @($easter.AddDays(39), 'Ascension'),
+        @($easter.AddDays(50), 'Lundi de Pentecôte'),
+        @((New-Object DateTime $Year, 8, 1), 'Fête nationale'),
+        @((New-Object DateTime $Year, 12, 25), 'Noël')
+    )
+    if ($Canton -eq 'VD') {
+        $days += , @((New-Object DateTime $Year, 1, 2), 'Saint-Berchtold')
+        $days += , @($firstSunday.AddDays(15), 'Lundi du Jeûne fédéral')
+    }
+    if ($Canton -eq 'GE') {
+        $days += , @($firstSunday.AddDays(4), 'Jeûne genevois')
+        $days += , @((New-Object DateTime $Year, 12, 31), 'Restauration de la République')
+    }
+    foreach ($day in ($days | Sort-Object { $_[0] })) { $list[$day[0].ToString('yyyy-MM-dd')] = $day[1] }
+    $list
+}
+
+# Nom du jour férié, ou $null.
+function Get-SmFerie($Config, [datetime]$Date) {
+    (Get-SmFeries $Config.cantonFeries $Date.Year)[$Date.ToString('yyyy-MM-dd')]
+}
+
 function Get-SmAbsence($Config, [datetime]$Date) {
     foreach ($absence in @($Config.absences)) {
         $start = ConvertTo-SmDate $absence.debut
@@ -152,6 +220,8 @@ function Get-SmPlan($Config, $Etat, [datetime]$Moment = (Get-Date)) {
     if (-not $Config.actif) { $plan.raison = 'Synthèse désactivée dans la configuration.'; return $plan }
     $absence = Get-SmAbsence $Config $Moment
     if ($absence) { $plan.raison = "Absence en cours : $($absence.libelle) ($($absence.debut) → $($absence.fin))."; return $plan }
+    $holiday = Get-SmFerie $Config $Moment
+    if ($holiday) { $plan.raison = "Jour férié : $holiday."; return $plan }
     if (@($Config.joursEnvoi) -notcontains (Get-SmJourSemaine $Moment)) {
         $plan.raison = "Pas d'envoi le $($SmJours[(Get-SmJourSemaine $Moment)])."
         return $plan
@@ -680,6 +750,156 @@ function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$N
     $item.majPar = 'moi'
     $item.majLe = (Get-Date).ToString('o')
     $item
+}
+
+# --- Réunion squad -------------------------------------------------------------
+# Une fiche par réunion : <WorkDir>\squad\AAAA-MM-JJ.json. Les sujets suivent le formulaire de la
+# squad ; « parPersonne » : une rubrique par initiales de l'équipe (RDV clients, visites).
+# Une ligne « auto » vient de la préparation et sera remplacée par la suivante ; une ligne que
+# j'ai écrite ou modifiée (auto = false) est gardée.
+
+$SmSquadSujets = @(
+    [ordered]@{ id = 'clients_a';       titre = 'Clients A+';                          parPersonne = $false }
+    [ordered]@{ id = 'mercato';         titre = 'Mercato';                             parPersonne = $false }
+    [ordered]@{ id = 'rooster';         titre = "The rooster's crow";                  parPersonne = $false }
+    [ordered]@{ id = 'rdv_ecoulee';     titre = 'RDV clients SOM – semaine écoulée';   parPersonne = $true }
+    [ordered]@{ id = 'rdv_en_cours';    titre = 'RDV clients SOM – semaine en cours';  parPersonne = $true }
+    [ordered]@{ id = 'visites';         titre = 'Visites TAM / SDM';                   parPersonne = $true }
+    [ordered]@{ id = 'revues';          titre = 'Revues opérationnelles';              parPersonne = $false }
+    [ordered]@{ id = 'projets';         titre = 'Statut des projets';                  parPersonne = $false }
+    [ordered]@{ id = 'problematiques';  titre = 'Problématiques en cours';             parPersonne = $false }
+    [ordered]@{ id = 'variabilites';    titre = 'Variabilités';                        parPersonne = $false }
+    [ordered]@{ id = 'facturation';     titre = 'Facturation';                         parPersonne = $false }
+    [ordered]@{ id = 'satisfaction';    titre = 'Satisfactions / insatisfactions';     parPersonne = $false }
+    [ordered]@{ id = 'divers';          titre = 'Divers';                              parPersonne = $false }
+)
+$SmSquadPresences = @('', 'X', '(X)', 'A', 'V', 'E')
+
+# Date de la réunion de la semaine de $Moment (le samedi et le dimanche : celle de la semaine suivante).
+function Get-SmSquadDate($Config, [datetime]$Moment = (Get-Date)) {
+    $day = Get-SmJourSemaine $Moment
+    $monday = $Moment.Date.AddDays(1 - $day)
+    if ($day -ge 6) { $monday = $monday.AddDays(7) }
+    $monday.AddDays([int]$Config.squadJour - 1).ToString('yyyy-MM-dd')
+}
+
+# Raison de ne pas tenir la réunion ce jour-là (absence, jour férié), ou $null.
+function Get-SmSquadEmpechement($Config, [datetime]$Date) {
+    $absence = Get-SmAbsence $Config $Date
+    if ($absence) { return "absence ($($absence.libelle))" }
+    $holiday = Get-SmFerie $Config $Date
+    if ($holiday) { return "jour férié ($holiday)" }
+    $null
+}
+
+function Get-SmSquadPath([string]$Date, [string]$WorkDir = $SmWorkDir) {
+    if ($Date -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "Date de réunion invalide : $Date" }
+    Join-Path $WorkDir "squad\$Date.json"
+}
+
+# Dates des fiches enregistrées, de la plus récente à la plus ancienne (à envelopper dans @()).
+function Get-SmSquadDates([string]$WorkDir = $SmWorkDir) {
+    $dir = Join-Path $WorkDir 'squad'
+    if (-not (Test-Path $dir)) { return }
+    Get-ChildItem $dir -Filter '*.json' | Where-Object { $_.BaseName -match '^\d{4}-\d{2}-\d{2}$' } |
+        Sort-Object Name -Descending | ForEach-Object { $_.BaseName }
+}
+
+function New-SmSquadLigne([string]$Qui, [string]$Situation = '', [string]$Etape = '', [string]$Porteur = '', [string]$Source = '', [bool]$Auto = $false) {
+    [ordered]@{ qui = $Qui; situation = $Situation; etape = $Etape; porteur = $Porteur; source = $Source; auto = $Auto }
+}
+
+# Fiche vide d'une réunion : participants (moi présent), une rubrique par membre là où il en faut.
+function New-SmSquad($Config, [string]$Date) {
+    $me = $Config.squadMoi.ToUpper()
+    $team = @(ConvertTo-SmListe $Config.squadEquipe | ForEach-Object { $_.ToUpper() })
+    if ($team -notcontains $me) { $team += $me }
+    [ordered]@{
+        date         = $Date
+        moi          = $me
+        prepareLe    = $null
+        majLe        = $null
+        resume       = ''
+        participants = @(ConvertTo-SmListe $Config.squadParticipants | ForEach-Object {
+            [ordered]@{ nom = $_; presence = $(if ($_ -eq $Config.squadPrenom) { 'X' } else { '' }) }
+        })
+        sujets       = @($SmSquadSujets | ForEach-Object {
+            $sujet = $_
+            [ordered]@{
+                id = $sujet.id; titre = $sujet.titre; parPersonne = $sujet.parPersonne
+                lignes = @($(if ($sujet.parPersonne) { $team | ForEach-Object { New-SmSquadLigne $_ } }))
+            }
+        })
+    }
+}
+
+# Fiche enregistrée, remise au format du modèle (sujets ajoutés depuis, lignes en dictionnaires).
+function Get-SmSquad($Config, [string]$Date, [string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Get-SmSquadPath $Date $WorkDir)
+    if (-not $saved) { return $null }
+    $doc = New-SmSquad $Config $Date
+    foreach ($key in 'moi', 'prepareLe', 'majLe', 'resume') { if ($saved.$key) { $doc[$key] = $saved.$key } }
+    if (@($saved.participants).Count) {
+        $doc.participants = @(@($saved.participants) | Where-Object { $_ } | ForEach-Object { [ordered]@{ nom = [string]$_.nom; presence = [string]$_.presence } })
+    }
+    foreach ($sujet in $doc.sujets) {
+        $old = @($saved.sujets) | Where-Object { $_ -and $_.id -eq $sujet.id } | Select-Object -First 1
+        if (-not $old) { continue }
+        $sujet.lignes = @(@($old.lignes) | Where-Object { $_ } | ForEach-Object {
+            New-SmSquadLigne ([string]$_.qui) ([string]$_.situation) ([string]$_.etape) ([string]$_.porteur) ([string]$_.source) ([bool]$_.auto)
+        })
+    }
+    $doc
+}
+
+function Save-SmSquad($Doc, [string]$WorkDir = $SmWorkDir) {
+    $Doc.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Get-SmSquadPath $Doc.date $WorkDir) $Doc
+}
+
+# Fiche reçue de la page : seuls les champs connus, textes bornés.
+function ConvertFrom-SmSquadPage($Config, $Posted) {
+    $date = [string]$Posted.date
+    $doc = New-SmSquad $Config $date
+    $cut = { param($text, $max) $t = ([string]$text).Trim(); if ($t.Length -gt $max) { $t.Substring(0, $max) } else { $t } }
+    $doc.moi = $(if ($Posted.moi) { [string]$Posted.moi } else { $doc.moi })
+    $doc.prepareLe = $Posted.prepareLe
+    $doc.resume = & $cut $Posted.resume 2000
+    $doc.participants = @(@($Posted.participants) | Where-Object { $_ -and ([string]$_.nom).Trim() } | ForEach-Object {
+        [ordered]@{ nom = (& $cut $_.nom 60); presence = $(if ($SmSquadPresences -contains [string]$_.presence) { [string]$_.presence } else { '' }) }
+    })
+    foreach ($sujet in $doc.sujets) {
+        $match = @($Posted.sujets) | Where-Object { $_ -and $_.id -eq $sujet.id } | Select-Object -First 1
+        if (-not $match) { continue }
+        $sujet.lignes = @(@($match.lignes) | Where-Object { $_ } | ForEach-Object {
+            New-SmSquadLigne (& $cut $_.qui 10) (& $cut $_.situation 2000) (& $cut $_.etape 1000) (& $cut $_.porteur 60) (& $cut $_.source 200) ([bool]$_.auto)
+        })
+    }
+    $doc
+}
+
+# Intègre les lignes préparées ($Lignes : sujet, situation, etape, porteur, source) : elles
+# remplacent les lignes « auto » précédentes ; mes lignes et celles des autres restent.
+function Merge-SmSquad($Doc, $Lignes) {
+    $me = $Doc.moi
+    foreach ($sujet in $Doc.sujets) {
+        $kept = @($sujet.lignes | Where-Object { -not $_.auto })
+        $new = @(@($Lignes) | Where-Object { $_ -and $_.sujet -eq $sujet.id -and ([string]$_.situation).Trim() } | ForEach-Object {
+            $porteur = $(if ([string]$_.porteur) { [string]$_.porteur } else { $me })
+            New-SmSquadLigne $me ([string]$_.situation).Trim() ([string]$_.etape).Trim() $porteur ([string]$_.source).Trim() $true
+        })
+        if ($sujet.parPersonne -and $new.Count) {
+            # Ma rubrique vide est remplacée par les lignes préparées, à la place de mes initiales.
+            $at = -1
+            for ($i = 0; $i -lt $kept.Count; $i++) { if ($kept[$i].qui -eq $me) { $at = $i; break } }
+            $kept = @($kept | Where-Object { -not ($_.qui -eq $me -and -not $_.situation -and -not $_.etape) })
+            if ($at -lt 0 -or $at -gt $kept.Count) { $at = $kept.Count }
+            $sujet.lignes = @(@($kept | Select-Object -First $at) + $new + @($kept | Select-Object -Skip $at))
+        } else {
+            $sujet.lignes = @($kept + $new)
+        }
+        if ($sujet.parPersonne -and -not ($sujet.lignes | Where-Object { $_.qui -eq $me })) { $sujet.lignes += New-SmSquadLigne $me }
+    }
 }
 
 # --- Markdown -> HTML (le sous-ensemble produit par la synthèse) -----------

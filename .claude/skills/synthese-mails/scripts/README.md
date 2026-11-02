@@ -115,9 +115,29 @@ déjà réglés. La progression s'affiche sous l'en-tête. Un seul lancement à
 la fois : si une synthèse tourne déjà (tâche du matin ou bouton), le
 second lancement est refusé.
 
+Onglet **Squad** : le formulaire de la réunion hebdomadaire de la squad
+(participants, Clients A+, Mercato, RDV clients de la semaine écoulée et de
+la semaine en cours, visites, revues, projets, problématiques, variabilités,
+facturation, satisfactions, divers). Le jour de la réunion (lundi par
+défaut), la synthèse du matin prépare **mes lignes** (`Preparer-Squad.ps1`,
+règles dans `references/squad.md`) à partir de l'agenda Outlook
+(`Export-OutlookAgenda.ps1`, de la semaine écoulée aux quatre semaines
+suivantes), des mails, du suivi, des éléments à garder, de Jira et de la
+fiche précédente ; chaque ligne porte sa source. Le mail du matin contient
+le lien « Ouvrir la préparation ». Pas de préparation un jour d'absence ou
+férié. Dans l'onglet, tout se modifie sur place et s'enregistre seul
+(`%USERPROFILE%\SyntheseMails\squad\AAAA-MM-JJ.json`) ; « Mettre à jour »
+relance la préparation sans toucher à ce que j'ai écrit ou modifié.
+« Copier pour OneNote » copie tout le formulaire en tableaux, « Copier mes
+lignes » seulement les miennes, par sujet.
+
 Onglet **Réglages** :
 
 - synthèse active, envoi par mail, heure, jours d'envoi ;
+- **jours fériés** du canton (Vaud par défaut, Genève, ou aucun) : ni
+  synthèse ni préparation de réunion ce jour-là ;
+- **réunion squad** : jour, mes initiales et mon prénom, participants,
+  initiales de l'équipe (rubriques RDV clients et visites) ;
 - fenêtre relue (14 jours par défaut) ;
 - **absences** (vacances, formation…) : pas de synthèse pendant
   l'absence, puis une synthèse de retour qui couvre toute la période ;

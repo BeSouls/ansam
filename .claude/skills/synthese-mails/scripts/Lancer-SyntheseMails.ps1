@@ -14,6 +14,8 @@
        pour que le skill synthese-mails soit chargé, avec le registre de
        suivi (suivi.json). La réponse se termine par un bloc de suivi, qui
        est intégré au registre (Merge-SmSuivi) puis retiré du mail.
+    Le jour de la réunion squad (hors absence et jour férié), Preparer-Squad.ps1
+       prépare mes lignes du formulaire ; la synthèse y mène par un lien.
     6. Synthèse gardée dans <WorkDir>\syntheses\AAAA-MM-JJ.md et envoyée par
        mail à ma propre adresse via Outlook. En cas d'échec, un mail
        « Synthèse mails – échec » le signale. Journal dans <WorkDir>\logs.
@@ -192,6 +194,18 @@ try {
     } catch {
         Write-Warning "Registre des éléments à garder inchangé : $($_.Exception.Message)"
         $markdown += "`n`n> ⚠ Variabilité / facturation / points d'attention non enregistrés aujourd'hui ($($_.Exception.Message))."
+    }
+    # Réunion squad : préparée le matin du jour de réunion, hors absence et jour férié ; le mail y mène.
+    if ($config.squadActif -and -not $PasDeMail -and (Get-SmJourSemaine $start) -eq $config.squadJour -and -not (Get-SmSquadEmpechement $config $start)) {
+        $squadUrl = "$(Get-SmPageUrl $WorkDir)#squad"
+        Write-Host "$(Get-Date -Format HH:mm:ss) Étape : réunion squad"
+        try {
+            & (Join-Path $PSScriptRoot 'Preparer-Squad.ps1') -Date $today -WorkDir $WorkDir -RepoDir $RepoDir -ClaudeExe $ClaudeExe | Out-Null
+            $markdown += "`n`n**Réunion squad du $($start.ToString('dd.MM'))** : tes lignes sont prêtes, à relire et copier dans OneNote. [Ouvrir la préparation]($squadUrl)"
+        } catch {
+            Write-Warning "Réunion squad non préparée : $($_.Exception.Message)"
+            $markdown += "`n`n> ⚠ Réunion squad non préparée ($($_.Exception.Message)). [La préparer dans Panoramix]($squadUrl)"
+        }
     }
     $markdown += "`n`n---`n[Ouvrir Panoramix]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     # Une actualisation (-PasDeMail) ne remplace pas la synthèse du jour : fichier à part, et la date de

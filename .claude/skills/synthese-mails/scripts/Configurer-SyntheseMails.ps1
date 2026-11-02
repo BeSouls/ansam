@@ -23,8 +23,12 @@
     garder (<WorkDir>\archives.json), établis ou à vérifier, que je marque
     reportés / traités / vus ou écartés.
 
+    Onglet « Squad » : la fiche de la réunion squad (<WorkDir>\squad\AAAA-MM-JJ.json),
+    préparée par Preparer-Squad.ps1, modifiable sur place, copiable pour OneNote.
+
     Onglet « Réglages » : <WorkDir>\config.json : synthèse active, heure, jours
-    d'envoi, fenêtre en jours, envoi par mail, absences, dossiers. Elle
+    d'envoi, fenêtre en jours, envoi par mail, absences, jours fériés, réunion
+    squad, dossiers. Elle
     affiche la prochaine synthèse prévue, l'état de la tâche planifiée et les
     dernières synthèses, et peut installer ou mettre à jour la tâche.
 
@@ -193,6 +197,9 @@ function ConvertFrom-PageConfig([string]$Json) {
         [ordered]@{ debut = [string]$_.debut; fin = [string]$_.fin; libelle = ([string]$_.libelle).Trim() }
     } | Sort-Object { $_.debut })
     $config.contactsTiers = @(ConvertTo-SmContactsTiers $config.contactsTiers)
+    $config.squadActif = [bool]$config.squadActif
+    $config.squadJour = [int]$config.squadJour
+    foreach ($key in 'cantonFeries', 'squadMoi', 'squadPrenom', 'squadEquipe', 'squadParticipants') { $config[$key] = ([string]$config[$key]).Trim() }
     $config
 }
 
@@ -227,6 +234,18 @@ function Get-RedactionState([string]$Id) {
         $since = ConvertTo-SmDateTime $state.le
         $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
         if ($dead) { $state.etat = 'echec'; $state.message = 'Rédaction interrompue.' }
+    }
+    $state
+}
+
+# État de la préparation de la réunion squad (Preparer-Squad.ps1), même règle que la rédaction.
+function Get-SquadPreparationState {
+    $state = Read-SmJson (Join-Path $WorkDir 'squad-preparation.json')
+    if (-not $state) { return [ordered]@{ etat = 'aucune' } }
+    if ($state.etat -eq 'en_cours') {
+        $since = ConvertTo-SmDateTime $state.le
+        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        if ($dead) { $state.etat = 'echec'; $state.message = 'Préparation interrompue.' }
     }
     $state
 }
@@ -418,6 +437,37 @@ try {
                     if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
                     Send-Json $stream 200 (Get-RedactionState $id)
                 }
+                '^GET /api/squad$' {
+                    # Fiche d'une réunion (par défaut celle de la semaine), vide si elle n'est pas encore préparée.
+                    $config = Get-SmConfig $WorkDir
+                    $current = Get-SmSquadDate $config
+                    $date = $(if ($request.Query['d']) { [string]$request.Query['d'] } else { $current })
+                    $doc = Get-SmSquad $config $date $WorkDir
+                    $dates = @(@($current) + @(Get-SmSquadDates $WorkDir) | Sort-Object -Unique -Descending)
+                    Send-Json $stream 200 ([ordered]@{
+                        date = $date; courante = $current; dates = $dates; enregistree = [bool]$doc
+                        fiche = $(if ($doc) { $doc } else { New-SmSquad $config $date })
+                        empechement = Get-SmSquadEmpechement $config (ConvertTo-SmDate $date)
+                        preparation = Get-SquadPreparationState
+                    })
+                }
+                '^POST /api/squad$' {
+                    $doc = ConvertFrom-SmSquadPage (Get-SmConfig $WorkDir) ($request.Body | ConvertFrom-Json)
+                    Save-SmSquad $doc $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = 'Enregistré.'; majLe = $doc.majLe })
+                }
+                '^POST /api/squad/preparation$' {
+                    # Préparation à la demande (même pour un jour d'absence ou férié) : en arrière-plan, 2 à 4 minutes.
+                    $date = [string]($request.Body | ConvertFrom-Json).date
+                    if ($date -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "Date invalide : $date" }
+                    if ((Get-SquadPreparationState).etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Préparation déjà en cours.') }); break }
+                    Write-SmJson (Join-Path $WorkDir 'squad-preparation.json') ([ordered]@{ date = $date; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Preparer-Squad.ps1'
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Date $date -Force" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Préparation lancée : agenda, mails et suivi relus, 2 à 4 minutes.' })
+                }
+                '^GET /api/squad/preparation$' { Send-Json $stream 200 (Get-SquadPreparationState) }
                 '^POST /api/brouillon$' {
                     # Brouillon Outlook d'une prise de contact : enregistré dans Brouillons et ouvert pour relecture,
                     # jamais envoyé par le script.

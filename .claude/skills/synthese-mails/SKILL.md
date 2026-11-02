@@ -166,8 +166,14 @@ suivante en tient compte.
 
 Les réglages (heure, jours d'envoi, fenêtre, absences, envoi du mail) se
 font dans la page locale ouverte par `scripts/Configurer-SyntheseMails.cmd`.
-Pendant une absence, aucune synthèse n'est produite ; le premier jour de
-retour, une seule synthèse couvre toute la période.
+Pendant une absence ou un jour férié (canton des réglages), aucune
+synthèse n'est produite ; le premier jour de retour, une seule synthèse
+couvre toute la période.
+
+Le jour de la réunion squad (lundi par défaut), le lanceur prépare aussi mes
+lignes du formulaire de la squad (`scripts/Preparer-Squad.ps1`, selon
+`references/squad.md`), consultables et modifiables dans l'onglet « Squad »,
+et ajoute le lien « Ouvrir la préparation » à la synthèse.
 
 Avec le connecteur Microsoft 365, quand il sera débloqué : même méthode,
 depuis une tâche planifiée Claude dont le seul connecteur autorisé est

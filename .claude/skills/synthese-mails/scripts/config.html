@@ -257,6 +257,28 @@
   .toast.err { background: rgba(215, 0, 21, .92); }
   .toast button { font: inherit; font-weight: 600; color: #ff8ab4; background: none; border: 0; cursor: pointer; padding: .2rem .3rem; }
 
+  /* Réunion squad */
+  .sq-people { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .sq-person { display: inline-flex; align-items: center; gap: .35rem; font-size: .875rem; padding: .2rem .25rem .2rem .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+  .sq-person select { font: inherit; font-size: .8125rem; border: 0; border-radius: 999px; background: var(--surface-2); color: var(--text); padding: .15rem .35rem; }
+  .sq-sujet { margin-bottom: .75rem; }
+  .sq-sujet h3 { font-size: .9375rem; margin: 0 0 .5rem; display: flex; align-items: baseline; gap: .5rem; }
+  .sq-row { display: grid; grid-template-columns: 3.2rem minmax(0, 1.5fr) minmax(0, 1fr) 5.5rem auto; gap: .4rem; align-items: start; padding: .35rem 0; border-top: 1px solid var(--line); }
+  .sq-row:first-of-type { border-top: 0; }
+  .sq-row .field { font-size: .875rem; padding: .35rem .5rem; }
+  .sq-row textarea.field { resize: vertical; min-height: 2.2rem; field-sizing: content; }
+  .sq-qui { font-size: .75rem; font-weight: 700; letter-spacing: .03em; padding-top: .45rem; color: var(--muted); }
+  .sq-qui.me { color: var(--accent); }
+  .sq-src { grid-column: 2 / -1; font-size: .75rem; color: var(--muted); margin-top: -.15rem; }
+  .sq-src .tag { display: inline-block; padding: 0 .4rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-right: .35rem; }
+  .sq-head { display: grid; grid-template-columns: 3.2rem minmax(0, 1.5fr) minmax(0, 1fr) 5.5rem auto; gap: .4rem; font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--muted); }
+  .sq-others { font-size: .75rem; color: var(--muted); margin-top: .3rem; }
+  @media (max-width: 40rem) {
+    .sq-row { grid-template-columns: 2.6rem minmax(0, 1fr) auto; }
+    .sq-row .sq-etape, .sq-row .sq-porteur { grid-column: 2 / 3; }
+    .sq-head { display: none; }
+  }
+
   @media (max-width: 40rem) {
     .row-add, .row-add.six { grid-template-columns: 1fr 1fr; }
     .search { max-width: none; flex-basis: 100%; }
@@ -300,6 +322,7 @@
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
+      <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
       <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
     </nav>
   </div>
@@ -341,6 +364,18 @@
       <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
     </div>
     <div id="list-attention"></div>
+  </section>
+
+  <section class="pane" id="p-squad" hidden>
+    <div class="toolbar">
+      <select class="chip" id="sqDate" aria-label="Réunion"></select>
+      <button class="chip" type="button" id="sqPrep" title="Relit l'agenda, les mails, le suivi et la fiche précédente ; tes modifications restent">Préparer</button>
+      <button class="chip" type="button" id="sqCopy" title="Tout le formulaire, en tableau, à coller dans OneNote">Copier pour OneNote</button>
+      <button class="chip" type="button" id="sqMine" title="Seulement tes lignes, par sujet">Copier mes lignes</button>
+      <span class="meta" id="sqSaved" aria-live="polite"></span>
+    </div>
+    <div class="run" id="sqState" role="status" aria-live="polite" hidden><span class="spinner"></span><span id="sqText"></span></div>
+    <div id="sqBox"><div class="empty">Chargement…</div></div>
   </section>
 
   <section class="pane" id="p-reglages" hidden>
@@ -385,6 +420,22 @@
         <div><label class="f" for="absLibelle">Libellé</label><input class="field" type="text" id="absLibelle" placeholder="Vacances, formation…"></div>
         <div><button class="btn" type="button" id="absAdd">Ajouter</button></div>
       </div>
+    </div>
+    <div class="panel">
+      <h2>Jours fériés et réunion squad</h2>
+      <p class="hint">Un jour férié ne reçoit ni synthèse ni préparation de réunion ; la synthèse suivante le couvre. Le jour de la réunion, la synthèse prépare tes lignes du formulaire et y mène par un lien.</p>
+      <div class="grid">
+        <div><label class="f" for="cantonFeries">Jours fériés du canton</label>
+          <select class="field" id="cantonFeries"><option value="VD">Vaud</option><option value="GE">Genève</option><option value="aucun">Aucun</option></select></div>
+        <div><label class="f" for="squadJour">Jour de la réunion</label><select class="field" id="squadJour"></select></div>
+        <div><label class="f" for="squadMoi">Mes initiales</label><input class="field" type="text" id="squadMoi" maxlength="5" placeholder="GBR"></div>
+        <div><label class="f" for="squadPrenom">Mon prénom (participants)</label><input class="field" type="text" id="squadPrenom"></div>
+      </div>
+      <div class="grid" style="margin-top:.8rem">
+        <div><label class="f" for="squadParticipants">Participants (séparés par des virgules)</label><input class="field" type="text" id="squadParticipants"></div>
+        <div><label class="f" for="squadEquipe">Initiales de l’équipe (RDV clients, visites)</label><input class="field" type="text" id="squadEquipe"></div>
+      </div>
+      <label class="switch" style="margin-top:.8rem"><input type="checkbox" id="squadActif"> Préparer la réunion squad</label>
     </div>
     <div class="panel">
       <h2>Contacts des tiers</h2>
@@ -539,6 +590,7 @@ function showTab(name) {
   document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
   try { localStorage.setItem('sm-tab', name); } catch (e) { }
+  if (name === 'squad' && !squad && typeof loadSquad === 'function' && token && location.protocol !== 'file:') loadSquad();
 }
 document.querySelectorAll('nav.seg button').forEach(b => b.addEventListener('pointerdown', () => showTab(b.dataset.tab)));
 document.querySelectorAll('.pane .toolbar .chip[data-f]').forEach(b => b.addEventListener('click', () => {
@@ -1289,6 +1341,11 @@ function renderSettings() {
   renderAbsences();
   tiers = [].concat(c.contactsTiers || []).map(t => ({ nom: t.nom || '', motsCles: t.motsCles || '', email: t.email || '', telephone: t.telephone || '', note: t.note || '' }));
   renderTiers();
+  $('cantonFeries').value = c.cantonFeries || 'VD';
+  $('squadJour').innerHTML = [1, 2, 3, 4, 5].map(d => `<option value="${d}">${dayNames[d]}</option>`).join('');
+  $('squadJour').value = String(c.squadJour || 1);
+  $('squadActif').checked = c.squadActif !== false;
+  ['squadMoi', 'squadPrenom', 'squadParticipants', 'squadEquipe'].forEach(k => { $(k).value = c[k] || ''; });
 
   const n = state.prochaine;
   $('next').textContent = !n ? (c.actif ? 'Aucune dans les 90 prochains jours' : 'Synthèse désactivée')
@@ -1313,7 +1370,9 @@ function collect() {
     actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
     dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences,
-    contactsTiers: tiers
+    contactsTiers: tiers, cantonFeries: $('cantonFeries').value,
+    squadActif: $('squadActif').checked, squadJour: Number($('squadJour').value), squadMoi: $('squadMoi').value.trim().toUpperCase(),
+    squadPrenom: $('squadPrenom').value.trim(), squadParticipants: $('squadParticipants').value.trim(), squadEquipe: $('squadEquipe').value.trim()
   };
 }
 
@@ -1348,6 +1407,210 @@ $('install').onclick = async () => {
 $('quit').onclick = async () => {
   try { await api('POST', '/api/quitter'); } catch (e) { }
   document.querySelector('main').innerHTML = '<div class="empty"><b>Page arrêtée</b>Pour la rouvrir : raccourci « Panoramix » du menu Démarrer.</div>';
+};
+
+// --- Réunion squad -------------------------------------------------------------
+// La fiche se modifie sur place et s'enregistre seule ; une ligne préparée que je modifie
+// devient la mienne (auto = false) et n'est plus remplacée par la préparation suivante.
+let squad = null, squadTimer = null, squadPrepTimer = null, squadWatching = false;
+const presences = [['', '–'], ['X', 'X'], ['(X)', '(X)'], ['A', 'A'], ['V', 'V'], ['E', 'E']];
+
+async function loadSquad(date) {
+  try {
+    squad = await api('GET', '/api/squad' + (date ? '?d=' + encodeURIComponent(date) : ''));
+    renderSquad();
+    if (squad.preparation && squad.preparation.etat === 'en_cours') pollSquadPrep();
+  } catch (e) { $('sqBox').innerHTML = emptyState('Fiche indisponible', e.message); }
+}
+
+function renderSquad() {
+  const s = squad, f = s.fiche, me = f.moi;
+  $('sqDate').innerHTML = s.dates.map(d => `<option value="${d}">Réunion du ${dayNames[((new Date(d + 'T12:00').getDay() + 6) % 7) + 1]} ${fmtDay(d)}${d === s.courante ? ' (cette semaine)' : ''}</option>`).join('');
+  $('sqDate').value = s.date;
+  $('sqPrep').textContent = s.enregistree && f.prepareLe ? 'Mettre à jour' : 'Préparer';
+  const box = $('sqBox');
+  box.innerHTML = '';
+
+  const intro = document.createElement('div');
+  intro.className = 'panel';
+  intro.innerHTML = `<h2>Réunion du ${fmtDay(s.date)}</h2>` +
+    (s.empechement ? `<p class="hint">Pas de réunion prévue pour toi ce jour-là : ${esc(s.empechement)}.</p>` : '') +
+    (f.prepareLe ? `<p class="meta" style="margin:0 0 .6rem">Préparé le ${shortDate(f.prepareLe)} à ${new Date(f.prepareLe).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · lignes marquées « préparé » : à relire</p>`
+      : `<p class="hint">Pas encore préparée : « Préparer » relit ton agenda, tes mails, le suivi et la fiche précédente (2 à 4 minutes).</p>`) +
+    (f.resume ? `<div class="resume">${esc(f.resume)}</div>` : '') +
+    `<label class="f" style="margin-top:.8rem">Participants</label><div class="sq-people"></div>`;
+  const people = intro.querySelector('.sq-people');
+  f.participants.forEach(p => {
+    const el = document.createElement('label');
+    el.className = 'sq-person';
+    el.innerHTML = `${esc(p.nom)} <select aria-label="Présence de ${esc(p.nom)}">${presences.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>`;
+    const sel = el.querySelector('select');
+    sel.value = p.presence || '';
+    sel.onchange = () => { p.presence = sel.value; saveSquadSoon(); };
+    people.appendChild(el);
+  });
+  box.appendChild(intro);
+
+  f.sujets.forEach(sujet => {
+    const card = document.createElement('div');
+    card.className = 'panel sq-sujet';
+    const mine = sujet.lignes.filter(l => l.qui === me || l.situation || l.etape);
+    const others = sujet.parPersonne ? [...new Set(sujet.lignes.filter(l => l.qui !== me && !l.situation && !l.etape).map(l => l.qui))] : [];
+    card.innerHTML = `<h3>${esc(sujet.titre)} ${mine.some(l => l.auto) ? '<span class="count">préparé</span>' : ''}</h3>` +
+      (mine.length ? `<div class="sq-head"><span></span><span>Situation</span><span>Prochaine étape</span><span>Porteur</span><span></span></div>` : '');
+    mine.forEach(line => card.appendChild(squadRow(sujet, line, me)));
+    const foot = document.createElement('div');
+    foot.className = 'actions';
+    foot.style.marginTop = '.4rem';
+    foot.innerHTML = `<button class="btn link plain" type="button">+ Ajouter une ligne</button>` +
+      (others.length ? `<span class="sq-others">Rubriques ${others.map(esc).join(', ')} gardées pour la copie OneNote</span>` : '');
+    foot.querySelector('button').onclick = () => {
+      sujet.lignes.push({ qui: me, situation: '', etape: '', porteur: me, source: '', auto: false });
+      renderSquad();
+      const rows = [...document.querySelectorAll(`[data-sujet="${sujet.id}"] textarea.sq-situation`)];
+      rows.length && rows[rows.length - 1].focus();
+    };
+    card.dataset.sujet = sujet.id;
+    card.appendChild(foot);
+    box.appendChild(card);
+  });
+}
+
+function squadRow(sujet, line, me) {
+  const row = document.createElement('div');
+  row.className = 'sq-row';
+  row.innerHTML = `<span class="sq-qui${line.qui === me ? ' me' : ''}">${esc(line.qui)}</span>` +
+    `<textarea class="field sq-situation" rows="1" aria-label="Situation" placeholder="CODE : situation"></textarea>` +
+    `<textarea class="field sq-etape" rows="1" aria-label="Prochaine étape" placeholder="Prochaine étape"></textarea>` +
+    `<input class="field sq-porteur" type="text" aria-label="Porteur" placeholder="Porteur">` +
+    `<button class="btn link" type="button" aria-label="Retirer la ligne">✕</button>` +
+    (line.auto || line.source ? `<div class="sq-src">${line.auto ? '<span class="tag">préparé</span>' : ''}${line.source ? 'source : ' + esc(line.source) : ''}</div>` : '');
+  const [sit, etape] = row.querySelectorAll('textarea');
+  const porteur = row.querySelector('input');
+  sit.value = line.situation || ''; etape.value = line.etape || ''; porteur.value = line.porteur || '';
+  const edit = () => {
+    Object.assign(line, { situation: sit.value, etape: etape.value, porteur: porteur.value, auto: false });
+    const tag = row.querySelector('.tag'); tag && tag.remove();
+    saveSquadSoon();
+  };
+  [sit, etape, porteur].forEach(el => el.addEventListener('input', edit));
+  row.querySelector('button').onclick = () => {
+    const i = sujet.lignes.indexOf(line);
+    if (i < 0) return;
+    sujet.lignes.splice(i, 1);
+    // Rubrique d'un membre : on garde sa ligne vide pour la copie.
+    const placeholder = sujet.parPersonne && !sujet.lignes.some(l => l.qui === line.qui);
+    if (placeholder) sujet.lignes.splice(i, 0, { qui: line.qui, situation: '', etape: '', porteur: '', source: '', auto: false });
+    renderSquad();
+    saveSquadSoon();
+    toast('Ligne retirée.', () => { sujet.lignes.splice(i, placeholder ? 1 : 0, line); renderSquad(); saveSquadSoon(); });
+  };
+  return row;
+}
+
+function saveSquadSoon() {
+  clearTimeout(squadTimer);
+  $('sqSaved').textContent = 'Modifications…';
+  squadTimer = setTimeout(async () => {
+    try { await api('POST', '/api/squad', squad.fiche); squad.enregistree = true; $('sqSaved').textContent = 'Enregistré'; }
+    catch (e) { $('sqSaved').textContent = ''; toast('Fiche non enregistrée : ' + e.message, null, true); }
+  }, 700);
+}
+
+$('sqDate').onchange = () => loadSquad($('sqDate').value);
+$('sqPrep').onclick = async () => {
+  try {
+    const r = await api('POST', '/api/squad/preparation', { date: squad.date });
+    squadWatching = true;
+    toast(r.message);
+    pollSquadPrep();
+  } catch (e) { toast(e.message, null, true); }
+};
+
+async function pollSquadPrep() {
+  clearTimeout(squadPrepTimer);
+  let s;
+  try { s = await api('GET', '/api/squad/preparation'); } catch (e) { squadPrepTimer = setTimeout(pollSquadPrep, 6000); return; }
+  if (s.etat === 'en_cours') {
+    squadWatching = true;
+    $('sqState').hidden = false;
+    $('sqText').textContent = `Préparation de la réunion du ${fmtDay(s.date)} · ${s.message || 'en cours'}`;
+    $('sqPrep').disabled = true;
+    squadPrepTimer = setTimeout(pollSquadPrep, 4000);
+    return;
+  }
+  $('sqState').hidden = true;
+  $('sqPrep').disabled = false;
+  if (!squadWatching) return;
+  squadWatching = false;
+  if (s.etat === 'ok') { toast(s.message); loadSquad(s.date); }
+  else if (s.etat === 'echec') toast('Préparation impossible : ' + (s.message || 'voir le journal'), null, true);
+  else if (s.message) toast(s.message);
+}
+
+// Copie : HTML (tableaux, comme le formulaire de la squad) et texte brut en secours.
+const sqCell = 'border:1px solid #a3a3a3;padding:3px 6px;vertical-align:top;font-family:Calibri,sans-serif;font-size:11pt';
+const sqHead = sqCell + ';background:#8c8c8c;color:#fff;font-weight:bold';
+const htmlLines = (list) => list.map(esc).join('<br>');
+
+function squadOneNoteHtml() {
+  const f = squad.fiche;
+  let html = `<p style="font-family:Calibri,sans-serif;font-size:11pt"><b><u>${fmtDay(f.date)}</u></b></p>` +
+    `<table style="border-collapse:collapse"><tr><td style="${sqHead}">Participants</td><td style="${sqHead}">Présence</td></tr>` +
+    f.participants.map(p => `<tr><td style="${sqCell}">${esc(p.nom)}</td><td style="${sqCell}">${esc(p.presence)}</td></tr>`).join('') + '</table><br>' +
+    `<table style="border-collapse:collapse"><tr><td style="${sqHead}">Sujet</td><td style="${sqHead}">Situation</td>` +
+    `<td style="${sqHead}">Prochaine(s) étape(s) - TO DO = Planner !</td><td style="${sqHead}">Porteur(s) du point</td></tr>`;
+  f.sujets.forEach(s => {
+    const filled = s.lignes.filter(l => l.situation || l.etape);
+    let situation, etapes;
+    if (s.parPersonne) {
+      const order = [...new Set(s.lignes.map(l => l.qui))];
+      situation = order.map(q => `${esc(q)} :<br>` + htmlLines(s.lignes.filter(l => l.qui === q && l.situation).map(l => l.situation))).join('<br><br>');
+    } else situation = htmlLines(filled.map(l => l.situation));
+    etapes = htmlLines(filled.filter(l => l.etape).map(l => (s.parPersonne || filled.length > 1) && l.situation ? `${l.situation.split(':')[0].trim()} : ${l.etape}` : l.etape));
+    const porteurs = [...new Set(filled.map(l => l.porteur).filter(Boolean))].map(esc).join(', ');
+    html += `<tr><td style="${sqCell}">${esc(s.titre).replace(' – ', '<br>')}</td><td style="${sqCell}">${situation}</td><td style="${sqCell}">${etapes}</td><td style="${sqCell}">${porteurs}</td></tr>`;
+  });
+  return html + '</table>';
+}
+
+function squadMineText() {
+  const f = squad.fiche;
+  const parts = f.sujets.map(s => {
+    const lines = s.lignes.filter(l => l.qui === f.moi && l.situation);
+    if (!lines.length) return null;
+    return { titre: s.titre, lines: lines.map(l => l.situation + (l.etape ? ` → ${l.etape}` : '') + (l.porteur && l.porteur !== f.moi ? ` (${l.porteur})` : '')) };
+  }).filter(Boolean);
+  return {
+    text: parts.map(p => `${p.titre}\n` + p.lines.map(l => `- ${l}`).join('\n')).join('\n\n'),
+    html: parts.map(p => `<p style="font-family:Calibri,sans-serif;font-size:11pt"><b>${esc(p.titre)}</b></p><ul>` + p.lines.map(l => `<li style="font-family:Calibri,sans-serif;font-size:11pt">${esc(l)}</li>`).join('') + '</ul>').join('')
+  };
+}
+
+async function copyRich(html, text, message) {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
+  } catch (e) {
+    const el = document.createElement('div');
+    el.contentEditable = 'true'; el.innerHTML = html; el.style.position = 'fixed'; el.style.left = '-9999px';
+    document.body.appendChild(el);
+    const range = document.createRange(); range.selectNodeContents(el);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand('copy'); sel.removeAllRanges(); el.remove();
+  }
+  toast(message);
+}
+
+$('sqCopy').onclick = () => {
+  if (!squad) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = squadOneNoteHtml().replace(/<br>/g, '\n').replace(/<\/tr>/g, '\n').replace(/<\/td>/g, '\t');
+  copyRich(squadOneNoteHtml(), tmp.textContent, 'Formulaire copié : colle-le dans OneNote (Ctrl+V).');
+};
+$('sqMine').onclick = () => {
+  if (!squad) return;
+  const m = squadMineText();
+  if (!m.text) { toast('Aucune ligne à toi pour l’instant.', null, true); return; }
+  copyRich(m.html, m.text, 'Tes lignes sont copiées.');
 };
 
 // --- Synthèse à la demande ---------------------------------------------------
@@ -1434,7 +1697,9 @@ if (location.protocol === 'file:' || !token) {
   document.querySelector('main').innerHTML = '<div class="empty"><b>Page à ouvrir par son service local</b>Utilise le raccourci « Panoramix » du menu Démarrer, ou le lien « Ouvrir Panoramix » d’une synthèse.</div>';
   $('sub').textContent = '';
 } else {
-  try { const saved = localStorage.getItem('sm-tab'); if (saved && $('p-' + saved)) showTab(saved); } catch (e) { }
+  // Le lien « Ouvrir la préparation » du mail mène directement à l'onglet Squad (#squad).
+  const wanted = location.hash.slice(1);
+  try { const saved = $('p-' + wanted) ? wanted : localStorage.getItem('sm-tab'); if (saved && $('p-' + saved)) showTab(saved); } catch (e) { }
   ['suivi', 'variabilite', 'facturation', 'attention'].forEach(t => { $('list-' + t) && ($('list-' + t).innerHTML = '<div class="empty">Chargement…</div>'); });
   load().then(pollRun);
 }
