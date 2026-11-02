@@ -432,6 +432,12 @@ try {
                         -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Id $id" | Out-Null
                     Send-Json $stream 200 ([ordered]@{ message = 'Rédaction lancée : relecture de tout le dossier, 1 à 2 minutes.' })
                 }
+                '^GET /api/redactions$' {
+                    # Rédactions encore en cours : la page en reprend le suivi après un rechargement.
+                    $running = @(Get-ChildItem $WorkDir -Filter 'redaction-*.json' -ErrorAction SilentlyContinue |
+                        ForEach-Object { $_.BaseName.Substring(10) } | Where-Object { $_ -match '^[A-Za-z0-9-]+$' -and (Get-RedactionState $_).etat -eq 'en_cours' })
+                    Send-Json $stream 200 ([ordered]@{ enCours = $running })
+                }
                 '^GET /api/redaction$' {
                     $id = [string]$request.Query['id']
                     if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
