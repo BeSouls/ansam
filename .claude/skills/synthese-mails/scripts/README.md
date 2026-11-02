@@ -82,7 +82,10 @@ résultats de tests du dossier AnsamDiag, `TICKET.md`, les messages déjà
 rédigés, les commentaires Jira (lecture seule) et le fil de mails complet.
 Le brouillon ou les points d'appel sont réécrits sans reposer une question
 déjà traitée, et un résumé « Où on en est » s'affiche. Cette version est
-gardée tant qu'aucun nouveau message n'arrive sur le point.
+gardée tant qu'aucun nouveau message n'arrive sur le point. Le champ
+**« À savoir en plus pour la rédaction »**, juste au-dessus du bouton, sert
+à donner ce qui n'est pas encore écrit (un appel, un statut, une décision) :
+il est gardé sur le point, et prime sur le dossier en cas de contradiction.
 
 Bouton **« Claude »** sur chaque tâche : ouvre une session Claude Code
 dans le dossier AnsamDiag (ses règles et ses skills), dans un onglet

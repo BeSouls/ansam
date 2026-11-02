@@ -440,6 +440,8 @@
       <span class="meta" id="csRedige"></span>
     </div>
     <div class="resume" id="csResume"></div>
+    <label class="f" for="csInfo" style="margin-top:.7rem">À savoir en plus pour la rédaction</label>
+    <textarea class="field" id="csInfo" rows="3" maxlength="4000" placeholder="Ce qui n'est pas encore dans les mails ni dans Jira : un appel, un statut, une décision, une date…"></textarea>
     <div class="actions" style="margin-top:.55rem">
       <button class="btn" type="button" id="csFull" title="Relit toutes les notes et tests AnsamDiag, le plan, les messages déjà envoyés, les commentaires Jira et le fil de mails complet">Rédiger avec tout le dossier</button>
       <span class="run" id="csFullState" hidden><span class="spinner"></span><span id="csFullText"></span></span>
@@ -903,6 +905,7 @@ function openContact(p, origin) {
 function fillContact(p) {
   const c = p.contact, call = c.mode === 'appel';
   $('csResume').textContent = c.resume || '';
+  $('csInfo').value = p.infosRedaction || '';
   $('csRedige').textContent = c.redigeLe
     ? `rédigé avec tout le dossier le ${shortDate(c.redigeLe)} à ${new Date(c.redigeLe).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}`
     : (!c.message && !(c.points || []).length ? 'à rédiger : « Rédiger avec tout le dossier »' : 'brouillon de la synthèse du matin');
@@ -930,7 +933,9 @@ $('csFull').addEventListener('click', async () => {
   const p = contactPoint;
   if (!p) return;
   try {
-    const r = await api('POST', '/api/redaction', { id: p.id });
+    const info = $('csInfo').value.trim();
+    const r = await api('POST', '/api/redaction', { id: p.id, infos: info });
+    p.infosRedaction = info;
     toast(r.message);
     pollRedaction(p.id, true);
   } catch (e) { toast(e.message, null, true); }

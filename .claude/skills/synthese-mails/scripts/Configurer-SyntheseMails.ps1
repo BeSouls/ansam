@@ -395,10 +395,18 @@ try {
                 }
                 '^POST /api/redaction$' {
                     # Rédaction d'une prise de contact avec tout le dossier : en arrière-plan, 1 à 2 minutes.
-                    $id = [string]($request.Body | ConvertFrom-Json).id
+                    $posted = $request.Body | ConvertFrom-Json
+                    $id = [string]$posted.id
                     if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
                     $state = Get-RedactionState $id
                     if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Rédaction déjà en cours pour ce point.') }); break }
+                    # Ce que je sais en plus (pas encore dans les mails ni Jira) : gardé sur le point, relu par la rédaction.
+                    $infos = ([string]$posted.infos).Trim()
+                    if ($infos.Length -gt 4000) { $infos = $infos.Substring(0, 4000) }
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = $suivi.points | Where-Object { $_.id -eq $id } | Select-Object -First 1
+                    if (-not $point) { throw "Point « $id » introuvable." }
+                    if ([string]$point.infosRedaction -ne $infos) { $point.infosRedaction = $infos; Save-SmSuivi $suivi $WorkDir }
                     Write-SmJson (Join-Path $WorkDir "redaction-$id.json") ([ordered]@{ id = $id; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
                     $script = Join-Path $PSScriptRoot 'Rediger-Contact.ps1'
                     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `

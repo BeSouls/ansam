@@ -12,6 +12,8 @@
     - le ticket Jira avec ses commentaires (outils de lecture du connecteur
       Atlassian seulement, écriture refusée) ;
     - tous les mails du dernier export qui concernent le point.
+    S'y ajoutent mes informations saisies dans la page (infosRedaction du point :
+    appel, statut, décision pas encore écrits), qui priment sur le dossier.
     Il renvoie la prise de contact au format du registre, plus « resume » (où
     on en est : ce qui a été fait, testé, la suite prévue). Le résultat
     remplace le champ contact du point dans suivi.json.
@@ -59,6 +61,8 @@ try {
     if ($export) { $sources += "mails : $($export.FullName)" }
 
     $current = $(if ($point.contact) { $point.contact | ConvertTo-Json -Depth 4 -Compress } else { 'aucune' })
+    # Mes informations en plus, sur une ligne et sans guillemets droits (mal transmis à claude.exe sous PS 5.1).
+    $infos = (([string]$point.infosRedaction).Trim() -replace '"', "'" -replace '\s*\r?\n\s*', ' / ')
     $pointInfo = [ordered]@{ id = $point.id; titre = $point.titre; client = $point.client; ticket = $point.ticket; statut = $point.statut;
                              action = $point.action; source = $point.source; noteMoi = $point.noteMoi } | ConvertTo-Json -Compress
 
@@ -70,6 +74,7 @@ try {
               $(if ($export) { "dans $($export.FullName), tous les mails du fil (même objet, même ticket, mêmes interlocuteurs), corps complets ; " } else { '' }) +
               "Annuaire des tiers (si c'est l'un d'eux qu'il faut contacter, utilise son adresse et son numéro) : " +
               "$(Format-SmContactsTiers $config.contactsTiers). " +
+              $(if ($infos) { "Ce que je sais en plus, pas encore dans les mails ni dans Jira (c'est le plus récent : en cas de contradiction, cela prime sur le dossier, et le message en tient compte) : « $infos ». " } else { '' }) +
               "Ne repose pas une question à laquelle on a déjà répondu, ne redemande pas un test déjà fait, tiens compte du plan de résolution. " +
               "Garde le mode (mail ou appel) sauf si le dossier montre clairement que l'autre convient mieux. " +
               "Réponds UNIQUEMENT par un objet JSON : {""mode"":""mail|appel"",""nom"":"""",""role"":"""",""email"":null,""telephone"":null," +
