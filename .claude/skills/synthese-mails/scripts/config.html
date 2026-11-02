@@ -395,6 +395,7 @@
           <label class="switch"><input type="checkbox" id="actif"> Synthèse active</label>
           <label class="switch"><input type="checkbox" id="envoiMail"> Envoyer par mail à moi-même</label>
           <label class="switch" title="Sinon, la synthèse part au déverrouillage du PC"><input type="checkbox" id="reveilPC"> Réveiller le PC à l'heure prévue (sur secteur)</label>
+          <label class="switch" title="Outlook classique reste ouvert sans fenêtre ni icône dans la barre des tâches : les actualisations évitent ses 3 minutes de démarrage. Tu peux continuer à utiliser le nouvel Outlook."><input type="checkbox" id="outlookFantome"> Garder Outlook classique ouvert en arrière-plan</label>
         </div>
         <div><label class="f" for="heure">Heure</label><input class="field" type="time" id="heure"></div>
         <div><label class="f" for="fenetreJours">Fenêtre relue (jours)</label><input class="field" type="number" id="fenetreJours" min="1" max="60"></div>
@@ -1357,6 +1358,7 @@ function renderSettings() {
   $('actif').checked = !!c.actif;
   $('envoiMail').checked = !!c.envoiMail;
   $('reveilPC').checked = c.reveilPC !== false;
+  $('outlookFantome').checked = c.outlookFantome !== false;
   $('heure').value = c.heure;
   $('fenetreJours').value = c.fenetreJours;
   $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
@@ -1398,7 +1400,7 @@ function renderSettings() {
 
 function collect() {
   return {
-    actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
+    actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, outlookFantome: $('outlookFantome').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
     dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences,
     contactsTiers: tiers, cantonFeries: $('cantonFeries').value,

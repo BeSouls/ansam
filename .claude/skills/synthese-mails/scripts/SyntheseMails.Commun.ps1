@@ -21,6 +21,7 @@ function Get-SmDefaultConfig {
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
         reveilPC            = $true              # réveiller le PC de sa veille à l'heure prévue (sur secteur)
+        outlookFantome      = $true              # garder Outlook classique ouvert sans fenêtre (page permanente)
         cantonFeries        = 'VD'               # jours fériés sans synthèse ni réunion : VD, GE ou aucun
         analyseCompleteJour = 1                  # jour de l'analyse complète de la fenêtre (les autres : incrémentale)
         # Réunion squad hebdomadaire : préparée le matin du jour de réunion, avec la synthèse.

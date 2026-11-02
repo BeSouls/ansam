@@ -191,6 +191,7 @@ function ConvertFrom-PageConfig([string]$Json) {
     $config.actif = [bool]$config.actif
     $config.envoiMail = [bool]$config.envoiMail
     $config.reveilPC = [bool]$config.reveilPC
+    $config.outlookFantome = [bool]$config.outlookFantome
     $config.fenetreJours = [int]$config.fenetreJours
     $config.joursEnvoi = @($config.joursEnvoi | ForEach-Object { [int]$_ } | Sort-Object -Unique)
     $config.absences = @(@($config.absences) | Where-Object { $_ } | ForEach-Object {
@@ -324,6 +325,37 @@ function Install-Task {
     [void](Get-TaskState -Refresh)
 }
 
+# Outlook classique « fantôme » (réglage outlookFantome, page permanente seulement) : la page tient
+# une référence COM sur Outlook, qui reste ainsi ouvert sans fenêtre, son cache à jour, même quand
+# j'utilise le nouvel Outlook. Les exports s'y rattachent sans les 3 minutes d'attente d'un Outlook
+# qui démarre. Contrôlé chaque minute : référence reprise si Outlook a été quitté ou relancé par
+# un autre programme, Outlook relancé s'il n'y en a plus. Rien n'est lu ni modifié.
+$outlookRef = $null
+$outlookCheckAt = [datetime]::MinValue
+function Update-OutlookFantome {
+    $script:outlookCheckAt = (Get-Date).AddMinutes(1)
+    $wanted = $Service -and (Get-SmConfig $WorkDir).outlookFantome
+    $running = [bool](Get-Process OUTLOOK -ErrorAction SilentlyContinue)
+    if ($script:outlookRef -and $running -and $wanted) {
+        # Référence encore valable ? Un Outlook occupé rejette l'appel mais reste le même.
+        try { [void]$script:outlookRef.Version; return }
+        catch { if ($_.Exception.Message -notmatch '0x800706BA|0x80010108|0x800706BE') { return } }
+    }
+    if ($script:outlookRef) {
+        try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($script:outlookRef) } catch { }
+        $script:outlookRef = $null
+    }
+    if (-not $wanted) { return }
+    try {
+        $script:outlookRef = New-Object -ComObject Outlook.Application   # sans fenêtre s'il n'était pas ouvert
+        [void]$script:outlookRef.GetNamespace('MAPI')
+        Write-Host "$(Get-Date -Format HH:mm:ss) Outlook classique gardé ouvert en arrière-plan."
+    } catch {
+        $script:outlookRef = $null
+        Write-Warning "Outlook classique non démarré : $($_.Exception.Message)"
+    }
+}
+
 if (Test-PageRunning) {
     # Le service (ou une autre fenêtre) sert déjà la page : il suffit de l'ouvrir.
     if (-not $Service -and -not $PasDeNavigateur) { Start-Process $url }
@@ -347,6 +379,7 @@ try {
     while (-not $stop) {
         if (-not $listener.Pending()) {
             if (-not $Service -and ((Get-Date) - $lastActivity).TotalMinutes -ge $IdleMinutes) { Write-Host 'Arrêt après inactivité.'; break }
+            if ($Service -and (Get-Date) -ge $outlookCheckAt) { Update-OutlookFantome }
             Start-Sleep -Milliseconds 200
             continue
         }
@@ -579,6 +612,7 @@ try {
     }
 } finally {
     $listener.Stop()
+    if ($outlookRef) { try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($outlookRef) } catch { } }
     # Fenêtre ponctuelle arrêtée : la page permanente reprend le relais si elle est installée.
     if (-not $Service -and (Get-ScheduledTask -TaskName "$TaskName - page" -ErrorAction SilentlyContinue)) {
         Start-ScheduledTask -TaskName "$TaskName - page"

@@ -150,6 +150,11 @@ lignes » seulement les miennes, par sujet.
 Onglet **Réglages** :
 
 - synthèse active, envoi par mail, heure, jours d'envoi ;
+- **garder Outlook classique ouvert en arrière-plan** (activé par défaut) :
+  la page permanente tient Outlook classique ouvert sans fenêtre ni icône
+  (`OUTLOOK.EXE -Embedding`, environ 250 Mo), et le relance s'il s'arrête.
+  On peut utiliser le nouvel Outlook au quotidien : les exports n'attendent
+  plus les 3 minutes de démarrage d'Outlook classique ;
 - **jours fériés** du canton (Vaud par défaut, Genève, ou aucun) : ni
   synthèse ni préparation de réunion ce jour-là ;
 - **réunion squad** : jour, mes initiales et mon prénom, participants,
