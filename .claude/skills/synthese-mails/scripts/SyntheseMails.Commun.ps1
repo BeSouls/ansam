@@ -426,6 +426,14 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
     $point
 }
 
+# Drapeau de priorité posé par moi (point ou groupe) : la page le remonte en tête ; la synthèse n'y touche pas.
+function Set-SmDrapeau($Suivi, [string]$Id, [bool]$Drapeau) {
+    $point = $Suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $point) { throw "Point « $Id » introuvable." }
+    if ($Drapeau) { $point.drapeau = (Get-Date).ToString('o') } else { $point.Remove('drapeau') }
+    $point
+}
+
 # --- Groupes de points --------------------------------------------------------
 # Un groupe (estGroupe = $true, id G-AAAAMMJJ-n) rassemble des sous-tâches (parent = id du
 # groupe). Son statut, sa priorité et son échéance se déduisent des sous-tâches ouvertes.

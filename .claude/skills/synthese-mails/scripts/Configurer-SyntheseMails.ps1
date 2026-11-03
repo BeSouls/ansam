@@ -428,6 +428,13 @@ try {
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
                 }
+                '^POST /api/drapeau$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = Set-SmDrapeau $suivi ([string]$posted.id) ([bool]$posted.drapeau)
+                    Save-SmSuivi $suivi $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ point = $point })
+                }
                 '^POST /api/claude$' {
                     # Ouvre une session Claude Code sur un point (skill ou session libre), ou reprend une session.
                     $posted = $request.Body | ConvertFrom-Json

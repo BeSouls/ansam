@@ -57,6 +57,12 @@ choisir « À faire », « En attente d'un tiers » (ton action est faite),
 « Traité » ou « Sans objet », avec une note (« réglé par Teams le 28.10 »).
 Ton marquage tient jusqu'à ce qu'un nouveau message arrive sur le point.
 
+**Drapeau de priorité** : le drapeau en haut à droite d'une carte (tâche ou
+groupe) la passe dans la section « Prioritaires », en tête de page, bordée
+de rouge. Un groupe y monte aussi quand l'une de ses sous-tâches ouvertes
+porte le drapeau. Seul toi le poses ou le retires : la synthèse n'y touche
+pas. Une tâche traitée retourne dans sa section, drapeau ou non.
+
 **Groupes** : les tâches d'une même activité se rangent sous une tâche
 plus large (par exemple « Revues des tickets », une sous-tâche par client).
 La synthèse regroupe d'elle-même les revues récurrentes et les chantiers ;

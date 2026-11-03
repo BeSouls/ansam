@@ -94,6 +94,19 @@
   .dot { width: .6rem; height: .6rem; border-radius: 50%; flex: none; align-self: center; background: var(--line); }
   .dot.rouge { background: var(--red); } .dot.orange { background: var(--orange); } .dot.vert { background: var(--green); }
   .title { font-weight: 600; font-size: 1rem; letter-spacing: -.01em; }
+  /* Drapeau de priorité : en haut à droite de la carte, la tâche remonte en tête de page */
+  .card:has(> .head > .flag) { position: relative; }
+  .card:has(> .head > .flag) > .head { padding-right: 1.9rem; }
+  .flag {
+    position: absolute; top: .5rem; right: .5rem; display: grid; place-items: center; width: 1.9rem; height: 1.9rem;
+    border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; opacity: .55; transition: opacity .15s, background-color .15s, transform .1s ease-out;
+  }
+  .flag svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .flag:hover, .flag:focus-visible { opacity: 1; background: var(--surface-2); }
+  .flag:active { transform: scale(.9); }
+  .flag[aria-pressed="true"] { color: var(--red); opacity: 1; }
+  .flag[aria-pressed="true"] svg { fill: currentColor; }
+  .card.flagged { border-color: var(--red); box-shadow: inset 3px 0 0 var(--red), var(--shadow); }
   .mono { font: .75rem/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); }
   .tag { font-size: .75rem; font-weight: 600; padding: .05rem .5rem; border-radius: 6px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
   .tag.late { background: var(--red-soft); color: var(--red); }
@@ -678,6 +691,40 @@ async function setPoint(p, statut, note, silent) {
   }
 }
 
+// --- Drapeau de priorité ----------------------------------------------------------
+// Posé par moi seulement ; un groupe est prioritaire s'il porte le drapeau ou si l'une de ses sous-tâches ouvertes le porte.
+const isFlagged = (p) => !!p.drapeau || (!!p.estGroupe && childrenOf(p).some(k => k.drapeau && isOpen(k)));
+const byFlag = (a, b) => (isFlagged(b) ? 1 : 0) - (isFlagged(a) ? 1 : 0);
+
+function flagButton(p) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'flag';
+  const on = !!p.drapeau;
+  b.setAttribute('aria-pressed', String(on));
+  b.title = on ? 'Retirer le drapeau de priorité' : 'Prioritaire : remonter en haut de la page';
+  b.setAttribute('aria-label', b.title);
+  b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 14.5V1.8"/><path d="M3.5 2.3h9l-2.2 3.2 2.2 3.2h-9z"/></svg>';
+  b.addEventListener('click', e => { e.stopPropagation(); setFlag(p, !p.drapeau); });
+  b.addEventListener('keydown', e => e.stopPropagation());   // Entrée sur le drapeau n'ouvre pas le groupe
+  return b;
+}
+
+async function setFlag(p, on, silent) {
+  const before = p.drapeau;
+  if (on) p.drapeau = new Date().toISOString(); else delete p.drapeau;
+  renderAll();
+  try {
+    const r = await api('POST', '/api/drapeau', { id: p.id, drapeau: on });
+    if (r.point && r.point.drapeau) p.drapeau = r.point.drapeau; else delete p.drapeau;
+    if (!silent) toast(on ? `« ${p.titre} » remonte en tête.` : `« ${p.titre} » : drapeau retiré.`, () => setFlag(p, !on, true));
+  } catch (e) {
+    if (before) p.drapeau = before; else delete p.drapeau;
+    renderAll();
+    toast(e.message, null, true);
+  }
+}
+
 // --- Groupes ------------------------------------------------------------------
 async function groupAction(body, undo) {
   try {
@@ -780,7 +827,7 @@ function groupCard(g) {
   const kids = childrenOf(g);
   const done = kids.filter(k => !isOpen(k)).length;
   const card = document.createElement('div');
-  card.className = 'card grp' + (isOpen(g) ? '' : ' done');
+  card.className = 'card grp' + (isOpen(g) ? '' : ' done') + (isOpen(g) && isFlagged(g) ? ' flagged' : '');
   card.tabIndex = 0;
   card.setAttribute('role', 'button');
   card.setAttribute('aria-label', `Ouvrir le groupe ${g.titre}`);
@@ -798,6 +845,7 @@ function groupCard(g) {
     <div class="prog" aria-hidden="true"><span style="width:${kids.length ? Math.round(done / kids.length * 100) : 0}%"></span></div>
     <div class="kids">${preview.map(k => `<span class="kid ${esc(k.statut)}">${esc(k.client || k.id)}</span>`).join('')}${kids.length > preview.length ? `<span class="kid">+${kids.length - preview.length}</span>` : ''}</div>
     <div class="meta" style="margin-top:.45rem">${clients.length ? esc(clients.join(', ')) + ' · ' : ''}${g.creePar === 'moi' ? 'groupe créé par moi' : 'groupé par la synthèse'} · ouvrir pour voir les sous-tâches</div>`;
+  card.querySelector('.head').appendChild(flagButton(g));
   const open = () => openSheet(g.id, card);
   card.addEventListener('click', open);
   card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -910,7 +958,7 @@ function renderSheet() {
   const list = $('sheetList');
   list.innerHTML = '';
   const order = { a_faire: 0, attente_tiers: 1, traite: 2, ignore: 3 };
-  [...kids].sort((a, b) => order[a.statut] - order[b.statut] || (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3))
+  [...kids].sort((a, b) => order[a.statut] - order[b.statut] || byFlag(a, b) || (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3))
     .forEach(c => list.appendChild(pointCard(c, true)));
 }
 $('sheetTitle').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
@@ -1095,7 +1143,7 @@ $('csSaveCall').addEventListener('click', () => {
 function pointCard(p, inSheet) {
   const card = document.createElement('div');
   const open = isOpen(p);
-  card.className = 'card' + (open ? '' : ' done') + (selected.has(p.id) ? ' picked' : '');
+  card.className = 'card' + (open ? '' : ' done') + (selected.has(p.id) ? ' picked' : '') + (open && p.drapeau ? ' flagged' : '');
   card.dataset.id = p.id;
   const url = ticketUrl(p.ticket);
   const last = (p.historique || []).slice(-1)[0];
@@ -1116,6 +1164,7 @@ function pointCard(p, inSheet) {
     <div class="foot"></div>`;
   const prep = card.querySelector('.contact .btn');
   if (prep) prep.addEventListener('click', e => { e.stopPropagation(); openContact(p, card); });
+  card.querySelector('.head').appendChild(flagButton(p));
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
@@ -1141,7 +1190,7 @@ function renderSuivi() {
   if (f === 'contact') {
     // Vue à plat : toutes les tâches ouvertes qui attendent un appel ou un mail de ma part, groupes compris.
     const list = leaves().filter(p => needsContact(p) && matches(p))
-      .sort((a, b) => (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
+      .sort((a, b) => byFlag(a, b) || (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
     if (!list.length) { box.innerHTML = emptyState('Personne à contacter', 'Aucune tâche ouverte n’attend d’appel ni de mail de ta part.'); return; }
     for (const [mode, title] of [['appel', 'À appeler'], ['mail', 'À écrire']]) {
       const part = list.filter(p => (p.contact.mode === 'appel') === (mode === 'appel'));
@@ -1159,9 +1208,11 @@ function renderSuivi() {
     (f === 'tous' || (f === 'ouverts') === isOpen(p)) &&
     (matches(p) || (p.estGroupe && childrenOf(p).some(matches))));
   if (!visible.length) { box.innerHTML = emptyState('Rien ici', f === 'ouverts' ? 'Aucun point ouvert ne correspond.' : 'Aucun point réglé ne correspond.'); return; }
-  const sections = [['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
+  // Les tâches ouvertes marquées d'un drapeau passent devant tout le reste, dans leur propre section.
+  const top = visible.filter(p => isOpen(p) && isFlagged(p));
+  const sections = [['prioritaire', 'Prioritaires'], ['a_faire', 'À faire'], ['attente_tiers', 'En attente d’un tiers'], ['traite', 'Traités'], ['ignore', 'Sans objet']];
   for (const [s, title] of sections) {
-    const list = visible.filter(p => p.statut === s).sort((a, b) =>
+    const list = (s === 'prioritaire' ? top : visible.filter(p => p.statut === s && !top.includes(p))).sort((a, b) =>
       (b.estGroupe ? 1 : 0) - (a.estGroupe ? 1 : 0) ||
       (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
     if (!list.length) continue;
