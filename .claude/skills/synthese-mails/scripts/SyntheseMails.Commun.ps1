@@ -17,7 +17,7 @@ function Get-SmDefaultConfig {
         fenetreJours        = 14
         envoiMail           = $true
         dossierAnsamDiag    = Join-Path $env:USERPROFILE 'OneDrive - ANSAM group\Documents\AnsamDiag-Donnees'
-        dossierClients      = Join-Path $env:USERPROFILE 'OneDrive - ANSAM group\Documents\Clients'   # fiches <CODE>.json (RacineClients d'AnsamDiag)
+        dossierClients      = Join-Path $env:USERPROFILE 'OneDrive - ANSAM group\Documents\CLIENTS'   # fiches <CODE>.json (RacineClients d'AnsamDiag)
         dossierPortefeuille = 'Boîte de réception\MES CLIENTS'
         absences            = @()                # [{ debut: 'AAAA-MM-JJ'; fin: 'AAAA-MM-JJ'; libelle: '…' }]
         portPage            = 8765               # page locale : http://127.0.0.1:<port>/
