@@ -473,6 +473,7 @@
       <h2>Sources</h2>
       <div class="grid">
         <div><label class="f" for="dossierAnsamDiag">Données AnsamDiag</label><input class="field" type="text" id="dossierAnsamDiag"></div>
+        <div><label class="f" for="dossierClients">Dossier des clients (fiches)</label><input class="field" type="text" id="dossierClients"></div>
         <div><label class="f" for="dossierPortefeuille">Dossier Outlook du portefeuille</label><input class="field" type="text" id="dossierPortefeuille"></div>
       </div>
     </div>
@@ -1414,6 +1415,7 @@ function renderSettings() {
   $('fenetreJours').value = c.fenetreJours;
   $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
   $('dossierPortefeuille').value = c.dossierPortefeuille || '';
+  $('dossierClients').value = c.dossierClients || '';
   $('days').innerHTML = '';
   for (let d = 1; d <= 7; d++) {
     const l = document.createElement('label');
@@ -1453,7 +1455,7 @@ function collect() {
   return {
     actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, outlookFantome: $('outlookFantome').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
-    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), absences,
+    dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), dossierClients: $('dossierClients').value.trim(), absences,
     contactsTiers: tiers, cantonFeries: $('cantonFeries').value,
     squadActif: $('squadActif').checked, squadJour: Number($('squadJour').value), squadMoi: $('squadMoi').value.trim().toUpperCase(),
     squadPrenom: $('squadPrenom').value.trim(), squadParticipants: $('squadParticipants').value.trim(), squadEquipe: $('squadEquipe').value.trim()

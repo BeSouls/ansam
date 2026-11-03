@@ -133,7 +133,7 @@ try {
 
     $contextFile = Join-Path $WorkDir 'contexte-ansam.json'
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : contexte AnsamDiag"
-    & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ExportFile $exportFile `
+    & (Join-Path $PSScriptRoot 'Export-ContexteAnsam.ps1') -DataDir $config.dossierAnsamDiag -ClientsDir $config.dossierClients -ExportFile $exportFile `
         -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
 
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"

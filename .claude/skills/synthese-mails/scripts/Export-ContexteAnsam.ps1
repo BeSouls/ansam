@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     Lit, sans rien modifier :
-    - <DataDir>\Clients\<CODE>.json : nom, modèle, domaines, particularités ;
+    - <ClientsDir>\<CODE>.json (par défaut <DataDir>\Clients) : nom, modèle,
+      domaines, particularités ;
     - <DataDir>\Tickets\<CLE>\ticket.json : client, domaine, utilisateur,
       symptôme, statut, 3 dernières notes, clôture préparée ;
     - dans l'export des mails, les sous-dossiers Outlook de
@@ -19,6 +20,7 @@
 param(
     [Parameter(Mandatory)] [string]$DataDir,
     [Parameter(Mandatory)] [string]$OutputFile,
+    [string]$ClientsDir,
     [string]$ExportFile,
     [string]$DossierPortefeuille = 'Boîte de réception\MES CLIENTS',
     # Longueur maximale conservée pour les textes (notes, particularités).
@@ -39,7 +41,7 @@ function Limit-Text($Text) {
 }
 
 $clients = New-Object System.Collections.Generic.List[object]
-$clientDir = Join-Path $DataDir 'Clients'
+$clientDir = $(if ($ClientsDir) { $ClientsDir } else { Join-Path $DataDir 'Clients' })
 if (Test-Path $clientDir) {
     foreach ($file in Get-ChildItem $clientDir -Filter '*.json' -File) {
         $fiche = Read-Json $file.FullName
