@@ -13,6 +13,7 @@ function Get-SmDefaultConfig {
     [ordered]@{
         actif               = $true
         heure               = '07:10'
+        actualisations      = '12:30, 16:30'     # actualisations automatiques, sans mail : heures séparées par des virgules
         joursEnvoi          = @(1, 2, 3, 4, 5)   # 1 = lundi … 7 = dimanche
         fenetreJours        = 14
         envoiMail           = $true
@@ -127,7 +128,7 @@ function Get-SmConfig([string]$WorkDir = $SmWorkDir) {
     $config.squadActif = [bool]$config.squadActif
     $config.squadJour = [int]$config.squadJour
     $config.analyseCompleteJour = [int]$config.analyseCompleteJour
-    foreach ($key in 'cantonFeries', 'squadMoi', 'squadPrenom', 'squadEquipe', 'squadParticipants') { $config[$key] = ([string]$config[$key]).Trim() }
+    foreach ($key in 'actualisations', 'cantonFeries', 'squadMoi', 'squadPrenom', 'squadEquipe', 'squadParticipants') { $config[$key] = ([string]$config[$key]).Trim() }
     $config
 }
 
@@ -135,6 +136,9 @@ function Get-SmConfig([string]$WorkDir = $SmWorkDir) {
 function Test-SmConfig($Config) {
     $errors = @()
     if ($Config.heure -notmatch '^([01]\d|2[0-3]):[0-5]\d$') { $errors += "Heure invalide : « $($Config.heure) » (format HH:mm)." }
+    foreach ($moment in @(ConvertTo-SmListe $Config.actualisations)) {
+        if ($moment -notmatch '^([01]\d|2[0-3]):[0-5]\d$') { $errors += "Actualisation automatique invalide : « $moment » (format HH:mm, séparées par des virgules)." }
+    }
     $days = @($Config.joursEnvoi)
     if (-not $days.Count) { $errors += 'Choisir au moins un jour d''envoi.' }
     foreach ($day in $days) { if ([int]$day -lt 1 -or [int]$day -gt 7) { $errors += "Jour d'envoi invalide : $day." } }
@@ -284,6 +288,20 @@ function Get-SmPlan($Config, $Etat, [datetime]$Moment = (Get-Date)) {
     $plan.jours = [math]::Max([int]$Config.fenetreJours, $gap + 7)
     $plan.lancer = $true
     $plan
+}
+
+# Une actualisation automatique suit les mêmes règles que la synthèse, et n'a de sens qu'après celle
+# du matin : sans elle, le lanceur ferait une analyse complète. Renvoie la raison de s'abstenir, ou $null.
+function Get-SmSansActualisation($Config, $Etat, [datetime]$Moment = (Get-Date)) {
+    if (-not $Config.actif) { return 'Synthèse désactivée dans la configuration.' }
+    $absence = Get-SmAbsence $Config $Moment
+    if ($absence) { return "Absence en cours : $($absence.libelle)." }
+    $holiday = Get-SmFerie $Config $Moment
+    if ($holiday) { return "Jour férié : $holiday." }
+    if (@($Config.joursEnvoi) -notcontains (Get-SmJourSemaine $Moment)) { return "Pas d'envoi le $($SmJours[(Get-SmJourSemaine $Moment)])." }
+    $last = ConvertTo-SmDateTime $Etat.derniereSynthese
+    if (-not $last -or $last.Date -ne $Moment.Date) { return "Synthèse du matin pas encore produite." }
+    $null
 }
 
 # Prochaine synthèse prévue (pour la page de configuration).

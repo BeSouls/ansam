@@ -21,11 +21,16 @@
     fixe, lien dans chaque synthèse), démarrée tout de suite, et son
     raccourci « Panoramix » dans le menu Démarrer.
 
+    Crée enfin « <TaskName> - actualisation » : les actualisations automatiques,
+    sans mail, aux heures de la configuration, les jours d'envoi. Elle ne réveille
+    pas le PC ; sans heure configurée, elle est retirée.
+
 .EXAMPLE
     .\Installer-TacheSyntheseMails.ps1
     .\Installer-TacheSyntheseMails.ps1 -At '06:45'
     Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM'          # désinstaller
     Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM - page'
+    Unregister-ScheduledTask -TaskName 'Synthese mails ANSAM - actualisation'
 #>
 [CmdletBinding()]
 param(
@@ -72,6 +77,24 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
     -Settings $settings -Principal $principal -Force | Out-Null
 Write-Host ("Tâche « $TaskName » créée : les jours d'envoi à $At" + $(if ($wake) { ' (réveil du PC si le plan d''alimentation l''autorise)' } else { '' }) +
             ", rattrapée à l'ouverture de session et au déverrouillage.")
+
+# Actualisations automatiques : le lanceur s'abstient pendant une absence, un jour férié ou avant la
+# synthèse du matin. Une heure manquée (PC en veille) est rattrapée au réveil.
+$refreshTask = "$TaskName - actualisation"
+$refreshTimes = @(ConvertTo-SmListe (Get-SmConfig).actualisations)
+if ($refreshTimes.Count) {
+    $refreshAction = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\conhost.exe" `
+        -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Actualisation"
+    $refreshTriggers = @($refreshTimes | ForEach-Object { New-ScheduledTaskTrigger -Weekly -DaysOfWeek $sendDays -At $_ })
+    $refreshSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $refreshTask -Action $refreshAction -Trigger $refreshTriggers `
+        -Settings $refreshSettings -Principal $principal -Force | Out-Null
+    Write-Host "Tâche « $refreshTask » créée : $($refreshTimes -join ', '), les jours d'envoi."
+} elseif (Get-ScheduledTask -TaskName $refreshTask -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $refreshTask -Confirm:$false
+    Write-Host "Tâche « $refreshTask » retirée : aucune heure configurée."
+}
 
 # Page de suivi permanente : démarrée à l'ouverture de session, sans limite de durée.
 $pageTask = "$TaskName - page"

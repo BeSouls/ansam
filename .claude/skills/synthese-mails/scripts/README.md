@@ -129,6 +129,13 @@ refait la lecture). L'analyse reçoit `suivi-analyse.json` et
 `archives-analyse.json` : points ouverts, 3 derniers événements, points
 réglés en résumé. `suivi.json` et `archives.json` restent complets.
 
+**Actualisations automatiques** : aux heures du réglage du même nom (12:30 et
+16:30 par défaut, vide pour aucune), la tâche « Synthese mails ANSAM -
+actualisation » fait comme le bouton, sans mail. Elle s'abstient pendant une
+absence, un jour férié, un jour sans envoi ou avant la synthèse du matin, et ne
+réveille pas le PC. Réinstaller les tâches après avoir changé le réglage depuis
+un fichier ; depuis la page, c'est automatique.
+
 **Statuts fiables** : à chaque analyse, `Export-JiraActivite.ps1` relit les
 commentaires des tickets dont la date a changé (`jira-activite.json`). Jira
 ne m'envoie aucun mail pour mes commentaires, et ceux des autres arrivent

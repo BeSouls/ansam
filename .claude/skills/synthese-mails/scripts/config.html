@@ -411,6 +411,7 @@
           <label class="switch" title="Outlook classique reste ouvert sans fenêtre ni icône dans la barre des tâches : les actualisations évitent ses 3 minutes de démarrage. Tu peux continuer à utiliser le nouvel Outlook."><input type="checkbox" id="outlookFantome"> Garder Outlook classique ouvert en arrière-plan</label>
         </div>
         <div><label class="f" for="heure">Heure</label><input class="field" type="time" id="heure"></div>
+        <div><label class="f" for="actualisations" title="Sans mail, les jours d'envoi, après la synthèse du matin. Vide : aucune.">Actualisations automatiques</label><input class="field" id="actualisations" placeholder="12:30, 16:30"></div>
         <div><label class="f" for="fenetreJours">Fenêtre relue (jours)</label><input class="field" type="number" id="fenetreJours" min="1" max="60"></div>
       </div>
       <div style="margin-top:1rem">
@@ -1442,6 +1443,7 @@ function renderSettings() {
   $('reveilPC').checked = c.reveilPC !== false;
   $('outlookFantome').checked = c.outlookFantome !== false;
   $('heure').value = c.heure;
+  $('actualisations').value = c.actualisations || '';
   $('fenetreJours').value = c.fenetreJours;
   $('dossierAnsamDiag').value = c.dossierAnsamDiag || '';
   $('dossierPortefeuille').value = c.dossierPortefeuille || '';
@@ -1483,7 +1485,7 @@ function renderSettings() {
 
 function collect() {
   return {
-    actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, outlookFantome: $('outlookFantome').checked, heure: $('heure').value, fenetreJours: Number($('fenetreJours').value),
+    actif: $('actif').checked, envoiMail: $('envoiMail').checked, reveilPC: $('reveilPC').checked, outlookFantome: $('outlookFantome').checked, heure: $('heure').value, actualisations: $('actualisations').value.trim(), fenetreJours: Number($('fenetreJours').value),
     joursEnvoi: [...document.querySelectorAll('#days input:checked')].map(i => Number(i.value)),
     dossierAnsamDiag: $('dossierAnsamDiag').value.trim(), dossierPortefeuille: $('dossierPortefeuille').value.trim(), dossierClients: $('dossierClients').value.trim(), absences,
     contactsTiers: tiers, cantonFeries: $('cantonFeries').value,

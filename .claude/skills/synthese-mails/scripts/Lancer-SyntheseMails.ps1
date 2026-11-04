@@ -29,6 +29,7 @@
     .\Lancer-SyntheseMails.ps1 -Force -PasDeMail   # actualisation (bouton « Actualiser » de la page)
     .\Lancer-SyntheseMails.ps1 -Force -Essai       # synthèse d'essai, sans mail
     .\Lancer-SyntheseMails.ps1 -Force -Complet     # analyse complète, même un jour incrémental
+    .\Lancer-SyntheseMails.ps1 -Actualisation      # actualisation automatique (tâche planifiée), un jour de travail seulement
 
     Trois modes d'analyse (section du skill correspondante) :
     - complète : toute la fenêtre (14 jours) est relue. Le jour « analyseCompleteJour » (lundi),
@@ -51,6 +52,9 @@ param(
     # Actualisation : registres mis à jour, sans mail. La synthèse du jour et la date de la
     # dernière synthèse ne changent pas ; le résultat va dans syntheses\actualisations.
     [switch]$PasDeMail,
+    # Actualisation lancée par la tâche planifiée : comme -Force -PasDeMail, mais jamais pendant une
+    # absence, un jour férié, un jour sans envoi, ni avant la synthèse du matin.
+    [switch]$Actualisation,
     # Analyse complète de la fenêtre, même un jour où la synthèse serait incrémentale.
     [switch]$Complet,
     # Essai : synthèse produite comme le matin (même mode), gardée dans syntheses\essais,
@@ -105,6 +109,12 @@ try {
 
     $config = Get-SmConfig $WorkDir
     $etat = Get-SmEtat $WorkDir
+    if ($Actualisation) {
+        $skip = Get-SmSansActualisation $config $etat $start
+        if ($skip) { Write-Host "Pas d'actualisation : $skip"; $outcome.message = $skip; return }
+        $Force = [switch]::Present
+        $PasDeMail = [switch]::Present
+    }
     $plan = Get-SmPlan $config $etat $start
     if (-not $plan.lancer) {
         if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; $outcome.message = $plan.raison; return }
