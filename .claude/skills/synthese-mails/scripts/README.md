@@ -1,6 +1,6 @@
 # Synthèse mails – installation sur le PC
 
-> Reprendre le sujet dans une nouvelle session : lire `AnsamDiag-DonneesPANORAMIX-REPRISE.md` (Documents du OneDrive ANSAM).
+> Reprendre le sujet dans une nouvelle session : lire `AnsamDiag-Donnees/PANORAMIX-REPRISE.md` (Documents du OneDrive ANSAM).
 
 Tant que le connecteur Microsoft 365 est bloqué, l'export se fait en local.
 Le principe :

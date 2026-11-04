@@ -71,6 +71,16 @@ console.log('\nEquivalent entree Opus (milliers), par jour');
 for (const [d, v] of Object.entries(days)) console.log(d, Object.entries(v).map(([k, x]) => k + ' ' + Math.round(x / 1000)).join(' | '), '=> total', Math.round(Object.values(v).reduce((a, b) => a + b, 0) / 1000));
 const tot = {}; rows.forEach(r => tot[r.kind] = (tot[r.kind] || 0) + eq(r)); const all = Object.values(tot).reduce((a, b) => a + b, 0);
 console.log('\nParts :', Object.entries(tot).sort((a, b) => b[1] - a[1]).map(([k, x]) => k + ' ' + Math.round(x / all * 100) + '%').join(' | '));
-const cost = (r, ci, cw, cr, co) => (r.inp * ci + r.cw * cw + r.cr * cr + r.out * co) / 1e6;
-const avg = kind => { const l = rows.filter(r => r.kind === kind).slice(-5); const n = l.length, s = { inp: 0, cw: 0, cr: 0, out: 0 }; l.forEach(r => { for (const f in s) s[f] += r[f]; }); for (const f in s) s[f] /= n; return s; };
-for (const kind of ['liste Jira', 'synthese incrementale', 'synthese complete', 'actualisation', 'redaction contact', 'squad']) { const a = avg(kind); console.log(kind.padEnd(24), 'Opus 5.5 $' + cost(a, 4, 8, 0.2, 20).toFixed(2), '| Sonnet 5.5 $' + cost(a, 2, 4, 0.2, 10).toFixed(2)); }
+// Equivalent tarif API par lancement, au tarif de chaque modele (entree, cache ecrit 1 h, cache lu, sortie, $/M).
+// Haiku : prix sous 100 k d'entree, lecture de cache supposee a 0,1 x.
+const tarifs = { opus: [4, 8, 0.2, 20], sonnet: [2, 4, 0.2, 10], haiku: [0.1, 0.2, 0.01, 0.5] };
+const cout = r => {
+  const m = Object.keys(r.models)[0] || '';
+  const t = tarifs[Object.keys(tarifs).find(k => m.includes(k))] || tarifs.opus;
+  return (r.inp * t[0] + r.cw * t[1] + r.cr * t[2] + r.out * t[3]) / 1e6;
+};
+console.log('\nCout moyen par lancement (5 derniers), equivalent API');
+for (const kind of Object.keys(by)) {
+  const l = rows.filter(r => r.kind === kind).slice(-5);
+  console.log(kind.padEnd(24), '$' + (l.reduce((s, r) => s + cout(r), 0) / l.length).toFixed(2), '(' + Object.keys(l[l.length - 1].models).join(',') + ')');
+}
