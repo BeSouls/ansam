@@ -328,6 +328,15 @@ function Resolve-SmClaude([string]$ClaudeExe) {
     throw "Claude Code introuvable : installe-le (irm https://claude.ai/install.ps1 | iex) ou précise -ClaudeExe."
 }
 
+# Appelle Claude Code (claude -p) et renvoie ses lignes de sortie. Le message passe par
+# l'entrée standard : Windows PowerShell 5.1 ne protège pas les guillemets d'un argument,
+# et un message qui en contient serait coupé sans erreur.
+function Invoke-SmClaude([string]$ClaudeExe, [string]$Prompt, [string[]]$Arguments) {
+    $global:OutputEncoding = New-Object Text.UTF8Encoding($false)
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $Prompt | & $ClaudeExe -p @Arguments
+}
+
 # --- Registre de suivi des points ------------------------------------------
 # suivi.json garde chaque point d'une synthèse à l'autre. Statuts :
 #   a_faire        une action m'attend

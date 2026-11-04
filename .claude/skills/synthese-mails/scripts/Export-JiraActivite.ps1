@@ -60,9 +60,9 @@ function Get-LotPrompt([string[]]$Lot) {
 }
 
 $runLot = {
-    param($Exe, $Prompt, $Model, $Allowed, $Denied)
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
-    $text = (& $Exe -p $Prompt --model $Model --allowedTools $Allowed --disallowedTools $Denied) -join "`n"
+    param($Commun, $Exe, $Prompt, $Model, $Allowed, $Denied)
+    . $Commun
+    $text = (Invoke-SmClaude $Exe $Prompt @('--model', $Model, '--allowedTools', $Allowed, '--disallowedTools', $Denied)) -join "`n"
     [ordered]@{ code = $LASTEXITCODE; text = $text }
 }
 
@@ -84,7 +84,7 @@ foreach ($essai in 1, 2) {
     $retry = New-Object System.Collections.ArrayList
     for ($i = 0; $i -lt $lots.Count; $i += $LotsParalleles) {
         $running = @($lots[$i..([math]::Min($i + $LotsParalleles, $lots.Count) - 1)] | ForEach-Object {
-            , @{ lot = $_; job = Start-Job -ScriptBlock $runLot -ArgumentList $ClaudeExe, (Get-LotPrompt $_), $Modele, $allowed, $denied }
+            , @{ lot = $_; job = Start-Job -ScriptBlock $runLot -ArgumentList (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1'), $ClaudeExe, (Get-LotPrompt $_), $Modele, $allowed, $denied }
         })
         foreach ($item in $running) {
             $lot = $item.lot

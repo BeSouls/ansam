@@ -89,10 +89,9 @@ try {
               "Réponds UNIQUEMENT par l'objet JSON décrit dans squad.md."
 
     Set-Status 'en_cours' 'Préparation par Claude Code'
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
     Push-Location $RepoDir
     try {
-        $output = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob'
+        $output = Invoke-SmClaude $ClaudeExe $prompt @('--add-dir', $WorkDir, '--allowedTools', 'Read,Grep,Glob', '--disallowedTools', 'Bash,PowerShell,Write,Edit')
         if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($output -join ' ')" }
     } finally { Pop-Location }
 

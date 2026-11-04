@@ -61,8 +61,7 @@ try {
     if ($export) { $sources += "mails : $($export.FullName)" }
 
     $current = $(if ($point.contact) { $point.contact | ConvertTo-Json -Depth 4 -Compress } else { 'aucune' })
-    # Mes informations en plus, sur une ligne et sans guillemets droits (mal transmis à claude.exe sous PS 5.1).
-    $infos = (([string]$point.infosRedaction).Trim() -replace '"', "'" -replace '\s*\r?\n\s*', ' / ')
+    $infos = ([string]$point.infosRedaction).Trim()
     $pointInfo = [ordered]@{ id = $point.id; titre = $point.titre; client = $point.client; ticket = $point.ticket; statut = $point.statut;
                              action = $point.action; source = $point.source; noteMoi = $point.noteMoi } | ConvertTo-Json -Compress
 
@@ -84,14 +83,13 @@ try {
 
     $prefix = 'mcp__claude_ai_Atlassian_MCP__'
     $allowed = (@('Read', 'Grep', 'Glob', 'Skill') + (@('atlassianUserInfo', 'getAccessibleAtlassianResources', 'getJiraIssue', 'searchJiraIssuesUsingJql') | ForEach-Object { $prefix + $_ })) -join ','
-    $denied = (@('executeWrite', 'executeDestructive', 'createConfluenceContent', 'updateConfluenceContent') | ForEach-Object { $prefix + $_ }) -join ','
+    $denied = (@('Bash', 'PowerShell', 'Write', 'Edit') + (@('executeWrite', 'executeDestructive', 'createConfluenceContent', 'updateConfluenceContent') | ForEach-Object { $prefix + $_ })) -join ','
     $addDirs = @(); foreach ($d in $dirs) { $addDirs += '--add-dir'; $addDirs += $d }
 
     Set-Status 'en_cours' 'Rédaction par Claude Code'
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
     Push-Location $RepoDir
     try {
-        $output = & $ClaudeExe -p $prompt @addDirs --allowedTools $allowed --disallowedTools $denied
+        $output = Invoke-SmClaude $ClaudeExe $prompt ($addDirs + '--allowedTools', $allowed, '--disallowedTools', $denied)
         if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($output -join ' ')" }
     } finally { Pop-Location }
 

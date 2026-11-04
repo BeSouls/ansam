@@ -58,7 +58,7 @@ $prompt = "Avec le connecteur Atlassian, en lecture seule, cherche mes tickets J
 
 # Une lecture complète, ou une exception qui dit ce qui manque.
 function Read-JiraReponse([string[]]$Modele) {
-    $output = & $ClaudeExe -p $prompt @Modele --allowedTools $allowed --disallowedTools $denied
+    $output = Invoke-SmClaude $ClaudeExe $prompt ($Modele + '--allowedTools', $allowed, '--disallowedTools', $denied)
     if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($output -join ' ')" }
     $text = $output -join "`n"
     $start = $text.IndexOf('{')

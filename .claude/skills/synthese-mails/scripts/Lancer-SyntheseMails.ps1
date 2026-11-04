@@ -252,12 +252,10 @@ try {
         $completed = Update-SmContacts $suivi $config
         Save-SmSuivi $suivi $WorkDir
     } else {
-        # Sortie de claude en UTF-8, sinon les accents sont perdus sous Windows PowerShell.
-        [Console]::OutputEncoding = [Text.Encoding]::UTF8
         Push-Location $RepoDir
         try {
             Write-Host "$(Get-Date -Format HH:mm:ss) Étape : $(@{ complete = 'rédaction'; incrementale = 'rédaction (nouveautés)'; actualisation = 'analyse des nouveautés' }[$mode]) par Claude Code"
-            $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill' --disallowedTools 'Bash,PowerShell,Write,Edit,Read(**/*.ps1)'
+            $synthesis = Invoke-SmClaude $ClaudeExe $prompt @('--add-dir', $WorkDir, '--allowedTools', 'Read,Grep,Glob,Skill', '--disallowedTools', 'Bash,PowerShell,Write,Edit,Read(**/*.ps1)')
             if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
         } finally {
             Pop-Location
