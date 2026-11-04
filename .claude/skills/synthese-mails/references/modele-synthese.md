@@ -95,7 +95,8 @@ Après la synthèse, une ligne `<!-- SUIVI -->` puis un tableau JSON (dans un
 bloc de code ou non) avec :
 
 - **tous les points ouverts** du registre (`a_faire`, `attente_tiers`),
-  même sans nouveauté, avec leur statut revu ;
+  même sans nouveauté, avec leur statut revu (en incrémental et en
+  actualisation : au moins tous ceux du fichier « points à reprendre ») ;
 - **tous les nouveaux points** ;
 - les points que je dois voir passer à `traite` aujourd'hui.
 
@@ -113,10 +114,13 @@ ce que j'attends), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
 et date du mail le plus récent), `dernierMessage` (date ISO du dernier
 message reçu sur le point, `null` sans mail), `motif` (pourquoi ce statut,
 avec la source : « Jira En attente du client », « AnsamDiag RESOLU 28.10 »,
-« ma réponse du 27.10 », « nouveau message du client le 29.10 »).
+« ma réponse du 27.10 », « nouveau message du client le 29.10 », « mon
+commentaire Jira du 03.11 »).
 
 Ne pas proposer de changement de statut à un point marqué par moi
-(`majPar` = `moi`) sans message reçu après `majLe` : le lanceur l'ignorerait.
+(`majPar` = `moi`) sans message ni commentaire Jira d'un tiers après
+`majLe` : le lanceur l'ignorerait. Son `action`, elle, est toujours tenue à
+jour.
 
 ## Bloc des éléments à garder
 

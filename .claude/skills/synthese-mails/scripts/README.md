@@ -116,9 +116,29 @@ dernier envoi. Le texte produit est gardé dans `syntheses\actualisations`.
 Comme l'analyse du jour a déjà tout traité, l'actualisation ne fait relire
 à Claude que les fils qui ont un message depuis la dernière analyse, en
 entier et avec les fils du même ticket (section « Actualisation » du
-skill) ; sans nouveau message, Claude n'est pas lancé. Jira est lu en
-parallèle de l'export Outlook. Compter 1 à 3 minutes avec Outlook ouvert
+skill) et les points à reprendre (voir ci-dessous) ; sans nouveau message
+ni activité sur les tickets, Claude n'est pas lancé. Jira est lu en
+parallèle de l'export Outlook. Compter 2 à 5 minutes avec Outlook ouvert
 (un Outlook qui démarre impose 3 minutes d'attente de synchronisation).
+
+**Statuts fiables** : à chaque analyse, `Export-JiraActivite.ps1` relit les
+commentaires des tickets dont la date a changé (`jira-activite.json`). Jira
+ne m'envoie aucun mail pour mes commentaires, et ceux des autres arrivent
+sans leur texte : c'est la seule façon de voir ce qui s'est passé dans un
+ticket. Le lanceur fait ensuite, sans passer par l'IA :
+
+- un ticket clos ferme son point, même marqué par moi ; un changement de
+  statut Jira est repris, sauf sur un point marqué par moi ;
+- tout point dont une source a bougé depuis sa dernière revue (commentaire,
+  statut Jira, note AnsamDiag, mail) est listé dans `a-revoir.json` et doit
+  être repris par l'analyse, quel que soit le mode.
+
+Sur la page, chaque tâche ouverte montre son dernier commentaire Jira et la
+date de sa dernière revue. Le badge **« à revérifier »** signale une tâche
+dont une source a bougé sans que l'analyse l'ait reprise, et l'en-tête
+signale une source non lue : un statut sans badge a été revu avec tout ce
+qui était connu à cette date. Les tâches sans ticket ne sont revues que
+d'après les mails.
 
 **Synthèse incrémentale** : de même, la synthèse du matin ne relit en
 entier que les fils qui ont du nouveau depuis la dernière analyse ; les

@@ -47,6 +47,11 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
    Jira. Si la demande dit qu'ils sont indisponibles ou incomplets, le
    signaler. Chaque ticket ouvert a déjà un point dans le registre
    (ajouté par le lanceur) : voir « Tickets Jira : tous dans le suivi ».
+   **Commentaires Jira** : `jira-activite.json`, les derniers commentaires
+   humains de chaque ticket (`le`, `auteur`, `public` : visible du client
+   ou note interne, `texte`). C'est la seule source pour **mes propres
+   actions dans Jira**, dont aucun mail ne me prévient, et pour le contenu
+   des commentaires des autres, que les notifications ne donnent pas.
 4. **Registre de suivi** : `suivi.json`, les points des synthèses
    précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
    `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand
@@ -99,6 +104,12 @@ interlocuteurs internes).
    statut est mis à jour selon `references/regles-classement.md`
    (« Statut d'un point »). Un point ouvert ne disparaît jamais en silence :
    il reste dans la synthèse tant qu'aucune source ne le dit réglé.
+   Chaque point du fichier **« points à reprendre »** (`a-revoir.json`) a
+   bougé depuis sa dernière revue : son champ `pourquoi` dit quoi, et il
+   contient ses derniers commentaires Jira. **Tous ces points figurent dans
+   le bloc de suivi, quel que soit le mode**, avec un statut et une action
+   revus d'après ces commentaires, même si rien ne change au final : un
+   point non rendu reste affiché « à revérifier » sur ma page.
 
 4. **Écarter le bruit**, strictement selon la section C des règles : en cas
    de doute, ce n'est pas du bruit. Le bruit est listé en annexe.
@@ -166,10 +177,11 @@ pour le lecteur, mais la lecture change :
   par exemple lors d'une actualisation) ; variabilité, facturation et
   points d'attention viennent du registre des éléments à garder (à
   traiter) et des fils nouveaux ; le bruit ne liste que les fils nouveaux ;
-- bloc de suivi : seulement les points nouveaux ou dont le statut,
-  l'action, la priorité, l'échéance ou la prise de contact change ; les
-  autres sont gardés tels quels. Bloc des éléments à garder : seulement les
-  nouveaux ou modifiés. Formats inchangés.
+- bloc de suivi : les points nouveaux, **tous ceux du fichier « points à
+  reprendre »**, et ceux dont le statut, l'action, la priorité, l'échéance
+  ou la prise de contact change ; les autres sont gardés tels quels. Bloc
+  des éléments à garder : seulement les nouveaux ou modifiés. Formats
+  inchangés.
 
 Une analyse complète de toute la fenêtre a lieu chaque semaine (le lundi
 par défaut), au retour d'absence et après plus de 3 jours sans analyse :
@@ -181,21 +193,24 @@ Quand la demande indique le mode « Actualisation » (bouton « Actualiser »
 en cours de journée), l'analyse du jour a déjà traité toute la boîte :
 
 - seuls les fils du fichier « fils avec du nouveau » sont à traiter, **en
-  entier** (il contient aussi les fils qui portent la même clé de ticket).
-  La vue de tous les fils et le détail complet servent seulement au
-  contexte (un fil qui en cite un autre, l'historique d'un client) ;
+  entier** (il contient aussi les fils qui portent la même clé de ticket),
+  ainsi que les points du fichier « points à reprendre ». La vue de tous
+  les fils et le détail complet servent seulement au contexte (un fil qui
+  en cite un autre, l'historique d'un client) ;
 - la méthode s'applique à ces fils (rattacher, reprendre le point du
   registre concerné avec son `id`, statut, bruit, classement A / B, prise
   de contact, éléments à garder), avec la même exigence que le matin ;
 - les autres points du registre ne sont pas revus et **ne figurent pas**
   dans le bloc de suivi : le lanceur les garde tels quels, et le statut
-  Jira est synchronisé à part ;
+  Jira est synchronisé à part ; les points à reprendre, eux, y figurent
+  tous ;
 - le texte est un compte rendu court : titre « # Actualisation –
   <JJ.MM.AAAA HH:mm> », puis une ligne par point nouveau, modifié ou réglé,
   avec son identifiant ; pas d'annexe ni de tableaux complets ;
-- bloc de suivi : seulement les points nouveaux ou dont le statut,
-  l'action ou la prise de contact change ; bloc des éléments à garder :
-  seulement les éléments nouveaux ou modifiés. Formats inchangés.
+- bloc de suivi : les points nouveaux, tous les points à reprendre, et ceux
+  dont le statut, l'action ou la prise de contact change ; bloc des
+  éléments à garder : seulement les éléments nouveaux ou modifiés. Formats
+  inchangés.
 
 ## Sécurité
 
@@ -210,7 +225,7 @@ passe, de code MFA, de lien de mot de passe ou de secret dans la synthèse ;
 
 `scripts/Lancer-SyntheseMails.ps1`, déclenché chaque matin par une tâche
 planifiée Windows (`scripts/Installer-TacheSyntheseMails.ps1`), enchaîne :
-export Outlook, contexte AnsamDiag, tickets Jira assignés, rédaction par
+export Outlook, contexte AnsamDiag, tickets Jira assignés et leurs commentaires, rédaction par
 Claude Code (cette méthode), mise à jour du registre de suivi, puis **envoi
 de la synthèse par mail à soi-même** via Outlook. La synthèse est aussi
 gardée dans `%USERPROFILE%\SyntheseMails\syntheses`.

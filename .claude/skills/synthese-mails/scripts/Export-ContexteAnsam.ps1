@@ -85,6 +85,7 @@ if (Test-Path $ticketDir) {
             misAJour    = $ticket.MisAJour
             cloture     = Test-Path (Join-Path $dir.FullName 'cloture.md')
             notes       = $notes
+            derniereNote = @(@($ticket.Notes) | Where-Object { $_ } | Select-Object -Last 1 | ForEach-Object { $_.horodatage })[0]
         })
     }
 } else {

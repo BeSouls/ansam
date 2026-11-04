@@ -119,11 +119,19 @@ try {
     $trackedKeys = @((Get-SmSuivi $WorkDir).points | Where-Object { $_.ticket -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') } |
         ForEach-Object { [string]$_.ticket })
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : export Outlook ($($plan.jours) jours) et tickets Jira"
+    $activityFile = Join-Path $WorkDir 'jira-activite.json'
     $jiraJob = Start-Job -ScriptBlock {
-        param($Script, $OutputFile, $Claude, $Keys)
+        param($Script, $ActivityScript, $OutputFile, $ActivityFile, $Claude, $Keys)
         Set-ExecutionPolicy -Scope Process Bypass -Force
-        & $Script -OutputFile $OutputFile -ClaudeExe $Claude -Cles $Keys | Select-Object -Last 1
-    } -ArgumentList (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1'), $jiraFile, $ClaudeExe, $trackedKeys
+        $ok = & $Script -OutputFile $OutputFile -ClaudeExe $Claude -Cles $Keys | Select-Object -Last 1
+        # Commentaires : les mails n'en disent rien (voir Export-JiraActivite.ps1). Un échec n'arrête rien.
+        $activity = $null
+        if ($ok) {
+            try { $activity = & $ActivityScript -JiraFile $OutputFile -OutputFile $ActivityFile -ClaudeExe $Claude | Select-Object -Last 1 }
+            catch { Write-Warning "Commentaires Jira non lus : $($_.Exception.Message)" }
+        }
+        [pscustomobject]@{ jira = $ok; activite = $activity }
+    } -ArgumentList (Join-Path $PSScriptRoot 'Export-JiraAssignes.ps1'), (Join-Path $PSScriptRoot 'Export-JiraActivite.ps1'), $jiraFile, $activityFile, $ClaudeExe, $trackedKeys
 
     $exportArgs = @{ Days = $plan.jours; OutputDir = $exportDir }
     if ($Mailbox) { $exportArgs.Mailbox = $Mailbox }
@@ -137,11 +145,17 @@ try {
         -DossierPortefeuille $config.dossierPortefeuille -OutputFile $contextFile | Out-Null
 
     Write-Host "$(Get-Date -Format HH:mm:ss) Étape : tickets Jira"
-    $jiraOk = $jiraJob | Wait-Job | Receive-Job | Select-Object -Last 1
+    $jiraResult = $jiraJob | Wait-Job | Receive-Job | Select-Object -Last 1
     Remove-Job $jiraJob -Force
+    $jiraOk = $jiraResult.jira
     $jiraNote = $(if ($jiraOk) { "tickets Jira assignés : $jiraFile" }
                   elseif (Test-Path $jiraFile) { "tickets Jira assignés : $jiraFile (lecture du jour en échec : liste de la veille, à signaler)" }
                   else { "tickets Jira assignés : indisponibles aujourd'hui (à signaler dans les points d'attention)" })
+    $activity = $(if ($jiraResult.activite) { Read-SmJson $activityFile })
+    $activityGaps = @($activity.echecs | ForEach-Object { $_ } | Where-Object { $_ })
+    $jiraNote += $(if (-not $activity) { " ; commentaires Jira non lus aujourd'hui (à signaler dans les points d'attention)" }
+                   elseif ($activityGaps.Count) { " ; commentaires Jira : $activityFile (non relus : $($activityGaps -join ', '), à signaler)" }
+                   else { " ; commentaires Jira : $activityFile" })
 
     # Registres : les points restent ouverts d'une synthèse à l'autre, les éléments à garder aussi.
     $suivi = Get-SmSuivi $WorkDir
@@ -151,7 +165,8 @@ try {
     $contextData = Read-SmJson $contextFile
     if ($jira) {
         $sync = Sync-SmJira $suivi $jira $contextData
-        Write-Host "Jira → suivi : $($sync.ajoutes) ajoutés, $($sync.regles) réglés, $($sync.rouverts) rouverts."
+        Update-SmActiviteJira $suivi $activity ([string]$jira.moi)
+        Write-Host "Jira → suivi : $($sync.ajoutes) ajoutés, $($sync.regles) réglés, $($sync.rouverts) rouverts, $($sync.changes) changés."
         if ($jira.complet -eq $false) { $jiraNote += " ATTENTION : liste Jira incomplète ($(@($jira.tickets).Count) sur $($jira.total)), à signaler" }
     }
     Save-SmSuivi $suivi $WorkDir
@@ -177,8 +192,16 @@ try {
         Write-Host "Analyse complète de la fenêtre."
     }
 
+    # Points dont une source a bougé depuis leur dernière revue : la synthèse les reprend, quel que soit le mode.
+    $toReview = Update-SmARevoir $suivi $activity $contextData $(if ($delta) { $delta.cles })
+    $reviewFile = Join-Path $WorkDir 'a-revoir.json'
+    Write-SmJson $reviewFile @($toReview)
+    Save-SmSuivi $suivi $WorkDir
+    Write-Host "Points à revoir : $($toReview.Count)."
+
     $sources = "contexte AnsamDiag : $contextFile ; $jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
                "registre des éléments à garder : $archivesFile ; " +
+               "points à reprendre obligatoirement, avec ce qui a bougé et leurs derniers commentaires Jira : $reviewFile ($($toReview.Count) points) ; " +
                "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers)."
     $deltaNote = $(if ($delta -and $delta.nouveaux) { "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " }
                    elseif ($delta) { "Aucun fil n'a de message depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')) ; " })
@@ -206,8 +229,8 @@ try {
         $prompt += " Réponds uniquement avec la synthèse en Markdown, suivie du bloc de suivi (<!-- SUIVI --> puis son tableau JSON) " +
                    "et du bloc des éléments à garder (<!-- ARCHIVES --> puis son tableau JSON)."
     }
-    if ($mode -eq 'actualisation' -and -not $delta.nouveaux) {
-        $markdown = "# Actualisation – $($start.ToString('dd.MM.yyyy HH:mm'))`n`nAucun nouveau message depuis $($deltaSince.ToString('HH:mm')) : " +
+    if ($mode -eq 'actualisation' -and -not $delta.nouveaux -and -not $toReview.Count) {
+        $markdown = "# Actualisation – $($start.ToString('dd.MM.yyyy HH:mm'))`n`nAucun nouveau message ni activité sur les tickets depuis $($deltaSince.ToString('HH:mm')) : " +
                     "statuts Jira et prises de contact mis à jour, rien d'autre à relire."
         $raw = $null
         $completed = Update-SmContacts $suivi $config
@@ -237,12 +260,14 @@ try {
     if ($raw) { try {
         $updates = Get-SmBlocJson $raw 'SUIVI'
         if ($null -eq $updates) { throw 'bloc absent' }
-        $changes = Merge-SmSuivi $suivi $updates
+        $changes = Merge-SmSuivi $suivi $updates $start.ToString('o')
         if ($jira) { [void](Sync-SmJira $suivi $jira $contextData) }   # Jira a le dernier mot sur ce qui est encore ouvert
         $completed = Update-SmContacts $suivi $config
         if ($completed) { Write-Host "Prises de contact complétées : $completed." }
         Save-SmSuivi $suivi $WorkDir
-        Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre."
+        $unreviewed = @($suivi.points | Where-Object { $_.aRevoir -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') })
+        Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre, $($unreviewed.Count) restés à revoir."
+        if ($unreviewed.Count) { $markdown += "`n`n> ⚠ $($unreviewed.Count) points à revérifier toi-même, non repris par l'analyse : $(($unreviewed | ForEach-Object { $_.id }) -join ', ')." }
     } catch {
         Write-Warning "Registre de suivi inchangé : $($_.Exception.Message)"
         $markdown += "`n`n> ⚠ Registre de suivi non mis à jour aujourd'hui ($($_.Exception.Message))."
@@ -296,6 +321,13 @@ try {
         dernierMode      = $etat.dernierMode
         dernierFichier   = $etat.dernierFichier
         derniereAnalyse  = $start.ToString('o')
+        # Ce que la page affiche pour dire sur quoi reposent les statuts.
+        sources          = [ordered]@{
+            mails        = $start.ToString('o')
+            jira         = $(if ($jiraOk) { $jira.lusLe })
+            commentaires = $(if ($activity) { $activity.lusLe })
+            nonRelus     = $activityGaps
+        }
     }
     if (-not $analysisOnly) {
         $newEtat.derniereSynthese = $start.ToString('o')

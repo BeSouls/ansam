@@ -49,8 +49,9 @@ $prompt = "Avec le connecteur Atlassian, en lecture seule, cherche mes tickets J
           "et les organisations du Service Desk du ticket, champ « Organizations »). " +
           $second +
           "Parcours toutes les pages de résultats de la première recherche, et indique dans « total » le nombre total de résultats annoncé par Jira. " +
+          "Indique dans « moi » mon nom affiché dans Jira (atlassianUserInfo). " +
           "Réponds UNIQUEMENT par un objet JSON, sans texte autour : " +
-          "{""total"":0,""tickets"":[{""cle"":"""",""titre"":"""",""statut"":"""",""projet"":"""",""priorite"":"""",""echeance"":null,""creeLe"":"""",""misAJour"":"""",""rapporteur"":"""",""rapporteurEmail"":null,""organisations"":[]}]," +
+          "{""moi"":"""",""total"":0,""tickets"":[{""cle"":"""",""titre"":"""",""statut"":"""",""projet"":"""",""priorite"":"""",""echeance"":null,""creeLe"":"""",""misAJour"":"""",""rapporteur"":"""",""rapporteurEmail"":null,""organisations"":[]}]," +
           """suivis"":[{""cle"":"""",""titre"":"""",""statut"":"""",""categorie"":""À faire | En cours | Terminé"",""resolution"":null,""assigne"":"""",""misAJour"":""""}]}."
 
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -77,7 +78,7 @@ if ($parsed.total) { $total = [int]$parsed.total }
 $complete = (-not $total) -or ($tickets.Count -ge $total)
 if (-not $complete) { Write-Warning "Liste Jira incomplète : $($tickets.Count) tickets reçus sur $total annoncés." }
 
-$result = [ordered]@{ lusLe = (Get-Date).ToString('o'); jql = $Jql; total = $total; complet = $complete; tickets = $tickets; suivis = $tracked }
+$result = [ordered]@{ lusLe = (Get-Date).ToString('o'); moi = $parsed.moi; jql = $Jql; total = $total; complet = $complete; tickets = $tickets; suivis = $tracked }
 Write-SmJson $OutputFile $result
 Write-Host "Jira : $($tickets.Count) tickets assignés ouverts (total annoncé : $total), $($tracked.Count) tickets suivis -> $OutputFile"
 $OutputFile

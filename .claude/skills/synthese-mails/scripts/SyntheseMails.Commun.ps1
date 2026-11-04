@@ -328,8 +328,9 @@ function Add-SmHistorique($Point, [string]$Par, [string]$Statut, [string]$Texte)
 }
 
 # Intègre les points proposés par la synthèse. Renvoie les points dont le
-# statut a changé, pour le compte rendu.
-function Merge-SmSuivi($Suivi, $Updates) {
+# statut a changé, pour le compte rendu. $RevuLe : début de l'analyse, posé sur chaque point
+# revu (ce qui arrive pendant l'analyse reste donc à revoir la fois suivante).
+function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
     $changes = @()
     $today = (Get-Date).ToString('yyyyMMdd')
     $counter = @($Suivi.points | Where-Object { $_.id -like "P-$today-*" }).Count
@@ -375,11 +376,18 @@ function Merge-SmSuivi($Suivi, $Updates) {
             $point.parentPar = 'synthese'
         }
 
+        if ($RevuLe) {
+            $point.revuLe = $RevuLe
+            $point.jiraStatutRevu = $point.jiraStatut
+            $point.Remove('aRevoir')
+        }
+
         if ($point.statut -eq $statut) { continue }
         if ($point.majPar -eq 'moi' -and $point.statut) {
-            # Mon marquage tient, sauf message plus récent que lui.
+            # Mon marquage tient, sauf message ou commentaire Jira d'un tiers plus récent que lui.
             $marked = ConvertTo-SmDateTime $point.majLe
-            $lastMessage = ConvertTo-SmDateTime $update.dernierMessage
+            $lastMessage = @((ConvertTo-SmDateTime $update.dernierMessage), (ConvertTo-SmDateTime $point.jiraDernierAutre) | Where-Object { $_ }) |
+                Sort-Object -Descending | Select-Object -First 1
             if (-not ($marked -and $lastMessage -and $lastMessage -gt $marked)) { continue }
         }
         $previous = $point.statut
@@ -422,7 +430,10 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
     $point.noteMoi = $Note
     $point.majPar = 'moi'
     $point.majLe = (Get-Date).ToString('o')
-    if ($changed) { Add-SmHistorique $point 'moi' $Statut $Note }
+    if ($changed) {
+        Add-SmHistorique $point 'moi' $Statut $Note
+        $point.Remove('aRevoir')     # je viens de trancher : plus rien à signaler
+    }
     Update-SmGroupes $Suivi
     $point
 }
@@ -523,11 +534,29 @@ function Resolve-SmClientJira($Ticket, $Context) {
 }
 
 function Sync-SmJira($Suivi, $Jira, $Context) {
-    $report = [ordered]@{ ajoutes = 0; regles = 0; rouverts = 0 }
+    $report = [ordered]@{ ajoutes = 0; regles = 0; rouverts = 0; changes = 0 }
     if (-not $Jira) { return $report }
     $tickets = @($Jira.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle })
     $now = (Get-Date).ToString('o')
     $newByProject = @{}
+
+    # Tickets des points ouverts qui ne sont plus dans mes tickets ouverts : clos ou réassignés.
+    $assigned = @($tickets | ForEach-Object { [string]$_.cle })
+    $tracked = @($Jira.suivis | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle -and $assigned -notcontains [string]$_.cle })
+    foreach ($ticket in $tracked) {
+        $mapped = Get-SmStatutJira $ticket.statut
+        foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and ($_.ticket -eq $ticket.cle -or $_.id -eq $ticket.cle) -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') })) {
+            $changed = $point.jiraStatut -and $point.jiraStatut -ne $ticket.statut
+            $point.jiraStatut = $ticket.statut
+            $point.jiraMisAJour = $ticket.misAJour
+            # Une seule fois, au passage : une tâche rouverte par la synthèse sur un ticket clos (nouvelle demande) le reste.
+            if ($changed -and $mapped -eq 'traite') {
+                $point.statut = 'traite'; $point.majPar = 'synthese'; $point.majLe = $now
+                Add-SmHistorique $point 'synthese' 'traite' "Jira « $($ticket.statut) »"
+                $report.regles++
+            }
+        }
+    }
 
     foreach ($ticket in $tickets) {
         $mapped = Get-SmStatutJira $ticket.statut
@@ -537,6 +566,7 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
         $point = @($candidates | Where-Object { $_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers' }) + $candidates | Select-Object -First 1
 
         if ($point) {
+            $changed = $point.jiraStatut -and $point.jiraStatut -ne $ticket.statut
             $point.jiraStatut = $ticket.statut
             $point.jiraMisAJour = $ticket.misAJour
             if (-not $point.client) { $found = Resolve-SmClientJira $ticket $Context; if ($found) { $point.client = $found } }
@@ -552,6 +582,11 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
                 $point.action = "Réglé d'après les mails, mais encore « $($ticket.statut) » dans Jira : clôturer le ticket ou le reprendre."
                 Add-SmHistorique $point 'synthese' 'a_faire' "Encore « $($ticket.statut) » dans Jira"
                 $report.rouverts++
+            } elseif ($changed -and $open -and $mapped -ne $point.statut) {
+                # Le ticket a changé d'état (le client a répondu, je l'ai mis en attente).
+                $point.statut = $mapped; $point.majPar = 'synthese'; $point.majLe = $now
+                Add-SmHistorique $point 'synthese' $mapped "Jira passé à « $($ticket.statut) »"
+                $report.changes++
             }
             continue
         }
@@ -589,6 +624,67 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
     }
     Update-SmGroupes $Suivi
     $report
+}
+
+# --- Activité des tickets et points à revoir -------------------------------------
+# Pose sur chaque point son dernier commentaire Jira humain. Un mail arrive seulement pour les
+# commentaires des autres, sans leur texte, et jamais pour les miens : sans cela, le point
+# ignore ce qui s'est passé dans le ticket. $Moi : mon nom dans Jira.
+function Test-SmMemePersonne([string]$A, [string]$B) {
+    if (-not $A -or -not $B) { return $false }
+    $words = { param($t) @((ConvertTo-SmCle $t) -split ' ' | Where-Object { $_ } | Sort-Object) -join ' ' }
+    (& $words $A) -eq (& $words $B)
+}
+
+function Update-SmActiviteJira($Suivi, $Activite, [string]$Moi) {
+    if (-not $Activite) { return }
+    $byKey = @{}
+    foreach ($entry in @($Activite.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle })) { $byKey[[string]$entry.cle] = $entry }
+    foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.ticket })) {
+        $entry = $byKey[[string]$point.ticket]
+        if (-not $entry) { continue }
+        $comments = @($entry.commentaires | ForEach-Object { $_ } | Where-Object { $_ -and $_.le })
+        $last = $comments | Select-Object -First 1
+        if ($last) {
+            $point.jiraDernier = [ordered]@{ le = $last.le; auteur = $last.auteur; moi = (Test-SmMemePersonne $last.auteur $Moi); public = $last.public; texte = $last.texte }
+        }
+        $other = $comments | Where-Object { -not (Test-SmMemePersonne $_.auteur $Moi) } | Select-Object -First 1
+        if ($other) { $point.jiraDernierAutre = $other.le }
+    }
+}
+
+# Pose aRevoir (ce qui a bougé depuis la dernière revue) sur les points ouverts : la synthèse doit
+# les reprendre. Une revue qui ne les rend pas laisse aRevoir, et la page le montre. Renvoie la liste
+# à donner à la synthèse, avec les derniers commentaires. $ClesMail : clés des fils avec du nouveau.
+function Update-SmARevoir($Suivi, $Activite, $Context, [string[]]$ClesMail = @()) {
+    $comments = @{}
+    if ($Activite) { foreach ($entry in @($Activite.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle })) { $comments[[string]$entry.cle] = @($entry.commentaires) } }
+    $notes = @{}
+    foreach ($ticket in @($Context.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $_.cle -and $_.derniereNote })) { $notes[[string]$ticket.cle] = $ticket.derniereNote }
+
+    $list = New-Object System.Collections.ArrayList
+    foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') })) {
+        $seen = ConvertTo-SmDateTime $point.revuLe
+        $why = New-Object System.Collections.ArrayList
+        if ($point.ticket) {
+            $last = $point.jiraDernier
+            $at = $(if ($last) { ConvertTo-SmDateTime $last.le })
+            if ($at -and (-not $seen -or $at -gt $seen)) { [void]$why.Add("commentaire Jira de $(if ($last.moi) { 'moi' } else { $last.auteur }) le $($at.ToString('dd.MM HH:mm'))") }
+            elseif (-not $seen) { [void]$why.Add('pas encore revu avec les commentaires Jira') }
+            if ($point.jiraStatutRevu -and $point.jiraStatut -and $point.jiraStatutRevu -ne $point.jiraStatut) { [void]$why.Add("Jira passé de « $($point.jiraStatutRevu) » à « $($point.jiraStatut) »") }
+            $note = ConvertTo-SmDateTime $notes[[string]$point.ticket]
+            if ($note -and (-not $seen -or $note -gt $seen)) { [void]$why.Add("note AnsamDiag du $($note.ToString('dd.MM HH:mm'))") }
+            if ($ClesMail -contains $point.ticket) { [void]$why.Add('nouveau mail sur le ticket') }
+        }
+        if (-not $why.Count) {
+            if (-not $point.aRevoir) { continue }   # une revue précédente ne l'a pas repris : toujours dû
+            [void]$why.Add([string]$point.aRevoir)
+        }
+        $point.aRevoir = ($why -join ' ; ')
+        [void]$list.Add([ordered]@{ id = $point.id; ticket = $point.ticket; statut = $point.statut; jiraStatut = $point.jiraStatut; action = $point.action
+                                    pourquoi = $point.aRevoir; commentaires = $(if ($point.ticket) { $comments[[string]$point.ticket] }) })
+    }
+    , $list
 }
 
 # Recalcule chaque groupe depuis ses sous-tâches ; supprime les groupes vides.
@@ -796,7 +892,7 @@ function New-SmFilsDelta([string]$ThreadFile, [datetime]$Since, [string]$OutFile
                  "(+ $($selected.Count - $fresh.Count) fils du même ticket), sur $($blocks.Count) fils de l'export."
         [IO.File]::WriteAllText($OutFile, "$intro`n`n" + ($selected -join "`n`n") + "`n", (New-Object Text.UTF8Encoding($false)))
     }
-    [ordered]@{ total = $blocks.Count; nouveaux = $fresh.Count; selection = $selected.Count }
+    [ordered]@{ total = $blocks.Count; nouveaux = $fresh.Count; selection = $selected.Count; cles = @($keys) }
 }
 
 # --- Réunion squad -------------------------------------------------------------

@@ -1141,6 +1141,19 @@ $('csSaveCall').addEventListener('click', () => {
   setPoint(p, p.statut, note, true).then(() => toast('Compte rendu enregistré dans la note du point.'));
 });
 
+// Ce sur quoi repose le statut : le dernier commentaire du ticket et la date de la dernière revue.
+function proofLine(p) {
+  const c = p.jiraDernier;
+  const when = d => `${shortDate(d)} ${new Date(d).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}`;
+  const parts = [];
+  if (c) {
+    const text = String(c.texte || '');
+    parts.push(`Dernier commentaire Jira : ${c.moi ? 'moi' : esc(c.auteur)}, ${when(c.le)}${c.public ? '' : ' (interne)'}${text ? ' – « ' + esc(text.slice(0, 140)) + (text.length > 140 ? '…' : '') + ' »' : ''}`);
+  }
+  parts.push(p.revuLe ? `Revu le ${when(p.revuLe)}` : 'Pas encore revu');
+  return `<div class="meta">${parts.join(' · ')}</div>`;
+}
+
 function pointCard(p, inSheet) {
   const card = document.createElement('div');
   const open = isOpen(p);
@@ -1157,11 +1170,13 @@ function pointCard(p, inSheet) {
       ${dueTag(p.echeance)}
       ${p.jiraStatut ? `<span class="tag jira" title="Statut dans Jira${p.jiraMisAJour ? ', mis à jour le ' + shortDate(p.jiraMisAJour) : ''}">Jira : ${esc(p.jiraStatut)}</span>` : ''}
       ${p.jiraEncoreOuvert ? '<span class="tag late" title="Réglé ici, mais le ticket est encore ouvert dans Jira">à clôturer dans Jira</span>' : ''}
+      ${open && p.aRevoir ? `<span class="tag late" title="Statut pas encore revu depuis : ${esc(p.aRevoir)}">à revérifier</span>` : ''}
       <span class="mono">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(p.id)}</a>` : esc(p.id)}</span>
     </div>
     ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
     <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
+    ${open ? proofLine(p) : ''}
     <div class="foot"></div>`;
   const prep = card.querySelector('.contact .btn');
   if (prep) prep.addEventListener('click', e => { e.stopPropagation(); openContact(p, card); });
@@ -1361,7 +1376,22 @@ function renderCounts() {
   $('sub').textContent = `${openPoints} à faire${urgent ? ` dont ${urgent} urgents` : ''} · ${waiting} en attente` +
     (e.derniereSynthese ? ` · synthèse du ${shortDate(e.derniereSynthese)}` : '') +
     (e.derniereAnalyse && e.derniereAnalyse > (e.derniereSynthese || '')
-      ? ` · actualisé le ${shortDate(e.derniereAnalyse)} à ${new Date(e.derniereAnalyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '');
+      ? ` · actualisé le ${shortDate(e.derniereAnalyse)} à ${new Date(e.derniereAnalyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '') +
+    sourcesNote(e.sources);
+}
+
+// Ce qui n'a pas pu être lu, ou ce qu'il reste à revoir : les statuts ne valent que par leurs sources.
+function sourcesNote(sources) {
+  const notes = [];
+  if (sources) {
+    if (!sources.jira) notes.push('⚠ Jira non lu à la dernière analyse');
+    else if (!sources.commentaires) notes.push('⚠ commentaires Jira non lus');
+    const gaps = (sources.nonRelus || []).length;
+    if (gaps) notes.push(`⚠ ${gaps} tickets non relus`);
+  }
+  const todo = leaves().filter(p => isOpen(p) && p.aRevoir).length;
+  if (todo) notes.push(`⚠ ${todo} à revérifier`);
+  return notes.length ? ' · ' + notes.join(' · ') : '';
 }
 
 function renderAll() {
