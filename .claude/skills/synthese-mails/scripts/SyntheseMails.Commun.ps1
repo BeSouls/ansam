@@ -861,7 +861,7 @@ function Update-SmContacts($Suivi, $Config) {
 #   retire  fiche écartée dans la page : gardée pour ne pas revenir à l'analyse suivante
 
 # Numéros suisses (+41, 0041, 0…), puis internationaux. Même motif dans config.html.
-$SmMotifTelephone = '(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}'
+$SmMotifTelephone = '(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?0?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}'
 
 function Split-SmTelephones([string]$Text) {
     @([regex]::Matches($Text, $SmMotifTelephone) | ForEach-Object { $_.Value.Trim() })
@@ -870,7 +870,7 @@ function Split-SmTelephones([string]$Text) {
 # Même numéro, quelle que soit son écriture (+41 79…, 0041 79…, 079…).
 function Get-SmCleTelephone([string]$Number) {
     $digits = ($Number -replace '\(0\)', '') -replace '\D', ''
-    $digits -replace '^(00)?41', '0'
+    $digits -replace '^(00)?410?', '0'
 }
 
 function Get-SmCleNom([string]$Name) {
@@ -922,7 +922,7 @@ function Add-SmAnnuaire($Annuaire, $Personnes, [string]$Ticket, [string]$Client)
     foreach ($person in @($Personnes | Where-Object { $_ })) {
         $nom = ([string]$person.nom).Trim()
         $email = ([string]$person.email).Trim().ToLowerInvariant()
-        if ($email -notmatch '^[\w.+-]+@[\w-]+(\.[\w-]+)+$' -or $email -match '^(no-?reply|do-?not-?reply|ne-pas-repondre)') { $email = '' }
+        if ($email -notmatch '^[\w.+-]+@[\w-]+(\.[\w-]+)+$' -or $email -match '(^|[._-])(no-?reply|do-?not-?reply|ne-pas-repondre)') { $email = '' }
         $numbers = @(Split-SmTelephones (@($person.telephone) -join ' / '))
         if (-not $nom -or (-not $email -and -not $numbers.Count)) { continue }
 

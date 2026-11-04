@@ -1772,12 +1772,12 @@ function renderAbsences() {
 
 // Un lien d'appel par numéro : le champ peut en contenir plusieurs, ou une précision (« touche 1 »).
 // Même motif que $SmMotifTelephone dans SyntheseMails.Commun.ps1.
-const phonePattern = /(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}/g;
+const phonePattern = /(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?0?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}/g;
 function phoneLinks(text, cls) {
   const value = String(text || '');
   const numbers = value.match(phonePattern) || [];
   if (!numbers.length) return '';
-  const links = numbers.map(n => `<a class="${cls}" href="tel:${n.replace(/\(0\)/g, '').replace(/[^\d+]/g, '')}">${esc(n.trim())}</a>`).join('');
+  const links = numbers.map(n => `<a class="${cls}" href="tel:${n.replace(/\(0\)/g, '').replace(/[^\d+]/g, '').replace(/^(\+|00)410/, '+41')}">${esc(n.trim())}</a>`).join('');
   const rest = value.replace(phonePattern, ' ').replace(/(^|\s)(ou|et)(?=\s|$)/gi, ' ').replace(/^[\s\/;,|–-]+|[\s\/;,|–-]+$/g, '').replace(/\s+/g, ' ');
   return links + (rest ? `<span class="meta">${esc(rest)}</span>` : '');
 }
