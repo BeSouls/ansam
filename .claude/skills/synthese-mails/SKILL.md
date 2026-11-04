@@ -42,7 +42,7 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
 3. **Tickets Jira** : `jira-assignes.json`, lu le matin même en lecture
    seule : `tickets`, mes tickets ouverts (clé, titre, statut, rapporteur,
    dates) ; `suivis`, le statut réel (catégorie, résolution, assigné) des
-   tickets des points ouverts du registre, même clos ou réassignés ;
+   tickets de points ouverts qui n'en font plus partie : clos ou réassignés ;
    `complet` dit si la liste contient bien tous les tickets annoncés par
    Jira. Si la demande dit qu'ils sont indisponibles ou incomplets, le
    signaler. Chaque ticket ouvert a déjà un point dans le registre
@@ -51,22 +51,33 @@ et sous-dossiers, jamais les boîtes partagées auxquelles il·elle a accès.
    humains de chaque ticket (`le`, `auteur`, `public` : visible du client
    ou note interne, `texte`). C'est la seule source pour **mes propres
    actions dans Jira**, dont aucun mail ne me prévient, et pour le contenu
-   des commentaires des autres, que les notifications ne donnent pas.
-4. **Registre de suivi** : `suivi.json`, les points des synthèses
-   précédentes avec leur statut (`a_faire`, `attente_tiers`, `traite`,
-   `ignore`), qui l'a posé (`majPar` : `moi` ou `synthese`), quand
-   (`majLe`), ma note (`noteMoi`) et l'historique. Certains points sont
+   des commentaires des autres, que les notifications ne donnent pas. Les
+   points à reprendre ont déjà les leurs dans `a-revoir.json` : ce fichier
+   ne se lit pas en entier, il se cherche avec Grep pour un ticket précis.
+4. **Registre de suivi** : `suivi-analyse.json` (chemin dans la demande),
+   les points des synthèses précédentes avec leur statut (`a_faire`,
+   `attente_tiers`, `traite`, `ignore`), qui l'a posé (`majPar` : `moi` ou
+   `synthese`), quand (`majLe`), ma note (`noteMoi`) et les 3 derniers
+   événements. Un point réglé y figure en résumé, avec son `motif` : il
+   reste connu, pour ne pas le recréer. `suivi-analyse.json` et
+   `archives-analyse.json` se lisent une seule fois, en entier ; les
+   registres complets `suivi.json` et `archives.json` ne servent qu'à
+   retrouver un détail ancien avec Grep. Certains points sont
    des **groupes** (`estGroupe`) qui rassemblent des sous-tâches (`parent`) :
    les revues récurrentes, un même chantier (voir « Regrouper les points »
    dans les règles).
-   **Registre des éléments à garder** : `archives.json`, la variabilité,
-   la facturation, les faits TAM et les points d'attention déjà relevés,
-   avec leur statut (`a_traiter`, `fait`, `ignore`) : ne pas les recréer.
+   **Registre des éléments à garder** : `archives-analyse.json`, la
+   variabilité, la facturation, les faits TAM et les points d'attention déjà
+   relevés, avec leur statut (`a_traiter`, `fait`, `ignore`) : ne pas les
+   recréer.
 5. **Connecteur Microsoft 365**, quand il sera débloqué et chargé dans la
    session : lire la même boîte directement.
 
 Sans export ni connecteur, s'arrêter et le dire. Ne jamais remplacer la
 boîte pro par le Gmail perso, et ne rien inventer.
+
+Les scripts du dépôt ne sont pas une source : ce skill et ses références
+disent tout ce qu'il faut savoir.
 
 `references/clients.md` donne les compléments éventuels (alias,
 interlocuteurs internes).
@@ -141,7 +152,7 @@ interlocuteurs internes).
 8. **Puis le bloc des éléments à garder** : une ligne `<!-- ARCHIVES -->`
    puis un tableau JSON avec chaque élément de variabilité, de
    facturation, de suivi TAM et chaque point d'attention de la synthèse,
-   en reprenant l'`id` de ceux déjà présents dans `archives.json`.
+   en reprenant l'`id` de ceux déjà présents dans `archives-analyse.json`.
 
 La réponse est **uniquement** la synthèse en Markdown suivie de ces deux
 blocs, sans préambule.

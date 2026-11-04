@@ -155,7 +155,7 @@ try {
     $activityGaps = @($activity.echecs | ForEach-Object { $_ } | Where-Object { $_ })
     $jiraNote += $(if (-not $activity) { " ; commentaires Jira non lus aujourd'hui (à signaler dans les points d'attention)" }
                    elseif ($activityGaps.Count) { " ; commentaires Jira : $activityFile (non relus : $($activityGaps -join ', '), à signaler)" }
-                   else { " ; commentaires Jira : $activityFile" })
+                   else { " ; commentaires Jira de tous les tickets, à chercher avec Grep pour un ticket précis : $activityFile" })
 
     # Registres : les points restent ouverts d'une synthèse à l'autre, les éléments à garder aussi.
     $suivi = Get-SmSuivi $WorkDir
@@ -199,8 +199,14 @@ try {
     Save-SmSuivi $suivi $WorkDir
     Write-Host "Points à revoir : $($toReview.Count)."
 
-    $sources = "contexte AnsamDiag : $contextFile ; $jiraNote ; registre de suivi : $suiviFile ($(@($suivi.points).Count) points) ; " +
-               "registre des éléments à garder : $archivesFile ; " +
+    # Dossier de l'analyse : l'essentiel des registres, qui restent complets pour un détail ancien.
+    $folderSuivi = Join-Path $WorkDir 'suivi-analyse.json'
+    $folderArchives = Join-Path $WorkDir 'archives-analyse.json'
+    Write-SmDossierAnalyse $suivi (Get-SmArchives $WorkDir) $folderSuivi $folderArchives
+
+    $sources = "contexte AnsamDiag : $contextFile ; $jiraNote ; registre de suivi : $folderSuivi ($(@($suivi.points).Count) points) ; " +
+               "registre des éléments à garder : $folderArchives ; " +
+               "registres complets, à chercher avec Grep seulement pour un détail ancien : $suiviFile, $archivesFile ; " +
                "points à reprendre obligatoirement, avec ce qui a bougé et leurs derniers commentaires Jira : $reviewFile ($($toReview.Count) points) ; " +
                "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers)."
     $deltaNote = $(if ($delta -and $delta.nouveaux) { "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " }
@@ -241,7 +247,7 @@ try {
         Push-Location $RepoDir
         try {
             Write-Host "$(Get-Date -Format HH:mm:ss) Étape : $(@{ complete = 'rédaction'; incrementale = 'rédaction (nouveautés)'; actualisation = 'analyse des nouveautés' }[$mode]) par Claude Code"
-            $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill'
+            $synthesis = & $ClaudeExe -p $prompt --add-dir $WorkDir --allowedTools 'Read,Grep,Glob,Skill' --disallowedTools 'Bash,PowerShell,Write,Edit,Read(**/*.ps1)'
             if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($synthesis -join ' ')" }
         } finally {
             Pop-Location

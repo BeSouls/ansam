@@ -95,8 +95,8 @@ Sources, de la plus forte à la plus faible :
 2. **AnsamDiag** : statut `Resolu` ou note « RESOLU » → `traite` ; statut
    `EnAttente` ou note qui dit que l'action est faite et que j'attends →
    `attente_tiers` ; clôture préparée (`cloture`) → `traite`.
-3. **Jira** (`suivis` donne le statut réel de chaque ticket suivi, même
-   clos ou réassigné) : statut de catégorie « Terminé » (« Résolu »,
+3. **Jira** (`tickets` pour mes tickets ouverts ; `suivis` pour ceux qui
+   n'en font plus partie, clos ou réassignés) : statut de catégorie « Terminé » (« Résolu »,
    « Clos »…) → `traite` ; ticket réassigné à quelqu'un d'autre → `traite`
    avec le motif « réassigné à X » ; « En attente du client », « En
    attente du fournisseur », « En attente Interne », « Awaiting CAB »,

@@ -78,9 +78,36 @@ function Read-SmJson([string]$Path) {
     [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) | ConvertFrom-Json
 }
 
+# JSON sans indentation, une clé ou un élément de tableau par ligne : deux fois moins lourd que la
+# sortie de ConvertTo-Json, pour l'analyse qui relit ces fichiers, et toujours lisible par tranches.
+function ConvertTo-SmJson($Value) {
+    $one = { param($Item) if ($null -eq $Item) { return 'null' }; ConvertTo-Json -InputObject $Item -Depth 6 -Compress }
+    $list = {
+        param($Items)
+        $rows = foreach ($item in $Items) { & $one $item }   # pas de @() : il échoue sur une List[object] sous PS 5.1
+        if ($null -eq $rows) { return '[]' }
+        "[`n" + (@($rows) -join ",`n") + "`n]"
+    }
+    if ($Value -is [System.Collections.IList]) { return & $list $Value }
+    if ($Value -isnot [System.Collections.IDictionary] -and $Value -isnot [pscustomobject]) { return & $one $Value }
+    $pairs = @(Get-SmChamps $Value | ForEach-Object {
+        '"{0}":{1}' -f $_.Name, $(if ($_.Value -is [System.Collections.IList]) { & $list $_.Value } else { & $one $_.Value })
+    })
+    "{`n" + ($pairs -join ",`n") + "`n}"
+}
+
+# Clés et valeurs d'un objet, qu'il vienne d'un fichier (pscustomobject) ou du code ([ordered]).
+function Get-SmChamps($Object) {
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Object.Keys)) { [pscustomobject]@{ Name = [string]$key; Value = $Object[$key] } }
+    } else {
+        $Object.PSObject.Properties | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Value = $_.Value } }
+    }
+}
+
 function Write-SmJson([string]$Path, $Value) {
     New-Item -ItemType Directory -Force -Path (Split-Path $Path) | Out-Null
-    [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($Path, (ConvertTo-SmJson $Value), (New-Object Text.UTF8Encoding($false)))
 }
 
 # Configuration du fichier, complétée par les valeurs par défaut.
@@ -685,6 +712,41 @@ function Update-SmARevoir($Suivi, $Activite, $Context, [string[]]$ClesMail = @()
                                     pourquoi = $point.aRevoir; commentaires = $(if ($point.ticket) { $comments[[string]$point.ticket] }) })
     }
     , $list
+}
+
+# --- Dossier de l'analyse --------------------------------------------------------
+# L'analyse relit ses fichiers à chaque tour : elle reçoit de quoi travailler, sans ce qui ne sert
+# plus. Les registres eux-mêmes ne changent pas, et restent ouverts à l'analyse pour un détail ancien.
+function Get-SmEssentiel($Object, [string[]]$Sans = @()) {
+    $copy = [ordered]@{}
+    foreach ($field in @(Get-SmChamps $Object)) {
+        if ($Sans -contains $field.Name -or $null -eq $field.Value -or '' -eq $field.Value) { continue }
+        $copy[$field.Name] = $field.Value
+    }
+    $copy
+}
+
+function Write-SmDossierAnalyse($Suivi, $Archives, [string]$SuiviFile, [string]$ArchivesFile) {
+    $points = @($Suivi.points | ForEach-Object {
+        $last = @($_.historique | Where-Object { $_ }) | Select-Object -Last 3
+        if ($_.estGroupe -or $_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') {
+            $open = Get-SmEssentiel $_ @('jiraDernier', 'jiraDernierAutre', 'jiraStatutRevu')
+            if ($open.Contains('historique')) { $open.historique = @($last) }
+            $open
+        } else {
+            # Un point réglé reste connu : pas de doublon, et mon marquage tient face à un nouveau message.
+            $closed = Get-SmEssentiel $_ @('historique', 'action', 'contact', 'source', 'creeLe', 'priorite', 'echeance', 'jiraDernier', 'jiraDernierAutre', 'jiraStatutRevu', 'revuLe', 'dernierMessage')
+            $motif = @($last) | Select-Object -Last 1
+            if ($motif) { $closed.motif = $motif.texte }
+            $closed
+        }
+    })
+    Write-SmJson $SuiviFile ([ordered]@{ majLe = $Suivi.majLe; points = @($points) })
+    $elements = @($Archives.elements | ForEach-Object {
+        if ($_.statut -eq 'a_traiter') { Get-SmEssentiel $_ @('majPar', 'creeLe') }
+        else { Get-SmEssentiel $_ @('majPar', 'creeLe', 'noteMoi', 'certitude', 'sens', 'quantite', 'montant', 'dateEffet', 'mois', 'echeance', 'source', 'indice', 'verification', 'dossier') }
+    })
+    Write-SmJson $ArchivesFile ([ordered]@{ majLe = $Archives.majLe; elements = @($elements) })
 }
 
 # Recalcule chaque groupe depuis ses sous-tâches ; supprime les groupes vides.

@@ -108,7 +108,7 @@ $context = [ordered]@{
     clients      = $clients
     tickets      = $tickets
 }
-New-Item -ItemType Directory -Force -Path (Split-Path $OutputFile) | Out-Null
-[IO.File]::WriteAllText($OutputFile, ($context | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+. (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
+Write-SmJson $OutputFile $context
 Write-Host "Contexte : $($clients.Count) clients, $($tickets.Count) tickets, portefeuille de $($portfolio.Count) clients -> $OutputFile"
 $OutputFile

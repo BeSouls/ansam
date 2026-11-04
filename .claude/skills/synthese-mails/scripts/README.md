@@ -1,5 +1,7 @@
 # Synthèse mails – installation sur le PC
 
+> Reprendre le sujet dans une nouvelle session : lire `AnsamDiag-DonneesPANORAMIX-REPRISE.md` (Documents du OneDrive ANSAM).
+
 Tant que le connecteur Microsoft 365 est bloqué, l'export se fait en local.
 Le principe :
 
@@ -120,6 +122,12 @@ skill) et les points à reprendre (voir ci-dessous) ; sans nouveau message
 ni activité sur les tickets, Claude n'est pas lancé. Jira est lu en
 parallèle de l'export Outlook. Compter 2 à 5 minutes avec Outlook ouvert
 (un Outlook qui démarre impose 3 minutes d'attente de synchronisation).
+
+**Consommation** : la liste des tickets Jira et leurs commentaires sont de la
+recopie, confiée à un modèle léger (si un champ manque, le modèle standard
+refait la lecture). L'analyse reçoit `suivi-analyse.json` et
+`archives-analyse.json` : points ouverts, 3 derniers événements, points
+réglés en résumé. `suivi.json` et `archives.json` restent complets.
 
 **Statuts fiables** : à chaque analyse, `Export-JiraActivite.ps1` relit les
 commentaires des tickets dont la date a changé (`jira-activite.json`). Jira
