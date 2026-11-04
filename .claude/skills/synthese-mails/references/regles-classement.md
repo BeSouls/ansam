@@ -251,7 +251,8 @@ crée un vide, à rédiger. Le `contact` :
 - `nom`, `role`, `email`, `telephone` : la bonne personne, pas la boîte
   générique, avec son adresse et son numéro tels qu'ils figurent dans les
   mails (signature), la fiche client (contacts) ou le ticket. Rien
-  d'inventé : une donnée introuvable reste `null` ;
+  d'inventé : une donnée introuvable reste `null`, l'annuaire la complète
+  ensuite s'il connaît la personne ;
 - pour un **tiers de l'annuaire** (donné dans la demande : nom, mots-clés,
   adresse, numéro, sujet), son canal officiel est la bonne adresse, même
   générique : `nom` = le nom de l'annuaire, `email` et `telephone` repris

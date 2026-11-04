@@ -239,6 +239,11 @@
   .callcard { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: .8rem; padding: .8rem 1rem;
     border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
   .phone { font-size: 1.375rem; font-weight: 700; letter-spacing: .01em; color: var(--accent); }
+  .phones { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; text-align: right; }
+  .phones .meta { margin-top: .1rem; }
+  .telto { color: var(--accent); white-space: nowrap; }
+  .an-tels { display: flex; flex-direction: column; gap: .1rem; }
+  .an-acts, .an-table td:nth-child(2), .an-table td:nth-child(3) { white-space: nowrap; }
   ol.talk { margin: .2rem 0 1rem; padding-left: 1.3rem; font-size: .9375rem; }
   ol.talk li { margin-bottom: .3rem; }
 
@@ -397,6 +402,7 @@
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
       <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
+      <button role="tab" data-tab="annuaire" aria-selected="false">Annuaire <span class="count" id="c-annuaire">–</span></button>
       <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
     </nav>
   </div>
@@ -452,6 +458,28 @@
     <div id="sqBox"><div class="empty">Chargement…</div></div>
   </section>
 
+    <section class="pane" id="p-annuaire" hidden>
+      <div class="panel">
+        <h2>Annuaire</h2>
+        <p class="hint">Se remplit à chaque analyse et à chaque rédaction, et complète les prises de contact à qui il manque une adresse ou un numéro. Une fiche modifiée ici n’est plus touchée par les analyses ; une fiche retirée ne revient pas.</p>
+        <input class="field" type="search" id="anSearch" placeholder="Nom, client, ticket, numéro…" aria-label="Chercher dans l’annuaire">
+        <div class="table-scroll" style="margin-top:.7rem">
+          <table class="an-table">
+            <thead><tr><th>Nom</th><th>Client</th><th>Adresse</th><th>Téléphone</th><th>Vu sur</th><th></th></tr></thead>
+            <tbody id="anBody"></tbody>
+          </table>
+        </div>
+        <div class="row-add six">
+          <div><label class="f" for="anNom">Nom</label><input class="field" type="text" id="anNom"></div>
+          <div><label class="f" for="anRole">Rôle</label><input class="field" type="text" id="anRole"></div>
+          <div><label class="f" for="anOrg">Organisation</label><input class="field" type="text" id="anOrg"></div>
+          <div><label class="f" for="anEmail">Adresse</label><input class="field" type="email" id="anEmail"></div>
+          <div><label class="f" for="anTel">Téléphone</label><input class="field" type="tel" id="anTel"></div>
+          <div><label class="f" for="anClient">Client</label><input class="field" type="text" id="anClient"></div>
+        </div>
+        <div style="margin-top:.6rem"><button class="btn" type="button" id="anAdd">Ajouter</button></div>
+      </div>
+    </section>
   <section class="pane" id="p-reglages" hidden>
     <div class="panel">
       <h2>État</h2>
@@ -589,7 +617,7 @@
   <div id="csCall">
     <div class="callcard">
       <div><div class="title" id="csName"></div><div class="meta" id="csRole"></div></div>
-      <a class="phone" id="csPhone" href="#"></a>
+      <div class="phones" id="csPhones"></div>
     </div>
     <label class="f" style="margin-top:.9rem">Points à aborder</label>
     <ol class="talk" id="csPoints"></ol>
@@ -684,6 +712,7 @@ function hideToast() { $('toast').classList.remove('show'); }
 // --- Navigation --------------------------------------------------------------
 function showTab(name) {
   tab = name;
+  if (name === 'annuaire') loadAnnuaire();
   document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
   try { localStorage.setItem('sm-tab', name); } catch (e) { }
@@ -1351,8 +1380,7 @@ function fillContact(p) {
   if (call) {
     $('csName').textContent = c.nom || 'Contact à identifier';
     $('csRole').textContent = c.role || '';
-    $('csPhone').textContent = c.telephone || 'Numéro introuvable dans les mails';
-    $('csPhone').href = c.telephone ? 'tel:' + c.telephone.replace(/[^\d+]/g, '') : '#';
+    $('csPhones').innerHTML = phoneLinks(c.telephone, 'phone') || `<span class="meta">${esc(c.telephone || 'Numéro introuvable dans les mails')}</span>`;
     $('csPoints').innerHTML = (c.points || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>Points à préparer</li>';
     $('csReport').value = '';
   } else {
@@ -1742,6 +1770,67 @@ function renderAbsences() {
   });
 }
 
+// Un lien d'appel par numéro : le champ peut en contenir plusieurs, ou une précision (« touche 1 »).
+// Même motif que $SmMotifTelephone dans SyntheseMails.Commun.ps1.
+const phonePattern = /(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}/g;
+function phoneLinks(text, cls) {
+  const value = String(text || '');
+  const numbers = value.match(phonePattern) || [];
+  if (!numbers.length) return '';
+  const links = numbers.map(n => `<a class="${cls}" href="tel:${n.replace(/\(0\)/g, '').replace(/[^\d+]/g, '')}">${esc(n.trim())}</a>`).join('');
+  const rest = value.replace(phonePattern, ' ').replace(/(^|\s)(ou|et)(?=\s|$)/gi, ' ').replace(/^[\s\/;,|–-]+|[\s\/;,|–-]+$/g, '').replace(/\s+/g, ' ');
+  return links + (rest ? `<span class="meta">${esc(rest)}</span>` : '');
+}
+
+let annuaire = [];
+let annuaireEdit = null;
+async function loadAnnuaire() {
+  try { annuaire = (await api('GET', '/api/annuaire')).contacts || []; renderAnnuaire(); }
+  catch (e) { toast(e.message, null, true); }
+}
+function renderAnnuaire() {
+  $('c-annuaire').textContent = annuaire.length;
+  const words = $('anSearch').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = annuaire
+    .filter(c => { const text = [c.nom, c.role, c.organisation, c.client, c.email, ...(c.telephones || []), ...(c.tickets || [])].join(' ').toLowerCase(); return words.every(w => text.includes(w)); })
+    .sort((a, b) => String(a.nom).localeCompare(String(b.nom), 'fr'));
+  const body = $('anBody');
+  body.innerHTML = '';
+  if (!list.length) { body.innerHTML = `<tr><td colspan="6" class="meta">${annuaire.length ? 'Aucun contact trouvé.' : 'L’annuaire se remplit à chaque analyse et à chaque rédaction.'}</td></tr>`; return; }
+  list.forEach(c => {
+    const tr = document.createElement('tr');
+    const email = c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '';
+    const who = [c.role, c.organisation].filter(Boolean).map(esc).join(' · ');
+    tr.innerHTML = `<td>${esc(c.nom)}${who ? `<div class="meta">${who}</div>` : ''}</td><td>${esc(c.client || '')}</td><td>${email}</td>` +
+                   `<td><div class="an-tels">${phoneLinks((c.telephones || []).join(' / '), 'telto')}</div></td><td class="meta">${(c.tickets || []).map(esc).join(', ')}</td>` +
+                   `<td class="an-acts"><button class="btn link" type="button">Modifier</button> <button class="btn link" type="button">Retirer</button></td>`;
+    const [edit, remove] = tr.querySelectorAll('button');
+    edit.onclick = () => editAnnuaire(c);
+    remove.onclick = () => saveAnnuaire({ id: c.id, retirer: true }, 'Contact retiré : il ne reviendra pas.');
+    body.appendChild(tr);
+  });
+}
+function editAnnuaire(c) {
+  annuaireEdit = c ? c.id : null;
+  $('anNom').value = c ? c.nom || '' : '';
+  $('anRole').value = c ? c.role || '' : '';
+  $('anOrg').value = c ? c.organisation || '' : '';
+  $('anClient').value = c ? c.client || '' : '';
+  $('anEmail').value = c ? c.email || '' : '';
+  $('anTel').value = c ? (c.telephones || []).join(' / ') : '';
+  $('anAdd').textContent = c ? 'Enregistrer' : 'Ajouter';
+  if (c) $('anNom').focus();
+}
+async function saveAnnuaire(body, message) {
+  try { annuaire = (await api('POST', '/api/annuaire', body)).contacts || []; renderAnnuaire(); toast(message); return true; }
+  catch (e) { toast(e.message, null, true); return false; }
+}
+$('anSearch').oninput = renderAnnuaire;
+$('anAdd').onclick = async () => {
+  const body = { id: annuaireEdit, nom: $('anNom').value, role: $('anRole').value, organisation: $('anOrg').value, client: $('anClient').value, email: $('anEmail').value, telephone: $('anTel').value };
+  if (await saveAnnuaire(body, 'Contact enregistré.')) editAnnuaire(null);
+};
+
 let tiers = [];
 function renderTiers() {
   const body = $('tiers');
@@ -2122,6 +2211,7 @@ async function load() {
     const a = await api('GET', '/api/archives');
     elements = a.elements || [];
     renderAll();
+    await loadAnnuaire();
     state = await api('GET', '/api/etat');
     renderSettings();
     renderCounts();

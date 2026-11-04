@@ -129,6 +129,13 @@ refait la lecture). L'analyse reçoit `suivi-analyse.json` et
 `archives-analyse.json` : points ouverts, 3 derniers événements, points
 réglés en résumé. `suivi.json` et `archives.json` restent complets.
 
+**Annuaire** : l'onglet Annuaire liste les personnes rencontrées dans les tickets
+et les mails (`annuaire.json`). Il grandit à chaque analyse et à chaque rédaction,
+et complète les prises de contact à qui il manque une adresse ou un numéro. Une
+fiche modifiée dans la page n'est plus touchée par les analyses, une fiche retirée
+ne revient pas. Les Contacts des tiers des Réglages restent le canal officiel d'un
+fournisseur.
+
 **Chat** : l'avatar en bas à droite de la page ouvre un petit panneau pour poser
 une question, vérifier une information ou faire rédiger un texte.
 `Repondre-Chat.ps1` répond avec Claude Code, en Sonnet par défaut (`-Modele`).

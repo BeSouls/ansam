@@ -853,6 +853,182 @@ function Update-SmContacts($Suivi, $Config) {
     $count
 }
 
+# --- Annuaire des contacts ---------------------------------------------------
+# annuaire.json : les personnes rencontrées dans les tickets et les mails. Il grandit à chaque
+# analyse et à chaque rédaction, et complète les prises de contact à qui il manque une adresse ou
+# un numéro. Les « Contacts des tiers » des Réglages restent le canal officiel d'un fournisseur.
+#   manuel  fiche écrite dans la page : les analyses ne la modifient plus
+#   retire  fiche écartée dans la page : gardée pour ne pas revenir à l'analyse suivante
+
+# Numéros suisses (+41, 0041, 0…), puis internationaux. Même motif dans config.html.
+$SmMotifTelephone = '(?:\+|00)41[\s.-]*(?:\(0\)[\s.-]*)?\d(?:[\s.-]?\d){8}|0\d(?:[\s.-]?\d){8}|\+\d(?:[\s().-]?\d){6,14}'
+
+function Split-SmTelephones([string]$Text) {
+    @([regex]::Matches($Text, $SmMotifTelephone) | ForEach-Object { $_.Value.Trim() })
+}
+
+# Même numéro, quelle que soit son écriture (+41 79…, 0041 79…, 079…).
+function Get-SmCleTelephone([string]$Number) {
+    $digits = ($Number -replace '\(0\)', '') -replace '\D', ''
+    $digits -replace '^(00)?41', '0'
+}
+
+function Get-SmCleNom([string]$Name) {
+    $plain = -join ($Name.Normalize([Text.NormalizationForm]::FormD).ToCharArray() |
+        Where-Object { [Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark' })
+    ($plain.ToLowerInvariant() -replace '[^a-z0-9]+', ' ').Trim()
+}
+
+function Get-SmAnnuaire([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'annuaire.json')
+    $contacts = New-Object System.Collections.ArrayList
+    if ($saved) {
+        foreach ($entry in @($saved.contacts)) {
+            if (-not $entry) { continue }
+            $copy = [ordered]@{}
+            foreach ($property in $entry.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+            $copy.telephones = @($entry.telephones | Where-Object { $_ })
+            $copy.tickets = @($entry.tickets | Where-Object { $_ })
+            [void]$contacts.Add($copy)
+        }
+    }
+    [ordered]@{ majLe = $(if ($saved) { $saved.majLe }); contacts = $contacts }
+}
+
+function Save-SmAnnuaire($Annuaire, [string]$WorkDir = $SmWorkDir) {
+    $Annuaire.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Join-Path $WorkDir 'annuaire.json') ([ordered]@{ majLe = $Annuaire.majLe; contacts = @($Annuaire.contacts) })
+}
+
+# La fiche d'une personne : par adresse, sinon par nom s'il n'y en a qu'une à ce nom.
+function Find-SmAnnuaire($Annuaire, [string]$Nom, [string]$Email) {
+    if ($Email) {
+        $byEmail = @($Annuaire.contacts | Where-Object { $_.email -and ([string]$_.email).ToLowerInvariant() -eq $Email.ToLowerInvariant() })
+        if ($byEmail.Count) { return $byEmail[0] }
+    }
+    if (-not $Nom) { return $null }
+    $key = Get-SmCleNom $Nom
+    $byName = @($Annuaire.contacts | Where-Object { (Get-SmCleNom ([string]$_.nom)) -eq $key })
+    if ($byName.Count -eq 1) { return $byName[0] }
+    $null
+}
+
+# Ajoute des personnes ({nom, role, organisation, email, telephone}) ou complète leur fiche, sans
+# jamais remplacer ce qu'elle contient. Il faut un nom et une coordonnée. Renvoie le nombre de fiches
+# ajoutées ou complétées.
+function Add-SmAnnuaire($Annuaire, $Personnes, [string]$Ticket, [string]$Client) {
+    $now = (Get-Date).ToString('o')
+    $count = 0
+    foreach ($person in @($Personnes | Where-Object { $_ })) {
+        $nom = ([string]$person.nom).Trim()
+        $email = ([string]$person.email).Trim().ToLowerInvariant()
+        if ($email -notmatch '^[\w.+-]+@[\w-]+(\.[\w-]+)+$' -or $email -match '^(no-?reply|do-?not-?reply|ne-pas-repondre)') { $email = '' }
+        $numbers = @(Split-SmTelephones (@($person.telephone) -join ' / '))
+        if (-not $nom -or (-not $email -and -not $numbers.Count)) { continue }
+
+        $entry = Find-SmAnnuaire $Annuaire $nom $email
+        if (-not $entry) {
+            [void]$Annuaire.contacts.Add([ordered]@{
+                id = [guid]::NewGuid().ToString('N').Substring(0, 8); nom = $nom; role = $person.role; organisation = $person.organisation
+                client = $Client; email = $(if ($email) { $email } else { $null }); telephones = @($numbers | Select-Object -First 4)
+                tickets = @(@($Ticket) | Where-Object { $_ }); ajouteLe = $now; vuLe = $now; manuel = $false; retire = $false
+            })
+            $count++
+            continue
+        }
+        if ($entry.retire) { continue }
+        $entry.vuLe = $now
+        if ($Ticket -and $entry.tickets -notcontains $Ticket) { $entry.tickets = @(@($entry.tickets) + $Ticket | Select-Object -Last 6) }
+        if ($entry.manuel) { continue }
+        $completed = $false
+        if (-not $entry.email -and $email) { $entry.email = $email; $completed = $true }
+        if (-not $entry.role -and $person.role) { $entry.role = $person.role; $completed = $true }
+        if (-not $entry.organisation -and $person.organisation) { $entry.organisation = $person.organisation; $completed = $true }
+        if (-not $entry.client -and $Client) { $entry.client = $Client }
+        $known = @($entry.telephones | ForEach-Object { Get-SmCleTelephone $_ })
+        foreach ($number in $numbers) {
+            if ($known -notcontains (Get-SmCleTelephone $number) -and @($entry.telephones).Count -lt 4) {
+                $entry.telephones = @(@($entry.telephones) + $number)
+                $known += Get-SmCleTelephone $number
+                $completed = $true
+            }
+        }
+        if ($completed) { $count++ }
+    }
+    $count
+}
+
+# Fiche écrite ou écartée depuis la page. Renvoie la fiche.
+function Set-SmAnnuaire($Annuaire, $Posted) {
+    $entry = $(if ($Posted.id) { $Annuaire.contacts | Where-Object { $_.id -eq [string]$Posted.id } | Select-Object -First 1 })
+    if ($Posted.retirer) {
+        if (-not $entry) { throw 'Contact introuvable.' }
+        $entry.retire = $true
+        return $entry
+    }
+    $nom = ([string]$Posted.nom).Trim()
+    $email = ([string]$Posted.email).Trim()
+    $phone = ([string]$Posted.telephone).Trim()
+    $numbers = @(Split-SmTelephones $phone)
+    if (-not $nom) { throw 'Indiquer un nom.' }
+    if ($email -and $email -notmatch '^[\w.+-]+@[\w-]+(\.[\w-]+)+$') { throw 'Adresse non valable.' }
+    if ($phone -and -not $numbers.Count) { throw 'Numéro non reconnu.' }
+    if (-not $email -and -not $numbers.Count) { throw 'Indiquer une adresse ou un numéro.' }
+    if (-not $entry) { $entry = Find-SmAnnuaire $Annuaire $nom $email }
+    if (-not $entry) {
+        $entry = [ordered]@{ id = [guid]::NewGuid().ToString('N').Substring(0, 8); nom = $nom; role = $null; organisation = $null; client = $null; email = $null
+                             telephones = @(); tickets = @(); ajouteLe = (Get-Date).ToString('o'); vuLe = (Get-Date).ToString('o'); manuel = $true; retire = $false }
+        [void]$Annuaire.contacts.Add($entry)
+    }
+    $entry.nom = $nom
+    $entry.role = $(if ($Posted.role) { ([string]$Posted.role).Trim() } else { $null })
+    $entry.organisation = $(if ($Posted.organisation) { ([string]$Posted.organisation).Trim() } else { $null })
+    $entry.client = $(if ($Posted.client) { ([string]$Posted.client).Trim() } else { $null })
+    $entry.email = $(if ($email) { $email } else { $null })
+    $entry.telephones = @($numbers | Select-Object -First 4)
+    $entry.manuel = $true
+    $entry.retire = $false
+    $entry
+}
+
+# Après une analyse ou une rédaction : verse dans l'annuaire les contacts des points et ceux que
+# Claude a relevés (champ contacts de $Revus : points d'une synthèse, ou résultat d'une rédaction),
+# puis complète les prises de contact ouvertes à qui il manque une adresse ou un numéro.
+# Un souci ici ne doit jamais empêcher d'enregistrer le registre. Renvoie le nombre de points complétés.
+function Update-SmAnnuaire($Suivi, [string]$WorkDir = $SmWorkDir, $Revus) {
+    try {
+        $annuaire = Get-SmAnnuaire $WorkDir
+        $added = 0
+        foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.contact -and -not $_.contact.tiers })) {
+            $reference = $(if ($point.ticket) { [string]$point.ticket } else { [string]$point.id })
+            $added += Add-SmAnnuaire $annuaire @($point.contact) $reference ([string]$point.client)
+        }
+        foreach ($revu in @($Revus | ForEach-Object { $_ } | Where-Object { $_ -and $_.contacts })) {
+            $added += Add-SmAnnuaire $annuaire @($revu.contacts | ForEach-Object { $_ }) ([string]$revu.ticket) ([string]$revu.client)
+        }
+
+        $count = 0
+        foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.statut -eq 'a_faire' -and $_.contact -and -not $_.contact.tiers })) {
+            $contact = $point.contact
+            if ($contact.email -and $contact.telephone) { continue }
+            $entry = Find-SmAnnuaire $annuaire ([string]$contact.nom) ([string]$contact.email)
+            if (-not $entry -or $entry.retire) { continue }
+            $copy = [ordered]@{}
+            foreach ($field in Get-SmChamps $contact) { $copy[$field.Name] = $field.Value }
+            $changed = $false
+            if (-not $copy.email -and $entry.email) { $copy.email = $entry.email; $changed = $true }
+            if (-not $copy.telephone -and @($entry.telephones).Count) { $copy.telephone = @($entry.telephones) -join ' / '; $changed = $true }
+            if ($changed) { $point.contact = [pscustomobject]$copy; $count++ }
+        }
+        Save-SmAnnuaire $annuaire $WorkDir
+        Write-Host "Annuaire : $added fiches ajoutées ou complétées, $(@($annuaire.contacts).Count) au total, $count prises de contact complétées."
+        $count
+    } catch {
+        Write-Warning "Annuaire non mis à jour : $($_.Exception.Message)"
+        0
+    }
+}
+
 # Tableau JSON d'un bloc de fin de synthèse (« <!-- SUIVI --> », « <!-- ARCHIVES --> ») :
 # du marqueur jusqu'au marqueur suivant. $null si le bloc est absent.
 function Get-SmBlocJson([string]$Text, [string]$Marker) {

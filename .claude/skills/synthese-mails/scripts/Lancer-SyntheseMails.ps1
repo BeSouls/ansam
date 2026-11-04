@@ -278,6 +278,7 @@ try {
         if ($jira) { [void](Sync-SmJira $suivi $jira $contextData) }   # Jira a le dernier mot sur ce qui est encore ouvert
         $completed = Update-SmContacts $suivi $config
         if ($completed) { Write-Host "Prises de contact complétées : $completed." }
+        [void](Update-SmAnnuaire $suivi $WorkDir $updates)
         Save-SmSuivi $suivi $WorkDir
         $unreviewed = @($suivi.points | Where-Object { $_.aRevoir -and ($_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') })
         Write-Host "Suivi : $(@($updates).Count) points revus, $(@($changes).Count) changements de statut, $(@($suivi.points).Count) points au registre, $($unreviewed.Count) restés à revoir."

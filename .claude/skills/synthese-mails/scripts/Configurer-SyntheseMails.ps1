@@ -445,6 +445,17 @@ try {
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
                 }
+                '^GET /api/annuaire$' {
+                    $annuaire = Get-SmAnnuaire $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ contacts = @($annuaire.contacts | Where-Object { -not $_.retire }) })
+                }
+                '^POST /api/annuaire$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    $annuaire = Get-SmAnnuaire $WorkDir
+                    [void](Set-SmAnnuaire $annuaire $posted)
+                    Save-SmAnnuaire $annuaire $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ contacts = @($annuaire.contacts | Where-Object { -not $_.retire }) })
+                }
                 '^POST /api/drapeau$' {
                     $posted = $request.Body | ConvertFrom-Json
                     $suivi = Get-SmSuivi $WorkDir

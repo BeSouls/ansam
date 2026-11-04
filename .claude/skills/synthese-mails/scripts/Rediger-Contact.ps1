@@ -76,10 +76,14 @@ try {
               $(if ($infos) { "Mes informations et consignes pour cette rédaction (les plus récentes : elles priment sur le dossier). Les faits s'intègrent au message ; " +
                               "les consignes (simplifier, ajouter tel élément, ton, longueur) s'appliquent toutes, une par une, et chaque élément demandé doit figurer dans le message, " +
                               "en le déduisant du dossier si besoin (par exemple des dates à partir d'un plan et d'une date de départ) : « $infos ». " } else { '' }) +
+              "Une adresse ou un numéro qui manque peut aussi se trouver dans $(Join-Path $WorkDir 'annuaire.json') (cherche le nom avec Grep). " +
               "Ne repose pas une question à laquelle on a déjà répondu, ne redemande pas un test déjà fait, tiens compte du plan de résolution. " +
               "Garde le mode (mail ou appel) sauf si le dossier montre clairement que l'autre convient mieux. " +
+              "Dans contacts, liste les personnes et les fournisseurs du dossier dont une signature, la fiche client ou le ticket donne une adresse ou un numéro, " +
+              "même s'ils ne sont pas visés par ce message, sauf moi : recopie ces coordonnées telles quelles, n'invente rien, null si elles sont introuvables. " +
               "Réponds UNIQUEMENT par un objet JSON : {""mode"":""mail|appel"",""nom"":"""",""role"":"""",""email"":null,""telephone"":null," +
-              """objet"":null,""message"":null,""points"":[],""resume"":""où on en est : ce qui a été fait et testé, ce qui est établi, ce qui manque, la suite prévue (4 à 8 lignes)""}."
+              """objet"":null,""message"":null,""points"":[],""resume"":""où on en est : ce qui a été fait et testé, ce qui est établi, ce qui manque, la suite prévue (4 à 8 lignes)""," +
+              """contacts"":[{""nom"":"""",""role"":null,""organisation"":null,""email"":null,""telephone"":null}]}."
 
     $prefix = 'mcp__claude_ai_Atlassian_MCP__'
     $allowed = (@('Read', 'Grep', 'Glob', 'Skill') + (@('atlassianUserInfo', 'getAccessibleAtlassianResources', 'getJiraIssue', 'searchJiraIssuesUsingJql') | ForEach-Object { $prefix + $_ })) -join ','
@@ -98,6 +102,8 @@ try {
     if ($start -lt 0 -or $end -le $start) { throw 'Réponse sans objet JSON.' }
     $contact = $text.Substring($start, $end - $start + 1) | ConvertFrom-Json
     if (@('mail', 'appel') -notcontains $contact.mode) { throw "Mode de contact inattendu : $($contact.mode)" }
+    $found = @($contact.contacts | ForEach-Object { $_ } | Where-Object { $_ })   # pour l'annuaire, pas pour le point
+    $contact.PSObject.Properties.Remove('contacts')
     $contact | Add-Member -NotePropertyName redigeLe -NotePropertyValue (Get-Date).ToString('o') -Force
     $contact | Add-Member -NotePropertyName sources -NotePropertyValue $sources -Force
 
@@ -106,7 +112,8 @@ try {
     $target = $suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
     if (-not $target) { throw "Point « $Id » disparu du registre." }
     $target.contact = $contact
-    [void](Update-SmContacts $suivi $config)   # adresse et numéro officiels d'un tiers de l'annuaire, s'ils manquent
+    [void](Update-SmContacts $suivi $config)   # adresse et numéro officiels d'un tiers, s'ils manquent
+    [void](Update-SmAnnuaire $suivi $WorkDir @([pscustomobject]@{ ticket = $point.ticket; client = $point.client; contacts = $found }))
     Save-SmSuivi $suivi $WorkDir
     Set-Status 'ok' $(if ($contact.mode -eq 'appel') { 'Points d''appel rédigés avec tout le dossier.' } else { 'Brouillon rédigé avec tout le dossier.' })
 } catch {

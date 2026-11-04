@@ -9,6 +9,7 @@ Choisis la source la plus directe, et ne lis que ce qu'il faut pour répondre.
 | Sujet | Source |
 |---|---|
 | Une tâche, son statut, la marche à suivre | `suivi.json` et `archives.json` dans `{{WorkDir}}` (cherche avec Grep : ces fichiers sont gros) |
+| Une adresse, un numéro, qui est qui | `annuaire.json` dans `{{WorkDir}}` (cherche le nom avec Grep), puis la fiche du client |
 | Un ticket | Connecteur Atlassian, en lecture, avec le `cloudId` `71c31bda-1d99-4031-b91f-718207a06593` : `getJiraIssue`, `searchJiraIssuesUsingJql`, `listJiraIssueComments`. Pour aller vite : `jira-assignes.json` et `jira-activite.json` dans `{{WorkDir}}` |
 | Un mail | Outils `chercher_mails` et `lire_mail` : ils lisent Outlook en direct, sur des mois. Ne lis pas les exports |
 | L'agenda | Outil `lire_agenda` |

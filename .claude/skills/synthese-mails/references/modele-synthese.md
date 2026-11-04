@@ -115,7 +115,12 @@ et date du mail le plus récent), `dernierMessage` (date ISO du dernier
 message reçu sur le point, `null` sans mail), `motif` (pourquoi ce statut,
 avec la source : « Jira En attente du client », « AnsamDiag RESOLU 28.10 »,
 « ma réponse du 27.10 », « nouveau message du client le 29.10 », « mon
-commentaire Jira du 03.11 »).
+commentaire Jira du 03.11 »), `contacts` (pour l'annuaire, facultatif, à
+remplir seulement quand un nouveau message ou le ticket fait apparaître une
+personne ou un fournisseur avec une adresse ou un numéro, dans une signature
+par exemple, même si je n'ai pas à le contacter :
+`[{"nom", "role", "organisation", "email", "telephone"}]`, trois au plus par
+point, pas moi, recopié tel quel, rien d'inventé, `null` si introuvable).
 
 Ne pas proposer de changement de statut à un point marqué par moi
 (`majPar` = `moi`) sans message ni commentaire Jira d'un tiers après
