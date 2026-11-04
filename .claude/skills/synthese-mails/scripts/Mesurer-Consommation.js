@@ -3,6 +3,7 @@ const fs = require('fs'), path = require('path');
 const root = process.env.USERPROFILE + '/.claude/projects';
 const since = new Date(process.argv[2] || Date.now() - 7 * 864e5);
 const kinds = [
+  [/^Nous sommes le /, 'chat'],
   [/^Avec le connecteur Atlassian, en lecture seule\. Obtiens le cloudId/, 'commentaires Jira'],
   [/^Avec le connecteur Atlassian/, 'liste Jira'],
   [/synthèse incrémentale|« Synthèse incrémentale »/i, 'synthese incrementale'],

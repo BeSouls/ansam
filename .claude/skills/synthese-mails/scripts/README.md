@@ -129,6 +129,17 @@ refait la lecture). L'analyse reçoit `suivi-analyse.json` et
 `archives-analyse.json` : points ouverts, 3 derniers événements, points
 réglés en résumé. `suivi.json` et `archives.json` restent complets.
 
+**Chat** : l'avatar en bas à droite de la page ouvre un petit panneau pour poser
+une question, vérifier une information ou faire rédiger un texte.
+`Repondre-Chat.ps1` répond avec Claude Code, en Sonnet par défaut (`-Modele`).
+Il lit les registres, les dossiers AnsamDiag et clients, Jira et Confluence, et
+Outlook en direct par `Serveur-OutilsChat.ps1` (mails sur 180 jours par défaut,
+agenda). Il ne peut ni écrire, ni lancer de commande, ni aller sur le web. Un
+mail préparé devient un brouillon Outlook seulement si on clique sur le bouton.
+Une tâche ouverte dans la page est transmise à Claude. Les conversations sont
+dans `chat\` et s'effacent après 14 jours. Consignes :
+`references/consigne-chat.md`.
+
 **Actualisations automatiques** : aux heures du réglage du même nom (12:30 et
 16:30 par défaut, vide pour aucune), la tâche « Synthese mails ANSAM -
 actualisation » fait comme le bouton, sans mail. Elle s'abstient pendant une

@@ -251,6 +251,23 @@ function Get-SquadPreparationState {
     $state
 }
 
+# Conversation du chat (Repondre-Chat.ps1). Une réponse dont le processus a disparu sans conclure est
+# signalée en échec. Le script remplace le fichier d'un coup : une lecture peut seulement tomber dessus.
+function Get-ChatState([string]$Id) {
+    if ($Id -notmatch '^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$') { throw "Conversation invalide : $Id" }
+    $file = Join-Path $WorkDir "chat\$Id.json"
+    $state = $null
+    for ($essai = 0; $essai -lt 5; $essai++) {
+        try { $state = Read-SmJson $file; break } catch { if ($essai -eq 4) { throw }; Start-Sleep -Milliseconds 40 }
+    }
+    if ($state -and $state.etat -eq 'en_cours') {
+        $since = ConvertTo-SmDateTime $state.le
+        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        if ($dead) { $state.etat = 'echec'; $state.erreur = 'Réponse interrompue.'; $state.activite = $null; $state.partiel = $null }
+    }
+    $state
+}
+
 # Session Claude Code interactive sur un point, dans le dossier AnsamDiag (son CLAUDE.md et ses skills),
 # ouverte dans un onglet Windows Terminal. Chaque session porte un identifiant fixé d'avance
 # (--session-id) et gardé sur le point, pour la reprendre plus tard (--resume).
@@ -482,6 +499,45 @@ try {
                     $id = [string]$request.Query['id']
                     if ($id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
                     Send-Json $stream 200 (Get-RedactionState $id)
+                }
+                '^POST /api/chat$' {
+                    # Question du chat : Repondre-Chat.ps1 répond en arrière-plan, la page relit la conversation.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $texte = ([string]$posted.message).Trim()
+                    if (-not $texte) { throw 'Message vide.' }
+                    if ($texte.Length -gt 8000) { $texte = $texte.Substring(0, 8000) }
+                    $conv = $(if ($posted.id) { Get-ChatState ([string]$posted.id) })
+                    if ($conv -and $conv.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une réponse est déjà en cours.') }); break }
+                    if (-not $conv) {
+                        $conv = [pscustomobject]@{ id = "$((Get-Date).ToString('yyyyMMdd-HHmmss'))-$('{0:x4}' -f (Get-Random -Maximum 65536))"
+                            creeLe = (Get-Date).ToString('o'); le = $null; etat = $null; pid = $null; sessionId = $null; activite = $null; partiel = $null; erreur = $null; pointOuvert = $null; messages = @() }
+                    }
+                    $point = $(if ($posted.point) { (Get-SmSuivi $WorkDir).points | Where-Object { $_.id -eq [string]$posted.point } | Select-Object -First 1 })
+                    $conv.pointOuvert = $(if ($point) { [ordered]@{ id = $point.id; titre = $point.titre; client = $point.client; ticket = $point.ticket; statut = $point.statut; action = $point.action } })
+                    $conv.messages = @(@($conv.messages) + [pscustomobject]@{ role = 'moi'; texte = $texte; le = (Get-Date).ToString('o') })
+                    $conv.etat = 'en_cours'; $conv.pid = $null; $conv.erreur = $null; $conv.activite = 'Démarrage'; $conv.partiel = $null
+                    $conv.le = (Get-Date).ToString('o')
+                    Write-SmJson (Join-Path $WorkDir "chat\$($conv.id).json") $conv
+                    $script = Join-Path $PSScriptRoot 'Repondre-Chat.ps1'
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Id $($conv.id)" | Out-Null
+                    Send-Json $stream 200 $conv
+                }
+                '^GET /api/chat$' {
+                    $conv = Get-ChatState ([string]$request.Query['id'])
+                    if (-not $conv) { Send-Json $stream 404 ([ordered]@{ erreurs = @('Conversation expirée.') }); break }
+                    Send-Json $stream 200 $conv
+                }
+                '^POST /api/chat/arret$' {
+                    $conv = Get-ChatState ([string]($request.Body | ConvertFrom-Json).id)
+                    if ($conv -and $conv.etat -eq 'en_cours') {
+                        if (-not $conv.pid) { throw 'La réponse démarre : réessaie dans un instant.' }
+                        & taskkill.exe /T /F /PID $conv.pid 2>&1 | Out-Null
+                        $conv.etat = 'pret'; $conv.pid = $null; $conv.activite = $null; $conv.partiel = $null; $conv.erreur = 'Réponse arrêtée.'
+                        $conv.le = (Get-Date).ToString('o')
+                        Write-SmJson (Join-Path $WorkDir "chat\$($conv.id).json") $conv
+                    }
+                    Send-Json $stream 200 $conv
                 }
                 '^GET /api/squad$' {
                     # Fiche d'une réunion (par défaut celle de la semaine), vide si elle n'est pas encore préparée.
