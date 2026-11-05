@@ -821,6 +821,20 @@ function Update-SmARevoir($Suivi, $Activite, $Context, [string[]]$ClesMail = @()
     , $list
 }
 
+# Ce qui a bougé, connu dès la lecture des sources : la page l'affiche sans attendre l'analyse.
+# $MonAdresse : mes propres mails ne sont pas des nouveautés. Un fil rattaché à une tâche n'est pas répété.
+function Write-SmAvancement([string]$WorkDir, $Suivi, $ARevoir, $Delta, [string]$MonAdresse) {
+    $tasks = @(@($ARevoir) | ForEach-Object {
+        $id = $_.id
+        $point = $Suivi.points | Where-Object { $_.id -eq $id } | Select-Object -First 1
+        [ordered]@{ id = $id; titre = $point.titre; client = $point.client; pourquoi = $_.pourquoi }
+    })
+    $tickets = @(@($ARevoir) | ForEach-Object { $_.ticket } | Where-Object { $_ })
+    $threads = @(@($Delta.recents) | Where-Object { $_ -and $_.adresse -ne $MonAdresse -and -not @($_.cles | Where-Object { $tickets -contains $_ }).Count } |
+        Sort-Object { $_.le } -Descending | Select-Object -First 12)
+    Write-SmJson (Join-Path $WorkDir 'avancement.json') ([ordered]@{ le = (Get-Date).ToString('o'); taches = @($tasks); fils = @($threads) })
+}
+
 # --- Dossier de l'analyse --------------------------------------------------------
 # L'analyse relit ses fichiers à chaque tour : elle reçoit de quoi travailler, sans ce qui ne sert
 # plus. Les registres eux-mêmes ne changent pas, et restent ouverts à l'analyse pour un détail ancien.
@@ -1217,15 +1231,24 @@ function New-SmFilsDelta([string]$ThreadFile, [datetime]$Since, [string]$OutFile
     $keyPattern = '\b[A-Z][A-Z0-9]+-\d+\b'
     $fresh = New-Object System.Collections.Generic.HashSet[int]
     $keys = New-Object System.Collections.Generic.HashSet[string]
+    $recent = New-Object System.Collections.ArrayList   # dernier message de chaque fil nouveau, pour la page
     for ($i = 0; $i -lt $blocks.Count; $i++) {
-        foreach ($m in [regex]::Matches($blocks[$i], '(?m)^--- \[[^\]]*\] (\S+) \|')) {
+        $title = ($blocks[$i] -split "`n", 2)[0]
+        $latest = $null
+        foreach ($m in [regex]::Matches($blocks[$i], '(?m)^--- \[[^\]]*\] (\S+) \| De : ([^|<]*)(?:<([^>|]*)>)?')) {
             $at = [datetimeoffset]::MinValue
             if ([datetimeoffset]::TryParse($m.Groups[1].Value, $SmInvariant, 'None', [ref]$at) -and $at.LocalDateTime -ge $Since) {
-                [void]$fresh.Add($i)
-                $title = ($blocks[$i] -split "`n", 2)[0]
-                foreach ($k in [regex]::Matches($title, $keyPattern)) { [void]$keys.Add($k.Value) }
-                break
+                if (-not $fresh.Contains($i)) {
+                    [void]$fresh.Add($i)
+                    foreach ($k in [regex]::Matches($title, $keyPattern)) { [void]$keys.Add($k.Value) }
+                }
+                if (-not $latest -or $at -gt $latest.date) { $latest = @{ date = $at; de = $m.Groups[2].Value.Trim(); adresse = $m.Groups[3].Value.Trim() } }
             }
+        }
+        if ($latest) {
+            $subject = ($title -replace '^######## FIL : ', '' -replace '\s*\(\d+ msg\)\s*$', '').Trim()
+            [void]$recent.Add([ordered]@{ objet = $subject; de = $latest.de; adresse = $latest.adresse; le = $latest.date.ToString('o')
+                                          cles = @([regex]::Matches($title, $keyPattern) | ForEach-Object { $_.Value }) })
         }
     }
     $selected = @(for ($i = 0; $i -lt $blocks.Count; $i++) {
@@ -1237,7 +1260,7 @@ function New-SmFilsDelta([string]$ThreadFile, [datetime]$Since, [string]$OutFile
                  "(+ $($selected.Count - $fresh.Count) fils du même ticket), sur $($blocks.Count) fils de l'export."
         [IO.File]::WriteAllText($OutFile, "$intro`n`n" + ($selected -join "`n`n") + "`n", (New-Object Text.UTF8Encoding($false)))
     }
-    [ordered]@{ total = $blocks.Count; nouveaux = $fresh.Count; selection = $selected.Count; cles = @($keys) }
+    [ordered]@{ total = $blocks.Count; nouveaux = $fresh.Count; selection = $selected.Count; cles = @($keys); recents = @($recent) }
 }
 
 # --- Réunion squad -------------------------------------------------------------

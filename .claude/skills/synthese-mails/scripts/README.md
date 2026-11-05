@@ -143,6 +143,11 @@ lui-même, en quelques secondes et sans consommer de jetons Claude.
 s'il est refusé, la lecture repasse par Claude et le journal le signale. Le jeton dure
 un an au plus : relancer le script après l'avoir renouvelé.
 
+**Ce qui a bougé** : pendant une analyse, dès que les mails et Jira sont lus, le
+lanceur écrit `avancement.json` et la page affiche en haut du Suivi les tâches
+concernées et les nouveaux mails, avec les statuts venus de Jira, sans attendre
+la fin de l'analyse.
+
 **Chat** : l'avatar en bas à droite de la page ouvre un petit panneau pour poser
 une question, vérifier une information ou faire rédiger un texte.
 `Repondre-Chat.ps1` répond avec Claude Code, en Sonnet par défaut (`-Modele`).

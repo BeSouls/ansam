@@ -208,6 +208,8 @@ try {
     Write-SmJson $reviewFile @($toReview)
     Save-SmSuivi $suivi $WorkDir
     Write-Host "Points à revoir : $($toReview.Count)."
+    try { Write-SmAvancement $WorkDir $suivi $toReview $delta ([string]$address) }
+    catch { Write-Warning "Avancement non écrit : $($_.Exception.Message)" }
 
     # Dossier de l'analyse : l'essentiel des registres, qui restent complets pour un détail ancien.
     $folderSuivi = Join-Path $WorkDir 'suivi-analyse.json'
@@ -374,6 +376,7 @@ try {
         $outcome.fin = (Get-Date).ToString('o')
         Write-SmJson (Join-Path $WorkDir 'dernier-lancement.json') $outcome
     }
+    Remove-Item (Join-Path $WorkDir 'avancement.json') -ErrorAction SilentlyContinue
     if ($lockFile) { Remove-Item $lockFile -ErrorAction SilentlyContinue }
     Stop-Transcript | Out-Null
 }

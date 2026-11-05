@@ -52,6 +52,17 @@
   .runbtn:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
   .run { display: flex; align-items: center; gap: .55rem; font-size: .8125rem; color: var(--muted); margin: -.25rem 0 .7rem; }
   .run[hidden] { display: none; }
+  .moved { margin-bottom: .9rem; }
+  .moved[hidden] { display: none; }
+  .moved h2 { margin-bottom: .15rem; }
+  .moved ul { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .15rem; }
+  .moved button, .moved .fil { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: none; border: 0; padding: .35rem .45rem; border-radius: 8px; }
+  .moved button { cursor: pointer; }
+  .moved button:hover { background: var(--surface-2); }
+  .moved .quoi { font-weight: 600; }
+  .moved .meta { display: block; }
+  .card.signale { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card .why { color: var(--red); font-size: .8125rem; margin-top: .2rem; }
   .spinner { width: .8rem; height: .8rem; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -410,6 +421,11 @@
 
 <main class="wrap">
   <section class="pane" id="p-suivi">
+    <div class="panel moved" id="moved" role="status" hidden>
+      <h2>Ce qui a bougé</h2>
+      <p class="hint" style="margin:0">Lu à l’instant. L’analyse vérifie maintenant les statuts de ces tâches.</p>
+      <ul id="movedList"></ul>
+    </div>
     <div class="toolbar">
       <button class="chip" data-f="ouverts" aria-pressed="true">Ouverts</button>
       <button class="chip" data-f="contact" aria-pressed="false">À contacter <span class="count" id="c-contact">0</span></button>
@@ -1523,6 +1539,7 @@ function pointCard(p, inSheet) {
       <span class="mono">${url ? `<a href="${url}" target="_blank" rel="noopener">${esc(p.id)}</a>` : esc(p.id)}</span>
     </div>
     ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
+    ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
     <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
     ${open ? proofLine(p) : ''}
@@ -2171,6 +2188,44 @@ async function startRun(mail) {
 }
 let runMail = false;
 
+// Dès que les sources sont lues : ce qui a bougé, et les statuts venus de Jira, sans attendre l'analyse.
+let movedSeen = null;
+function goToPoint(id) {
+  const p = points.find(x => x.id === id);
+  if (p && p.parent) { openSheet(p.parent, null); return; }
+  showTab('suivi');
+  const card = document.querySelector(`#p-suivi .card[data-id="${CSS.escape(id)}"]`);
+  if (!card) { toast('Tâche masquée par le filtre en cours.'); return; }
+  card.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  card.classList.add('signale');
+  setTimeout(() => card.classList.remove('signale'), 2500);
+}
+function renderMoved(a) {
+  const tasks = (a && a.taches) || [], threads = (a && a.fils) || [];
+  const list = $('movedList');
+  list.innerHTML = '';
+  $('moved').hidden = !tasks.length && !threads.length;
+  tasks.forEach(t => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button"><span class="quoi">${esc(t.titre || t.id)}</span>${t.client ? ` · ${esc(t.client)}` : ''}<span class="meta">${esc(t.pourquoi)}</span></button>`;
+    li.querySelector('button').onclick = () => goToPoint(t.id);
+    list.appendChild(li);
+  });
+  threads.forEach(f => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="fil"><span class="quoi">${esc(f.objet)}</span><span class="meta">Nouveau mail de ${esc(f.de)}, ${shortDate(f.le)} à ${new Date(f.le).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}</span></div>`;
+    list.appendChild(li);
+  });
+}
+async function showMoved(a) {
+  renderMoved(a);
+  if (!a || a.le === movedSeen) return;
+  movedSeen = a.le;
+  // Pas de redessin sous les doigts : ce qui est en cours de saisie reste, le fin d'analyse rechargera.
+  if (document.activeElement && document.activeElement.matches('input, textarea')) return;
+  try { points = (await api('GET', '/api/suivi')).points || []; renderAll(); } catch (e) { }
+}
+
 async function pollRun() {
   clearTimeout(pollTimer);
   let r;
@@ -2186,10 +2241,13 @@ async function pollRun() {
     b.disabled = f.disabled = true;
     b.textContent = runMail ? 'Envoi en cours…' : 'Envoyer la synthèse';
     f.textContent = runMail ? 'Actualiser' : 'Actualisation…';
+    await showMoved(r.avancement);
     pollTimer = setTimeout(pollRun, 4000);
     return;
   }
   $('runState').hidden = true;
+  $('moved').hidden = true;
+  movedSeen = null;
   b.disabled = f.disabled = false;
   b.textContent = 'Envoyer la synthèse';
   f.textContent = 'Actualiser';

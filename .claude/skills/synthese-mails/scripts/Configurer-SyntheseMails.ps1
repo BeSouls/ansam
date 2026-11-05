@@ -222,6 +222,7 @@ function Get-RunState {
         debut   = $(if ($running) { $lock.debut } else { $null })
         mail    = $(if ($running) { [bool]$lock.mail } else { $null })
         etape   = $step
+        avancement = $(if ($running) { Read-SmJson (Join-Path $WorkDir 'avancement.json') } else { $null })
         dernier = Read-SmJson (Join-Path $WorkDir 'dernier-lancement.json')
     }
 }
