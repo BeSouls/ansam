@@ -324,7 +324,7 @@ function Start-ClaudeSession($Point, [string]$Commande, [string]$Reprendre) {
 
     $terminal = Get-Command wt.exe -ErrorAction SilentlyContinue
     $psArgs = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
-    if ($terminal) { Start-Process $terminal.Source -ArgumentList "-w new --title `"$title`" -d `"$dir`" powershell.exe $psArgs" }
+    if ($terminal) { Start-Process $terminal.Source -ArgumentList "-w 0 new-tab --title `"$title`" -d `"$dir`" powershell.exe $psArgs" }
     else { Start-Process powershell.exe -ArgumentList $psArgs -WorkingDirectory $dir }
     $session
 }
