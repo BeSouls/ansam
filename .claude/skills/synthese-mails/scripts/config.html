@@ -253,6 +253,16 @@
   .phones { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; text-align: right; }
   .phones .meta { margin-top: .1rem; }
   .telto { color: var(--accent); white-space: nowrap; }
+  .quick { display: flex; flex-wrap: wrap; gap: .3rem .9rem; margin-top: .3rem; }
+  .prep-group { margin-top: 1rem; }
+  .prep-group h3 { font-size: .875rem; margin: 0 0 .3rem; }
+  .prep-item { display: flex; gap: .55rem; align-items: flex-start; padding: .4rem 0; border-top: 1px solid var(--line); font-size: .875rem; }
+  .prep-item button.lien { all: unset; cursor: pointer; font-weight: 600; }
+  .prep-item button.lien:hover, .prep-item button.lien:focus-visible { text-decoration: underline; }
+  .prep-item .meta { display: block; }
+  .prep-text { margin-top: 1rem; }
+  .prep-text textarea { width: 100%; min-height: 9rem; }
+  .prep-text .bar { margin-top: .3rem; }
   .an-tels { display: flex; flex-direction: column; gap: .1rem; }
   .an-acts, .an-table td:nth-child(2), .an-table td:nth-child(3) { white-space: nowrap; }
   ol.talk { margin: .2rem 0 1rem; padding-left: 1.3rem; font-size: .9375rem; }
@@ -412,6 +422,7 @@
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
+      <button role="tab" data-tab="preparer" aria-selected="false">Préparer</button>
       <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
       <button role="tab" data-tab="annuaire" aria-selected="false">Annuaire <span class="count" id="c-annuaire">–</span></button>
       <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
@@ -429,6 +440,7 @@
     <div class="toolbar">
       <button class="chip" data-f="ouverts" aria-pressed="true">Ouverts</button>
       <button class="chip" data-f="contact" aria-pressed="false">À contacter <span class="count" id="c-contact">0</span></button>
+      <button class="chip" data-f="relancer" aria-pressed="false">À relancer <span class="count" id="c-relancer">0</span></button>
       <button class="chip" data-f="regles" aria-pressed="false">Réglés</button>
       <button class="chip" data-f="tous" aria-pressed="false">Tous</button>
     </div>
@@ -460,6 +472,29 @@
       <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
     </div>
     <div id="list-attention"></div>
+  </section>
+
+  <section class="pane" id="p-preparer" hidden>
+    <div class="panel" id="prepCloture" hidden>
+      <h2 id="clTitre">Clôture</h2>
+      <p class="hint">À saisir toi-même dans Jira. Rien n'y est écrit.</p>
+      <div class="run" id="clEtat" hidden><span class="spinner"></span><span id="clEtatTexte"></span></div>
+      <div id="clResultat"></div>
+    </div>
+    <div class="panel" id="prepAbsence" hidden>
+      <h2>Avant mon absence</h2>
+      <p class="hint" id="abSous"></p>
+      <button class="btn" type="button" id="abLancer">Préparer</button>
+      <div class="run" id="abEtat" hidden style="margin-top:.6rem"><span class="spinner"></span><span id="abEtatTexte"></span></div>
+      <div id="abResultat"></div>
+    </div>
+    <div class="panel">
+      <h2>Trier les éléments en attente</h2>
+      <p class="hint">Claude propose, tu coches ce que tu valides. Sans preuve, un élément reste à traiter.</p>
+      <button class="btn" type="button" id="triLancer">Proposer un tri</button>
+      <div class="run" id="triEtat" hidden style="margin-top:.6rem"><span class="spinner"></span><span id="triEtatTexte"></span></div>
+      <div id="triResultat"></div>
+    </div>
   </section>
 
   <section class="pane" id="p-squad" hidden>
@@ -729,6 +764,7 @@ function hideToast() { $('toast').classList.remove('show'); }
 function showTab(name) {
   tab = name;
   if (name === 'annuaire') loadAnnuaire();
+  if (name === 'preparer') chargerPreparer();
   document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
   try { localStorage.setItem('sm-tab', name); } catch (e) { }
@@ -1519,6 +1555,21 @@ function proofLine(p) {
   return `<div class="meta">${parts.join(' · ')}</div>`;
 }
 
+// À relancer : en attente depuis 5 jours, ou ticket sans mouvement depuis 14 jours. Un ticket résolu
+// attend sa clôture, pas une relance. Renvoie le nombre de jours, ou 0.
+const jiraDate = d => Date.parse(String(d).replace(/([+-]\d\d)(\d\d)$/, '$1:$2'));
+function relanceDays(p) {
+  if (!isOpen(p) || /r[ée]solu/i.test(p.jiraStatut || '')) return 0;
+  const days = t => Math.floor((Date.now() - t) / 864e5);
+  const last = (p.historique || []).slice(-1)[0];
+  const moves = [p.dernierMessage, p.jiraDernier && p.jiraDernier.le, p.jiraMisAJour, last && last.le].filter(Boolean).map(jiraDate).filter(n => !isNaN(n));
+  if (!moves.length) return 0;
+  const quiet = days(Math.max(...moves));
+  if (p.statut === 'attente_tiers' && quiet >= 5) return quiet;
+  const jira = p.jiraMisAJour ? days(jiraDate(p.jiraMisAJour)) : 0;
+  return p.ticket && jira >= 14 ? jira : 0;
+}
+
 function pointCard(p, inSheet) {
   const card = document.createElement('div');
   const open = isOpen(p);
@@ -1540,8 +1591,9 @@ function pointCard(p, inSheet) {
     </div>
     ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
+    ${open && relanceDays(p) ? `<div class="why">Sans nouvelles depuis ${relanceDays(p)} jours</div>` : ''}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
-    <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
+    ${open && (p.ticket || relanceDays(p)) ? `<div class="quick">${relanceDays(p) ? `<button class="btn link" type="button" data-relance="${esc(p.id)}">Préparer la relance</button>` : ''}${p.ticket ? `<button class="btn link" type="button" data-cloture="${esc(p.id)}">Clôturer</button>` : ''}</div>` : ''}    <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
     ${open ? proofLine(p) : ''}
     <div class="foot"></div>`;
   const prep = card.querySelector('.contact .btn');
@@ -1569,6 +1621,12 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
+  if (f === 'relancer') {
+    const list = leaves().filter(p => relanceDays(p) && matches(p)).sort((a, b) => relanceDays(b) - relanceDays(a));
+    if (!list.length) { box.innerHTML = emptyState('Rien à relancer', 'Aucune tâche n’attend depuis longtemps.'); return; }
+    list.forEach(p => box.appendChild(pointCard(p)));
+    return;
+  }
   if (f === 'contact') {
     // Vue à plat : toutes les tâches ouvertes qui attendent un appel ou un mail de ma part, groupes compris.
     const list = leaves().filter(p => needsContact(p) && matches(p))
@@ -1733,6 +1791,7 @@ function renderCounts() {
   const set = (id, n, hot) => { const c = $(id); c.textContent = n; c.classList.toggle('hot', !!hot && n > 0); };
   set('c-suivi', openPoints, urgent);
   set('c-contact', leaves().filter(needsContact).length);
+  set('c-relancer', leaves().filter(relanceDays).length);
   set('c-variabilite', count('variabilite'));
   set('c-facturation', count('facturation'));
   const lateAttention = elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && e.echeance && String(e.echeance).slice(0, 10) < today).length;
@@ -2186,6 +2245,178 @@ async function startRun(mail) {
     pollRun();
   } catch (e) { $('run').textContent = 'Envoyer la synthèse'; toast(e.message, null, true); }
 }
+// --- Préparer : absence, clôture, tri ---------------------------------------------
+const travailTimers = new Map();
+async function suivreTravail(nom, etat, texte, fini) {
+  clearTimeout(travailTimers.get(nom));
+  let s;
+  try { s = await api('GET', '/api/travail?nom=' + encodeURIComponent(nom)); }
+  catch (e) { travailTimers.set(nom, setTimeout(() => suivreTravail(nom, etat, texte, fini), 8000)); return; }
+  $(etat).hidden = s.etat !== 'en_cours';
+  if (s.etat === 'en_cours') {
+    $(texte).textContent = s.message || 'En cours';
+    travailTimers.set(nom, setTimeout(() => suivreTravail(nom, etat, texte, fini), 4000));
+    return;
+  }
+  travailTimers.delete(nom);
+  if (s.etat === 'echec') toast(s.message || 'Échec de la préparation.', null, true);
+  fini(s);
+}
+async function lancerTravail(travail, id, nom, etat, texte, fini) {
+  try {
+    await api('POST', '/api/travail', id ? { travail, id } : { travail });
+    $(etat).hidden = false;
+    $(texte).textContent = 'Démarrage';
+    travailTimers.set(nom, setTimeout(() => suivreTravail(nom, etat, texte, fini), 2000));
+  } catch (e) { toast(e.message, null, true); }
+}
+
+function prepLigne(titre, sous, id) {
+  const row = document.createElement('div');
+  row.className = 'prep-item';
+  const box = document.createElement('div');
+  box.innerHTML = `${id ? '<button class="lien" type="button"></button>' : '<span class="quoi"></span>'}<span class="meta"></span>`;
+  box.firstChild.textContent = titre;
+  box.lastChild.textContent = sous;
+  if (id) box.firstChild.onclick = () => goToPoint(id);
+  row.appendChild(box);
+  return row;
+}
+function prepTexte(titre, valeur) {
+  const box = document.createElement('div');
+  box.className = 'prep-text';
+  box.innerHTML = '<label class="f"></label><textarea class="field"></textarea><div class="bar"><button class="btn" type="button">Copier</button></div>';
+  box.querySelector('label').textContent = titre;
+  const area = box.querySelector('textarea');
+  area.value = valeur;
+  area.setAttribute('aria-label', titre);
+  box.querySelector('button').onclick = () => copyText(area.value, 'Copié.');
+  return box;
+}
+
+function prochaineAbsence() {
+  const today = new Date().toISOString().slice(0, 10);
+  const list = [].concat((state && state.config && state.config.absences) || []).filter(a => a && a.fin >= today).sort((a, b) => String(a.debut).localeCompare(b.debut));
+  const next = list[0];
+  if (!next) return null;
+  return Date.parse(next.debut) - Date.now() <= 14 * 864e5 ? next : null;
+}
+function afficherAbsence(s) {
+  const box = $('abResultat');
+  box.innerHTML = '';
+  const r = s && s.etat === 'ok' && s.resultat;
+  if (!r) return;
+  [['a_classer', 'À classer'], ['finir', 'À finir avant de partir'], ['passer', 'À passer à un collègue'], ['attendre', 'Peut attendre mon retour']].forEach(([key, titre]) => {
+    const part = [].concat(r.taches || []).filter(t => t.decision === key);
+    if (!part.length) return;
+    const group = document.createElement('div');
+    group.className = 'prep-group';
+    group.innerHTML = '<h3></h3>';
+    group.firstChild.textContent = `${titre} (${part.length})`;
+    part.forEach(t => group.appendChild(prepLigne(t.titre || t.id, [t.client, t.echeance && 'échéance ' + shortDate(t.echeance), t.aQui && 'à ' + t.aQui, t.pourquoi].filter(Boolean).join(' · '), t.id)));
+    box.appendChild(group);
+  });
+  if (r.note) box.appendChild(prepTexte('Note de passation (à relire)', r.note));
+  if (r.message) box.appendChild(prepTexte('Message d’absence (à relire)', r.message));
+}
+function afficherCloture(s) {
+  const box = $('clResultat');
+  box.innerHTML = '';
+  const r = s && s.etat === 'ok' && s.resultat;
+  if (!r) return;
+  $('clTitre').textContent = `Clôture de ${r.ticket}`;
+  String(r.texte).split(/^### /m).slice(1).forEach(part => {
+    const at = part.indexOf('\n');
+    box.appendChild(prepTexte(part.slice(0, at).trim(), part.slice(at + 1).trim()));
+  });
+}
+function afficherTri(s) {
+  const box = $('triResultat');
+  box.innerHTML = '';
+  const r = s && s.etat === 'ok' && s.resultat;
+  if (!r) return;
+  const props = [].concat(r.propositions || []).map(p => ({ ...p, el: elements.find(e => e.id === p.id) })).filter(p => p.el && p.el.statut === 'a_traiter');
+  const actifs = props.filter(p => p.action !== 'garder');
+  const noms = { fait: 'Faits, d’après les sources', ignore: 'À écarter' };
+  const cases = [];
+  Object.keys(noms).forEach(action => {
+    const part = actifs.filter(p => p.action === action);
+    if (!part.length) return;
+    const group = document.createElement('div');
+    group.className = 'prep-group';
+    group.innerHTML = '<h3></h3>';
+    group.firstChild.textContent = `${noms[action]} (${part.length})`;
+    part.forEach(p => {
+      const row = prepLigne(p.el.element, [p.el.client, p.el.type, p.doublonDe && 'doublon de ' + p.doublonDe, p.pourquoi].filter(Boolean).join(' · '));
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.setAttribute('aria-label', p.el.element);
+      row.prepend(check);
+      cases.push({ check, p });
+      group.appendChild(row);
+    });
+    box.appendChild(group);
+  });
+  const keep = props.length - actifs.length;
+  const info = document.createElement('p');
+  info.className = 'hint';
+  info.style.margin = '.8rem 0 .4rem';
+  info.textContent = `${keep} élément${keep > 1 ? 's restent' : ' reste'} à traiter, faute de preuve.`;
+  box.appendChild(info);
+  if (!cases.length) return;
+  const go = document.createElement('button');
+  go.className = 'btn';
+  go.type = 'button';
+  go.textContent = 'Appliquer ce que j’ai coché';
+  go.onclick = async () => {
+    const list = cases.filter(c => c.check.checked);
+    if (!list.length) { toast('Rien de coché.'); return; }
+    go.disabled = true;
+    for (const c of list) await setElement(c.p.el, c.p.action, 'Tri : ' + c.p.pourquoi, true);
+    toast(`${list.length} élément${list.length > 1 ? 's' : ''} mis à jour.`);
+    afficherTri(s);
+  };
+  box.appendChild(go);
+}
+async function chargerPreparer() {
+  const next = prochaineAbsence();
+  $('prepAbsence').hidden = !next;
+  if (next) {
+    $('abSous').textContent = `Du ${shortDate(next.debut)} au ${shortDate(next.fin)}. Classe tes tâches et prépare la note de passation. Rien n’est envoyé.`;
+    suivreTravail('absence', 'abEtat', 'abEtatTexte', afficherAbsence);
+  }
+  suivreTravail('tri', 'triEtat', 'triEtatTexte', afficherTri);
+}
+$('abLancer').onclick = () => lancerTravail('absence', null, 'absence', 'abEtat', 'abEtatTexte', afficherAbsence);
+$('triLancer').onclick = () => lancerTravail('tri', null, 'tri', 'triEtat', 'triEtatTexte', afficherTri);
+
+function preparerCloture(id) {
+  const p = points.find(x => x.id === id);
+  $('prepCloture').hidden = false;
+  $('clTitre').textContent = `Clôture de ${(p && p.ticket) || id}`;
+  $('clResultat').innerHTML = '';
+  showTab('preparer');
+  window.scrollTo({ top: 0 });
+  lancerTravail('cloture', id, 'cloture-' + id, 'clEtat', 'clEtatTexte', afficherCloture);
+}
+async function preparerRelance(id) {
+  const p = points.find(x => x.id === id);
+  if (!p) return;
+  const consigne = `Relance cordiale : sans nouvelles depuis ${relanceDays(p)} jours.`;
+  const before = String(p.infosRedaction || '').replace(/Relance cordiale : [^.]*\./g, '').trim();
+  try {
+    const r = await api('POST', '/api/redaction', { id, infos: [before, consigne].filter(Boolean).join(' / ') });
+    toast(r.message);
+    pollRedaction(id, true);
+  } catch (e) { toast(e.message, null, true); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-cloture], [data-relance]');
+  if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.cloture) preparerCloture(b.dataset.cloture); else preparerRelance(b.dataset.relance);
+});
+
 let runMail = false;
 
 // Dès que les sources sont lues : ce qui a bougé, et les statuts venus de Jira, sans attendre l'analyse.

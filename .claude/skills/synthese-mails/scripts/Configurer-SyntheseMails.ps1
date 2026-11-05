@@ -204,6 +204,17 @@ function ConvertFrom-PageConfig([string]$Json) {
     $config
 }
 
+# Travail de fond (Preparer-Travail.ps1) : un travail dont le processus a disparu est signalé en échec.
+function Get-TravailState([string]$Nom) {
+    $state = Read-SmJson (Join-Path $WorkDir "travaux\$Nom.json")
+    if ($state -and $state.etat -eq 'en_cours') {
+        $since = ((Get-Date) - (ConvertTo-SmDateTime $state.le)).TotalSeconds
+        $alive = $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)
+        if (-not $alive -and ($state.pid -or $since -gt 30)) { $state.etat = 'echec'; $state.message = 'Travail interrompu avant la fin.' }
+    }
+    $state
+}
+
 # Lancement à la demande (bouton de la page) : même lanceur que la tâche du matin, avec -Force.
 function Get-RunState {
     $lock = Read-SmJson (Join-Path $WorkDir 'lancement.lock')
@@ -569,6 +580,30 @@ try {
                     $doc = ConvertFrom-SmSquadPage (Get-SmConfig $WorkDir) ($request.Body | ConvertFrom-Json)
                     Save-SmSquad $doc $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = 'Enregistré.'; majLe = $doc.majLe })
+                }
+                '^GET /api/travail$' {
+                    $nom = [string]$request.Query['nom']
+                    if ($nom -notmatch '^(absence|tri|cloture-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
+                    $state = Get-TravailState $nom
+                    Send-Json $stream 200 $(if ($state) { $state } else { [ordered]@{ etat = 'aucun' } })
+                }
+                '^POST /api/travail$' {
+                    # Absence, clôture ou tri : en arrière-plan, 1 à 3 minutes. Rien n'est écrit ni envoyé.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $travail = [string]$posted.travail
+                    $id = [string]$posted.id
+                    if (@('absence', 'cloture', 'tri') -notcontains $travail) { throw "Travail inconnu : $travail" }
+                    if ($id -and $id -notmatch '^[A-Za-z0-9-]+$') { throw "Identifiant invalide : $id" }
+                    if ($travail -eq 'cloture' -and -not $id) { throw 'Point manquant.' }
+                    $nom = $(if ($id) { "$travail-$id" } else { $travail })
+                    $state = Get-TravailState $nom
+                    if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
+                    Write-SmJson (Join-Path $WorkDir "travaux\$nom.json") ([ordered]@{ travail = $travail; id = $id; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Preparer-Travail.ps1'
+                    $options = "-Travail $travail" + $(if ($id) { " -Id $id" } else { '' })
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" $options" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Préparation lancée, 1 à 3 minutes.' })
                 }
                 '^POST /api/squad/preparation$' {
                     # Préparation à la demande (même pour un jour d'absence ou férié) : en arrière-plan, 2 à 4 minutes.

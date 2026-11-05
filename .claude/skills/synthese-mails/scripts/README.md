@@ -148,6 +148,17 @@ lanceur écrit `avancement.json` et la page affiche en haut du Suivi les tâches
 concernées et les nouveaux mails, avec les statuts venus de Jira, sans attendre
 la fin de l'analyse.
 
+**Préparer** : l'onglet propose, sans rien écrire ni envoyer, de classer les tâches
+avant une absence (à finir, à passer, à garder, avec la note de passation et le
+message d'absence), de préparer la clôture d'un ticket (bouton **Clôturer** sur la
+tâche, éléments à copier dans Jira, rangés aussi dans `cloture-panoramix.md`) et de
+trier les éléments en attente : tu coches ce que tu valides. `Preparer-Travail.ps1`
+répond avec Claude Code en Sonnet, en 1 à 3 minutes.
+
+**À relancer** : ce filtre du Suivi liste les tâches en attente depuis 5 jours ou
+plus et les tickets sans mouvement depuis 14 jours, avec un bouton pour préparer la
+relance. Les tickets au statut Résolu n'y figurent pas.
+
 **Chat** : l'avatar en bas à droite de la page ouvre un petit panneau pour poser
 une question, vérifier une information ou faire rédiger un texte.
 `Repondre-Chat.ps1` répond avec Claude Code, en Sonnet par défaut (`-Modele`).
