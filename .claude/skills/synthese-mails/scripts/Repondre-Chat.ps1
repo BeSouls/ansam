@@ -49,7 +49,7 @@ $lectureAtlassian = 'atlassianUserInfo', 'getAccessibleAtlassianResources', 'get
 $ecritureAtlassian = 'executeWrite', 'executeDestructive', 'createConfluenceContent', 'updateConfluenceContent'
 $allowed = (@('Read', 'Grep', 'Glob', 'mcp__panoramix__chercher_mails', 'mcp__panoramix__lire_mail', 'mcp__panoramix__lire_agenda') +
             ($lectureAtlassian | ForEach-Object { $prefix + $_ })) -join ','
-$denied = (@('Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task', 'Read(**/page.token)') +
+$denied = (@('Bash', 'PowerShell', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Task', 'Read(**/page.token)','Read(**/jira.jeton)') +
            ($ecritureAtlassian | ForEach-Object { $prefix + $_ })) -join ','
 
 # Libellés affichés pendant que Claude travaille.

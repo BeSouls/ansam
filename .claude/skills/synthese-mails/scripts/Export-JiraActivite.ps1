@@ -9,7 +9,8 @@
     lecture, ce qui se passe dans un ticket est invisible pour la synthèse.
 
     Seuls les tickets dont la date de mise à jour a changé depuis la dernière
-    lecture sont relus (d'après jira-assignes.json), par lots en parallèle, avec un
+    lecture sont relus (d'après jira-assignes.json) : directement dans Jira avec un
+    jeton enregistré (Definir-JetonJira.ps1), sinon par lots en parallèle, avec un
     modèle léger : il recopie, il n'analyse pas. Un lot en échec est retenté une
     fois ; ses tickets gardent leur lecture précédente, sont listés dans « echecs »
     et seront relus la fois suivante. Claude Code n'a droit qu'aux outils de
@@ -76,8 +77,28 @@ function Read-LotReponse($Reply, [string[]]$Lot) {
     @($parsed.tickets | ForEach-Object { $_ } | Where-Object { $_ -and $Lot -contains [string]$_.cle })
 }
 
-$lots = @(for ($i = 0; $i -lt $keys.Count; $i += $TailleLot) { , @($keys[$i..([math]::Min($i + $TailleLot, $keys.Count) - 1)]) })
 $now = (Get-Date).ToString('o')
+
+# Lecture directe, sans Claude. Ce qui échoue ici repasse par le connecteur ci-dessous.
+$remaining = $keys
+$acces = Get-SmJiraAcces
+if ($acces) {
+    $remaining = @(foreach ($key in $keys) {
+        try {
+            $reply = Invoke-SmJira $acces "/rest/api/3/issue/$key/comment?orderBy=-created&maxResults=25"
+            $comments = @(@($reply.comments) | Where-Object { $_ -and $_.author.displayName -notmatch '^(Automation for Jira|Jira)$' } | Select-Object -First 6 | ForEach-Object {
+                $texte = Format-SmCommentaireJira $_.body
+                if (-not $texte) { $texte = '[pièce jointe]' }
+                [ordered]@{ le = $_.created; auteur = $_.author.displayName; public = [bool]$_.jsdPublic; texte = $texte.Substring(0, [math]::Min(400, $texte.Length)) }
+            })
+            $cache[$key] = [ordered]@{ cle = $key; misAJour = $known[$key]; luLe = $now; total = $reply.total; commentaires = $comments }
+        } catch {
+            Write-Warning "Commentaires Jira de $key, lecture directe impossible : $($_.Exception.Message)"
+            $key
+        }
+    })
+}
+$lots = @(for ($i = 0; $i -lt $remaining.Count; $i += $TailleLot) { , @($remaining[$i..([math]::Min($i + $TailleLot, $remaining.Count) - 1)]) })
 $failed = New-Object System.Collections.Generic.List[string]
 foreach ($essai in 1, 2) {
     if (-not $lots.Count) { break }

@@ -136,6 +136,13 @@ fiche modifiée dans la page n'est plus touchée par les analyses, une fiche ret
 ne revient pas. Les Contacts des tiers des Réglages restent le canal officiel d'un
 fournisseur.
 
+**Jira direct** : avec un jeton d'API Atlassian en lecture seule, Panoramix lit Jira
+lui-même, en quelques secondes et sans consommer de jetons Claude.
+`Definir-JetonJira.ps1` demande le jeton, l'essaie et l'enregistre chiffré dans
+`jira.jeton`, lisible par ce compte Windows sur ce poste seulement. Sans jeton, ou
+s'il est refusé, la lecture repasse par Claude et le journal le signale. Le jeton dure
+un an au plus : relancer le script après l'avoir renouvelé.
+
 **Chat** : l'avatar en bas à droite de la page ouvre un petit panneau pour poser
 une question, vérifier une information ou faire rédiger un texte.
 `Repondre-Chat.ps1` répond avec Claude Code, en Sonnet par défaut (`-Modele`).

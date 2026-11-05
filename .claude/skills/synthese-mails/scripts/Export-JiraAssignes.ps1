@@ -12,6 +12,8 @@
       dit si un ticket est clos, résolu ou réassigné : un commentaire du client
       sur un ticket resté clos n'est pas une tâche.
 
+    Avec un jeton enregistré (Definir-JetonJira.ps1), les recherches vont
+    directement à Jira, en quelques secondes. Sans jeton, ou si Jira le refuse :
     Claude Code (claude -p) n'a le droit qu'aux trois outils de lecture du
     connecteur Atlassian ; tout outil d'écriture est refusé. Recopier ces listes
     ne demande pas d'analyse : le modèle léger s'en charge. Le résultat est
@@ -56,6 +58,43 @@ $prompt = "Avec le connecteur Atlassian, en lecture seule, cherche mes tickets J
           "{""moi"":"""",""total"":0,""tickets"":[{""cle"":"""",""titre"":"""",""statut"":"""",""projet"":"""",""priorite"":"""",""echeance"":null,""creeLe"":"""",""misAJour"":"""",""rapporteur"":"""",""rapporteurEmail"":null,""organisations"":[]}]," +
           """suivis"":[{""cle"":"""",""titre"":"""",""statut"":"""",""categorie"":""À faire | En cours | Terminé"",""resolution"":null,""assigne"":"""",""misAJour"":""""}]}."
 
+# Lecture directe de Jira, sans Claude : mêmes champs que par le connecteur.
+function Read-JiraDirect($Acces) {
+    $orgField = @(Invoke-SmJira $Acces '/rest/api/3/field' | ForEach-Object { $_ } | Where-Object { $_.name -eq 'Organizations' -and $_.custom } | Select-Object -First 1).id
+    $fields = @('summary', 'status', 'project', 'priority', 'duedate', 'updated', 'reporter', 'created')
+    if ($orgField) { $fields += $orgField }
+    $tickets = @(Find-SmJira $Acces $Jql $fields | ForEach-Object {
+        $f = $_.fields
+        $orgs = @($(if ($orgField) { $f.$orgField }) | ForEach-Object { if ($_) { $_.name } })
+        [ordered]@{ cle = $_.key; titre = ([string]$f.summary).Trim(); statut = $f.status.name; projet = $f.project.name; priorite = $f.priority.name; echeance = $f.duedate
+                    creeLe = $f.created; misAJour = $f.updated; rapporteur = $f.reporter.displayName; rapporteurEmail = $f.reporter.emailAddress
+                    organisations = $orgs }
+    })
+
+    # Une clé que Jira ne connaît plus fait échouer toute la recherche : on la retire et on recommence.
+    $categories = @{ new = 'À faire'; indeterminate = 'En cours'; done = 'Terminé' }
+    $wanted = @($keys)
+    $issues = @()
+    while ($wanted.Count) {
+        try {
+            $issues = @(Find-SmJira $Acces "key in ($($wanted -join ', ')) AND NOT (assignee = currentUser() AND statusCategory != Done)" @('summary', 'status', 'assignee', 'resolution', 'updated'))
+            break
+        } catch {
+            $message = $_.Exception.Message
+            $unknown = @($wanted | Where-Object { $message -match "\b$([regex]::Escape($_))\b" })
+            if (-not $unknown.Count) { throw }
+            $wanted = @($wanted | Where-Object { $unknown -notcontains $_ })
+        }
+    }
+    $tracked = @($issues | ForEach-Object {
+        $f = $_.fields
+        [ordered]@{ cle = $_.key; titre = ([string]$f.summary).Trim(); statut = $f.status.name; categorie = $categories[[string]$f.status.statusCategory.key]
+                    resolution = $f.resolution.name; assigne = $f.assignee.displayName; misAJour = $f.updated }
+    })
+    $me = Invoke-SmJira $Acces '/rest/api/3/myself'
+    [pscustomobject]@{ parsed = [pscustomobject]@{ moi = $me.displayName; total = $tickets.Count }; tickets = $tickets; tracked = $tracked }
+}
+
 # Une lecture complète, ou une exception qui dit ce qui manque.
 function Read-JiraReponse([string[]]$Modele) {
     $output = Invoke-SmClaude $ClaudeExe $prompt ($Modele + '--allowedTools', $allowed, '--disallowedTools', $denied)
@@ -85,7 +124,12 @@ function Read-JiraReponse([string[]]$Modele) {
 
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $reply = $null
-foreach ($modele in @(, @('--model', 'haiku')) + @(, @())) {
+$acces = Get-SmJiraAcces
+if ($acces) {
+    try { $reply = Read-JiraDirect $acces }
+    catch { Write-Warning "Lecture directe de Jira impossible, passage par Claude : $($_.Exception.Message)" }
+}
+foreach ($modele in $(if ($reply) { @() } else { @(, @('--model', 'haiku')) + @(, @()) })) {
     try { $reply = Read-JiraReponse $modele; break }
     catch { Write-Warning "Tickets Jira, lecture $(if ($modele.Count) { 'légère' } else { 'standard' }) refusée : $($_.Exception.Message)" }
 }

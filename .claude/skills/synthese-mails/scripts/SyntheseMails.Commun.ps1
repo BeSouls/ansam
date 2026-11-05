@@ -337,6 +337,86 @@ function Invoke-SmClaude([string]$ClaudeExe, [string]$Prompt, [string[]]$Argumen
     $Prompt | & $ClaudeExe -p @Arguments
 }
 
+# --- Lecture directe de Jira ------------------------------------------------
+# Quelques secondes et aucun jeton Claude, contre 2 à 4 minutes par le connecteur. Accès par le jeton
+# d'API de Definir-JetonJira.ps1, à droits de lecture seuls : ce code ne fait que des recherches.
+$SmJiraSite = 'https://api.atlassian.com/ex/jira/71c31bda-1d99-4031-b91f-718207a06593'
+
+function ConvertTo-SmJiraAcces($Saved) {
+    $secure = ConvertTo-SecureString ([string]$Saved.jeton)
+    $pair = '{0}:{1}' -f $Saved.email, ([Net.NetworkCredential]::new('', $secure).Password)
+    [pscustomobject]@{ entete = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pair)) }
+}
+
+# $null sans jeton enregistré : l'appelant passe alors par le connecteur Atlassian.
+function Get-SmJiraAcces([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'jira.jeton')
+    if (-not $saved) { return $null }
+    try { ConvertTo-SmJiraAcces $saved }
+    catch { Write-Warning "Jeton Jira illisible : $($_.Exception.Message)"; $null }
+}
+
+# GET, ou POST d'une recherche avec -Corps. Réponse lue en UTF-8 : Invoke-RestMethod se trompe
+# sur les accents quand Jira n'annonce pas l'encodage.
+function Invoke-SmJira($Acces, [string]$Chemin, $Corps) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $request = @{ Uri = $SmJiraSite + $Chemin; UseBasicParsing = $true; TimeoutSec = 30; Method = 'Get'
+                  Headers = @{ Authorization = $Acces.entete; Accept = 'application/json' } }
+    if ($Corps) {
+        $request.Method = 'Post'
+        $request.ContentType = 'application/json'
+        $request.Body = [Text.Encoding]::UTF8.GetBytes(($Corps | ConvertTo-Json -Depth 5 -Compress))
+    }
+    try {
+        $reply = Invoke-WebRequest @request
+    } catch {
+        $status = $(if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 })
+        $detail = ''
+        if ($status) {
+            try { $detail = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch { }
+        }
+        if ($status -eq 401 -or $status -eq 403) { throw "Jira refuse le jeton ($status) : expiré ou droits insuffisants. Definir-JetonJira.ps1 pour le remplacer." }
+        throw "Jira ($status) : $(if ($detail) { $detail.Substring(0, [math]::Min(300, $detail.Length)) } else { $_.Exception.Message })"
+    }
+    [Text.Encoding]::UTF8.GetString($reply.RawContentStream.ToArray()) | ConvertFrom-Json
+}
+
+# Tous les résultats d'une recherche, page après page.
+function Find-SmJira($Acces, [string]$Jql, [string[]]$Champs) {
+    $issues = New-Object System.Collections.ArrayList
+    $next = $null
+    do {
+        $body = @{ jql = $Jql; fields = $Champs; maxResults = 100 }
+        if ($next) { $body.nextPageToken = $next }
+        $page = Invoke-SmJira $Acces '/rest/api/3/search/jql' $body
+        foreach ($issue in @($page.issues)) { if ($issue) { [void]$issues.Add($issue) } }
+        $next = $page.nextPageToken
+    } while ($next)
+    @($issues)
+}
+
+# Texte d'un corps de commentaire de l'API v3 (format ADF, en blocs) : mentions et liens lisibles, sans les images.
+function ConvertFrom-SmAdf($Node) {
+    if ($null -eq $Node) { return '' }
+    switch ([string]$Node.type) {
+        'text'       { return [string]$Node.text }
+        'mention'    { return [string]$Node.attrs.text }
+        'emoji'      { return [string]$Node.attrs.text }
+        'inlineCard' { return [string]$Node.attrs.url }
+        'hardBreak'  { return ' ' }
+        'mediaSingle' { return '' }
+        'mediaGroup'  { return '' }
+    }
+    $parts = foreach ($child in @($Node.content)) { if ($child) { ConvertFrom-SmAdf $child } }
+    ($parts -join '') + ' '
+}
+
+# Texte d'un commentaire, sur une ligne, sans mot de passe évident.
+function Format-SmCommentaireJira($Corps) {
+    $clean = (ConvertFrom-SmAdf $Corps) -replace '(?i)\b(mot de passe|password|passwd|pwd|mdp)(\s*[:=]\s*)\S+', '$1$2[secret]'
+    ($clean -replace '\s+', ' ').Trim()
+}
+
 # --- Registre de suivi des points ------------------------------------------
 # suivi.json garde chaque point d'une synthèse à l'autre. Statuts :
 #   a_faire        une action m'attend
