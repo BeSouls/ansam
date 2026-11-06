@@ -27,7 +27,7 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [ValidateSet('moteur', 'controles', 'verification', 'analyse')] [string]$Etape,
+    [Parameter(Mandatory)] [ValidateSet('moteur', 'controles', 'verification', 'analyse', 'projet')] [string]$Etape,
     [Parameter(Mandatory)] [ValidatePattern('^\d{4}-\d{2}$')] [string]$Mois,
     [string]$Source,
     [string]$WorkDir = (Join-Path $env:USERPROFILE 'SyntheseMails'),
@@ -44,9 +44,9 @@ $dir = Join-Path $racine $Mois
 $statusFile = Join-Path $WorkDir "travaux\facturation-$Etape.json"
 
 # Client facturé par quelqu'un d'autre : toujours (Facturation = false) ou pour un mois (FacturationAutreMois).
-function Test-HorsFacturation($Fiche) {
+function Test-HorsFacturation($Fiche, [string]$Pour = $Mois) {
     if ($Fiche.Facturation -eq $false) { return $true }
-    return ($Fiche.FacturationAutreMois -and $Fiche.FacturationAutreMois.PSObject.Properties[$Mois])
+    return ($Fiche.FacturationAutreMois -and $Fiche.FacturationAutreMois.PSObject.Properties[$Pour])
 }
 function Set-Status([string]$State, [string]$Message) {
     Write-SmJson $statusFile ([ordered]@{ etape = $Etape; mois = $Mois; etat = $State; message = $Message; le = (Get-Date).ToString('o'); pid = $PID })
@@ -301,6 +301,79 @@ function Invoke-Verification {
     Set-Status 'ok' "$($groups.Count) tickets comparés, $($ecarts.Count) écarts de temps, $(@($absents).Count) tickets absents."
 }
 
+# Compare un fichier OPS-PJ aux lignes parties en projet pour son mois. Le fichier n'est jamais modifié.
+function Invoke-Projet {
+    $nom = Split-Path ([string]$Source) -Leaf
+    if ($nom -notmatch '(?i)^OPS-PJ[^\\/:*?"<>|]*\.xlsx$') { throw "Fichier projet invalide : $nom" }
+    $chemin = Join-Path (Join-Path $env:USERPROFILE 'Downloads') $nom
+    if (-not (Test-Path -LiteralPath $chemin)) { throw "Fichier introuvable dans les Téléchargements : $nom" }
+    Set-Status 'en_cours' "Lecture de $nom"
+    Import-Module ImportExcel
+    $copie = Join-Path $env:TEMP ('ops-pj-' + [guid]::NewGuid().ToString('N') + '.xlsx')
+    $in = [IO.File]::Open($chemin, 'Open', 'Read', 'ReadWrite')
+    try { $out = [IO.File]::Create($copie); try { $in.CopyTo($out) } finally { $out.Close() } } finally { $in.Close() }
+    $titres = 'Issue Key', 'Organizations', 'Start Date', 'Author', 'Time Spent', 'Comment'
+    $fichier = New-Object System.Collections.ArrayList
+    $pk = Open-ExcelPackage -Path $copie
+    try {
+        $ws = $null; $colonnes = @{}
+        foreach ($f in $pk.Workbook.Worksheets) {
+            if (-not $f.Dimension) { continue }
+            $vus = @{}
+            for ($c = 1; $c -le $f.Dimension.End.Column; $c++) { $t = ([string]$f.Cells[1, $c].Text).Trim(); if ($t -and -not $vus.ContainsKey($t)) { $vus[$t] = $c } }
+            if (@($titres | Where-Object { -not $vus.ContainsKey($_) }).Count -eq 0) { $ws = $f; $colonnes = $vus; break }
+        }
+        if (-not $ws) { throw "Aucune feuille avec les colonnes attendues dans $nom." }
+        for ($i = 2; $i -le $ws.Dimension.End.Row; $i++) {
+            $cle = ([string]$ws.Cells[$i, $colonnes['Issue Key']].Text).Trim()
+            if (-not $cle) { continue }
+            $date = ([string]$ws.Cells[$i, $colonnes['Start Date']].Text).Trim() -replace '[./]', '-'
+            if ($date -match '^(\d{4})-(\d{2})-(\d{2})') { $date = "$($Matches[3])-$($Matches[2])-$($Matches[1])" }
+            $texteMin = [string]$ws.Cells[$i, $colonnes['Time Spent']].Text
+            $minutes = 0; [void][int]::TryParse($texteMin, [ref]$minutes)
+            $fond = $ws.Cells[$i, $colonnes['Issue Key']].Style.Fill
+            [void]$fichier.Add([pscustomobject]@{ cle = $cle; org = ([string]$ws.Cells[$i, $colonnes['Organizations']].Text).Trim(); date = $date.Substring(0, [Math]::Min(10, $date.Length))
+                auteur = ([string]$ws.Cells[$i, $colonnes['Author']].Text).Trim(); minutes = $minutes; vert = ([string]$fond.PatternType -eq 'Solid' -and [string]$fond.BackgroundColor.Rgb -match '92D050$'); pris = $false })
+        }
+    } finally { Close-ExcelPackage $pk -NoSave; Remove-Item -LiteralPath $copie -Force -ErrorAction SilentlyContinue }
+    if (-not $fichier.Count) { throw "Aucune ligne lue dans $nom." }
+    $dates = @($fichier | Where-Object { $_.date -match '^\d{2}-\d{2}-\d{4}$' })
+    if (-not $dates.Count) { throw "Dates illisibles dans $nom." }
+    $groupe = @($dates | Group-Object { $_.date.Substring(6, 4) + '-' + $_.date.Substring(3, 2) } | Sort-Object Count -Descending)[0]
+    $moisFichier = [string]$groupe.Name
+
+    $attendues = @()
+    $lignesFile = Join-Path (Join-Path $racine $moisFichier) 'lignes-projet.json'
+    if (Test-Path -LiteralPath $lignesFile) { $attendues = @(Read-Fichier $lignesFile | ForEach-Object { $_ }) }
+    $presentes = New-Object System.Collections.ArrayList
+    $manquantes = New-Object System.Collections.ArrayList
+    foreach ($l in $attendues) {
+        $t = @($fichier | Where-Object { -not $_.pris -and $_.cle -eq $l.Ticket -and $_.date -eq $l.Date -and $_.auteur -eq $l.Auteur -and $_.minutes -eq [int]$l.Minutes } | Select-Object -First 1)
+        $resume = [ordered]@{ ticket = $l.Ticket; date = $l.Date; auteur = $l.Auteur; minutes = [int]$l.Minutes; type = $l.Type }
+        if ($t.Count) { $t[0].pris = $true; $resume.vert = [bool]$t[0].vert; [void]$presentes.Add($resume) } else { [void]$manquantes.Add($resume) }
+    }
+    # Lignes de tes clients dans le fichier qui ne sont pas parties en projet : à regarder.
+    $orgs = @{}
+    foreach ($f in Get-ChildItem -LiteralPath (Join-Path $racine 'Contrats') -Filter '*.json') {
+        $x = Read-Fichier $f.FullName
+        if (-not (Test-HorsFacturation $x $moisFichier)) { foreach ($o in @($x.Organisations)) { $orgs[[string]$o] = [string]$x.Code } }
+    }
+    $enTrop = @($fichier | Where-Object { -not $_.pris -and $orgs.ContainsKey($_.org) -and $_.auteur -ne 'Automation for Jira' } | ForEach-Object {
+        [ordered]@{ client = $orgs[$_.org]; ticket = $_.cle; date = $_.date; auteur = $_.auteur; minutes = $_.minutes; vert = [bool]$_.vert } })
+    $controle = [ordered]@{ mois = $moisFichier; fichier = $nom; le = (Get-Date).ToString('o'); lignesFichier = $fichier.Count; attendues = $attendues.Count
+                            presentes = @($presentes); manquantes = @($manquantes); enTrop = $enTrop }
+    $etatFile = Join-Path $racine 'fichier-projet.json'
+    $lu = Read-SmJson $etatFile
+    $etat = [ordered]@{ faits = [ordered]@{}; controles = [ordered]@{} }
+    if ($lu) {
+        foreach ($p in @($lu.faits.PSObject.Properties)) { $etat.faits[$p.Name] = $p.Value }
+        foreach ($p in @($lu.controles.PSObject.Properties)) { $etat.controles[$p.Name] = $p.Value }
+    }
+    $etat.controles[$moisFichier] = $controle
+    Write-SmJson $etatFile $etat
+    Set-Status 'ok' "$nom : $moisFichier, $($presentes.Count) sur $($attendues.Count) lignes trouvées."
+}
+
 function Invoke-Analyse {
     $ClaudeExe = Resolve-SmClaude $ClaudeExe
     $result = Read-Fichier (Join-Path $dir 'resultat.json')
@@ -385,6 +458,7 @@ try {
         'controles' { Invoke-Controles }
         'verification' { Invoke-Verification }
         'analyse'   { Invoke-Analyse }
+        'projet'    { Invoke-Projet }
     }
 } catch {
     Set-Status 'echec' $_.Exception.Message

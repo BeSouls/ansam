@@ -609,6 +609,14 @@ try {
                 '^GET /api/facturation$' {
                     Send-Response $stream 200 'application/json' (Get-SmFactureEtat (Get-SmConfig $WorkDir) $WorkDir ([string]$request.Query['mois']))
                 }
+                '^GET /api/facturation/projets$' {
+                    Send-Response $stream 200 'application/json' (Get-SmFactureProjets (Get-SmConfig $WorkDir))
+                }
+                '^POST /api/facturation/projet/fait$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    Set-SmFactureProjetFait (Get-SmConfig $WorkDir) ([string]$posted.mois) ([bool]$posted.fait)
+                    Send-Json $stream 200 ([ordered]@{ message = $(if ($posted.fait) { "Fichier projet de $($posted.mois) marqué comme reporté." } else { "$($posted.mois) remis en attente." }) })
+                }
                 '^GET /api/facturation/script$' {
                     Send-Response $stream 200 'text/plain' (Get-SmFactureScript (Get-SmConfig $WorkDir) ([string]$request.Query['mois']) ($request.Query['appliquer'] -eq '1'))
                 }
@@ -621,14 +629,20 @@ try {
                     # Calcul, contrôles ou lecture des tickets : en arrière-plan. Rien n'est écrit dans Jira ni dans le fichier commun.
                     $posted = $request.Body | ConvertFrom-Json
                     $etape = [string]$posted.etape; $mois = [string]$posted.mois
-                    if (@('moteur', 'controles', 'verification', 'analyse') -notcontains $etape) { throw "Étape inconnue : $etape" }
+                    if (@('moteur', 'controles', 'verification', 'analyse', 'projet') -notcontains $etape) { throw "Étape inconnue : $etape" }
                     if ($mois -notmatch '^\d{4}-\d{2}$') { throw "Mois invalide : $mois" }
+                    $sourceEtape = ''
+                    if ($etape -eq 'projet') {
+                        $nomProjet = [string]$posted.nom
+                        if ($nomProjet -notmatch '(?i)^OPS-PJ[^\\/:*?"<>|]*\.xlsx$') { throw "Fichier projet invalide : $nomProjet" }
+                        $sourceEtape = " -Source `"$nomProjet`""
+                    }
                     $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json")
                     if ($state -and $state.etat -eq 'en_cours' -and $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
                     Write-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json") ([ordered]@{ etape = $etape; mois = $mois; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
                     $script = Join-Path $PSScriptRoot 'Facturation-Etape.ps1'
                     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
-                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Etape $etape -Mois $mois" | Out-Null
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Etape $etape -Mois $mois$sourceEtape" | Out-Null
                     Send-Json $stream 200 ([ordered]@{ message = 'Étape lancée.' })
                 }
                 '^POST /api/facturation/decision$' {

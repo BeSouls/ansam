@@ -436,7 +436,7 @@
     <nav class="seg" role="tablist" aria-label="Vues">
       <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
-      <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
+      <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span> <span class="count hot" id="c-projets" title="Mois en attente du fichier projet" hidden></span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
       <button role="tab" data-tab="preparer" aria-selected="false">Préparer</button>
       <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
@@ -483,6 +483,7 @@
   </section>
 
   <section class="pane" id="p-facturation" hidden>
+    <div id="faProjets"></div>
     <details class="panel">
       <summary><b>Repéré dans les mails</b> <span class="count" id="c-facturation-mails">–</span></summary>
       <div class="toolbar" style="margin-top:.8rem">
@@ -2453,8 +2454,51 @@ async function chargerFacturation() {
   try { fa = await api('GET', '/api/facturation?mois=' + encodeURIComponent(faMois)); }
   catch (e) { toast(e.message, null, true); return; }
   afficherFacturation();
+  chargerProjets();
   const running = Object.values(fa.meta.etapes || {}).some(s => s && s.etat === 'en_cours');
   if (running && tab === 'facturation') faTimer = setTimeout(chargerFacturation, 4000);
+}
+// Fichier projet : il arrive après la facturation, chaque mois reste affiché tant que tu ne l'as pas marqué reporté.
+let faPj = null;
+async function chargerProjets() {
+  try { faPj = await api('GET', '/api/facturation/projets'); } catch (e) { return; }
+  afficherProjets();
+}
+function faPjTickets(m) {
+  const map = new Map();
+  [].concat(m.lignes || []).forEach(l => {
+    const t = map.get(l.Ticket) || { ticket: l.Ticket, client: l.Client, resume: l.Resume, offre: l.Offre, heures: l.Heures, minutes: 0, deplacements: 0 };
+    if (l.Deplacement) t.deplacements++; else t.minutes += l.Minutes;
+    map.set(l.Ticket, t);
+  });
+  return [...map.values()];
+}
+function faPjControle(c) {
+  if (!c) return '<p class="hint">Pas encore contrôlé : attends le fichier OPS-PJ de ce mois.</p>';
+  const man = [].concat(c.manquantes || []), trop = [].concat(c.enTrop || []), pres = [].concat(c.presentes || []);
+  return `<p class="hint">${esc(c.fichier)} contrôlé le ${shortDate(c.le)} : ${pres.length} ligne(s) trouvée(s) sur ${c.attendues}.</p>
+    ${man.length ? '<h3>Absentes du fichier</h3>' + faListe(man.map(x => `<b>${esc(x.ticket)}</b> ${esc(x.date)} · ${esc(x.auteur)} · ${x.minutes} min · ${esc(x.type || '')}`)) : ''}
+    ${trop.length ? '<h3>Dans le fichier, mais pas parties en projet</h3>' + faListe(trop.map(x => `<b>${esc(x.client)} ${esc(x.ticket)}</b> ${esc(x.date)} · ${esc(x.auteur)} · ${x.minutes} min`)) : ''}`;
+}
+function afficherProjets() {
+  const mois = [].concat(faPj.mois || []), attente = mois.filter(m => !m.fait), fichiers = [].concat(faPj.fichiers || []);
+  const badge = $('c-projets');
+  badge.hidden = !attente.length;
+  badge.textContent = `PJ ${attente.length}`;
+  const etat = fa && fa.meta && fa.meta.etapes ? fa.meta.etapes.projet : null;
+  const carte = m => {
+    const tickets = faPjTickets(m), reste = !m.fait;
+    return `<h3>${esc(m.mois)} ${m.fait ? `<span class="tag sure">reporté le ${shortDate(m.fait.le)}</span>` : '<span class="tag late">en attente</span>'}</h3>
+      ${reste ? `<div class="table-scroll"><table><thead><tr><th>Client</th><th>Ticket</th><th>Offre</th><th>Travail</th><th>Signé</th><th>Déplacements</th></tr></thead><tbody>${tickets.map(t => `<tr><td>${esc(t.client)}</td><td><a href="${ticketUrl(t.ticket)}" target="_blank" rel="noopener">${esc(t.ticket)}</a></td><td>${esc(t.offre || '')}</td><td>${t.minutes} min</td><td>${t.heures ?? '?'} h</td><td>${t.deplacements}</td></tr>`).join('')}</tbody></table></div>
+      ${faPjControle(m.controle)}
+      ${faBouton('Copier les lignes', 'projet-copier:' + m.mois)} ${faBouton('Marquer comme reporté', 'projet-fait:' + m.mois, false, true)}` : faBouton('Remettre en attente', 'projet-rouvrir:' + m.mois)}`;
+  };
+  $('faProjets').innerHTML = `<details class="panel"${attente.length ? ' open' : ''}>
+    <summary><b>Fichier projet</b> <span class="count${attente.length ? ' hot' : ''}">${attente.length} mois en attente</span> ${faEtat(etat, false)}</summary>
+    <p class="hint" style="margin-top:.6rem">Il arrive après la facturation : chaque mois reste ici jusqu’à ton clic. Rien n’est écrit dans le fichier. Dépose le fichier OPS-PJ dans tes Téléchargements.</p>
+    ${fichiers.length ? faListe(fichiers.map(f => `${esc(f.nom)} · ${shortDate(f.le)} ${faBouton('Contrôler', 'projet-controle:' + f.nom)}`)) : ''}
+    ${mois.map(carte).join('') || '<p class="hint">Aucune ligne partie en projet pour l’instant.</p>'}
+  </details>`;
 }
 function faEtat(s, fini) {
   if (!s) return fini ? '<span class="tag sure">fait</span>' : '';
@@ -2614,7 +2658,7 @@ function afficherFacturation() {
   // 7. Clôture
   const projets = r ? [].concat(r.projets || []) : [];
   parts.push(faPanneau(7, 'Clôture', m.clos ? '<span class="tag sure">mois clos</span>' : '', `
-    ${projets.length ? '<h3>À reporter dans ton fichier projet</h3>' + faListe(projets.map(p => `${esc(p.Client)} · ${esc(p.Offre)} · ${esc(p.Ticket)} · ${p['Minutes travail'] ?? 0} min · ${p['Heures signees'] ?? '?'} h signées · ${p['Deplacements (forfaits)'] ?? 0} déplacement(s)`)) : ''}
+    ${projets.length ? '<h3>Part au fichier projet (suivi en haut de l’onglet)</h3>' + faListe(projets.map(p => `${esc(p.Client)} · ${esc(p.Offre)} · ${esc(p.Ticket)} · ${p['Minutes travail'] ?? 0} min · ${p['Heures signees'] ?? '?'} h signées · ${p['Deplacements (forfaits)'] ?? 0} déplacement(s)`)) : ''}
     ${faBouton('Clore le mois', 'clore', !(ja && ja.ok) || m.clos, true)}`));
   // Clients facturés par quelqu'un d'autre : à part, sans décision ni coloration.
   const v = fa.verification;
@@ -2644,6 +2688,24 @@ async function faAction(action, bouton) {
   const mois = faMois;
   try {
     if (verbe === 'filtre') { faFiltre = arg; afficherFacturation(); return; }
+    if (verbe === 'projet-copier') {
+      const m = [].concat(faPj.mois || []).find(x => x.mois === arg);
+      const texte = [].concat(m.lignes || []).map(l => [l.Client, l.Ticket, l.Offre || '', l.Date, l.Auteur, l.Minutes, l.Type || ''].join('\t')).join('\n');
+      await copyText(texte, 'Lignes copiées.');
+      return;
+    }
+    if (verbe === 'projet-fait') {
+      const m = [].concat(faPj.mois || []).find(x => x.mois === arg), c = m && m.controle;
+      const manque = c ? [].concat(c.manquantes || []).length : 0;
+      if (!c && !confirm(`${arg} n’a pas été contrôlé avec un fichier OPS-PJ. Le marquer quand même comme reporté ?`)) return;
+      if (manque && !confirm(`${manque} ligne(s) de ${arg} sont absentes du fichier. Le marquer quand même comme reporté ?`)) return;
+    }
+    if (verbe === 'projet-fait' || verbe === 'projet-rouvrir') {
+      toast((await api('POST', '/api/facturation/projet/fait', { mois: arg, fait: verbe === 'projet-fait' })).message);
+      chargerProjets();
+      return;
+    }
+    if (verbe === 'projet-controle') { toast((await api('POST', '/api/facturation/etape', { mois, etape: 'projet', nom: arg })).message); chargerFacturation(); return; }
     if (verbe === 'fichier') { toast((await api('POST', '/api/facturation/fichier', { mois, nom: arg })).message); }
     else if (verbe === 'etape') { toast((await api('POST', '/api/facturation/etape', { mois, etape: arg })).message); }
     else if (verbe === 'reconduire') {
@@ -2792,6 +2854,7 @@ async function load() {
     elements = a.elements || [];
     renderAll();
     await loadAnnuaire();
+    chargerProjets();
     state = await api('GET', '/api/etat');
     renderSettings();
     renderCounts();

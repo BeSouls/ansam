@@ -45,7 +45,7 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
     $sources = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^Jira.*\.(xlsx|csv)$' } | Sort-Object LastWriteTime -Descending | ForEach-Object { $_.Name })
     $disponibles = @(Get-ChildItem -LiteralPath $racine -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}$' } | Sort-Object Name -Descending | ForEach-Object { $_.Name })
     $etapes = [ordered]@{}
-    foreach ($e in 'moteur', 'controles', 'verification', 'analyse') {
+    foreach ($e in 'moteur', 'controles', 'verification', 'analyse', 'projet') {
         $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$e.json")
         if ($state -and $state.mois -ne $Mois) { $state = $null }
         if ($state -and $state.etat -eq 'en_cours') {
@@ -154,6 +154,41 @@ function Set-SmFactureDecision($Config, $Posted) {
         if ($toutes.Count) { $decisions.Lignes | Add-Member -NotePropertyName $key -NotePropertyValue $toutes }
     }
     Save-SmFactureDecisions $decisions $racine $mois
+}
+
+# Fichier projet (OPS-PJ_<mois>.xlsx) : il arrive après la facturation. Chaque mois reste en attente jusqu'à ton « reporté ».
+function Get-SmFactureProjetEtat([string]$Racine) {
+    $lu = Read-SmJson (Join-Path $Racine 'fichier-projet.json')
+    $etat = [ordered]@{ faits = [ordered]@{}; controles = [ordered]@{} }
+    if ($lu) {
+        foreach ($p in @($lu.faits.PSObject.Properties)) { $etat.faits[$p.Name] = $p.Value }
+        foreach ($p in @($lu.controles.PSObject.Properties)) { $etat.controles[$p.Name] = $p.Value }
+    }
+    $etat
+}
+
+function Get-SmFactureProjets($Config) {
+    $racine = Get-SmFactureRacine $Config
+    $etat = Get-SmFactureProjetEtat $racine
+    $mois = @(Get-ChildItem -LiteralPath $racine -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}$' } | Sort-Object Name | ForEach-Object {
+        $file = Join-Path $_.FullName 'lignes-projet.json'
+        if (Test-Path -LiteralPath $file) {
+            $lignes = @([IO.File]::ReadAllText($file, [Text.Encoding]::UTF8).TrimStart([char]0xFEFF) | ConvertFrom-Json | ForEach-Object { $_ })
+            if ($lignes.Count) { [ordered]@{ mois = $_.Name; lignes = $lignes; fait = $etat.faits[$_.Name]; controle = $etat.controles[$_.Name] } }
+        }
+    })
+    $downloads = Join-Path $env:USERPROFILE 'Downloads'
+    $fichiers = @(Get-ChildItem -LiteralPath $downloads -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^OPS-PJ[^\\/:*?"<>|]*\.xlsx$' } |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 5 | ForEach-Object { [ordered]@{ nom = $_.Name; le = $_.LastWriteTime.ToString('o'); taille = $_.Length } })
+    [ordered]@{ mois = $mois; fichiers = $fichiers; controles = $etat.controles } | ConvertTo-Json -Depth 8 -Compress
+}
+
+function Set-SmFactureProjetFait($Config, [string]$Mois, [bool]$Fait) {
+    Assert-SmFactureMois $Mois
+    $racine = Get-SmFactureRacine $Config
+    $etat = Get-SmFactureProjetEtat $racine
+    if ($Fait) { $etat.faits[$Mois] = [ordered]@{ le = (Get-Date).ToString('o') } } else { $etat.faits.Remove($Mois) }
+    Write-SmJson (Join-Path $racine 'fichier-projet.json') $etat
 }
 
 function Get-SmFactureScript($Config, [string]$Mois, [bool]$Appliquer) {
