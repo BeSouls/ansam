@@ -57,8 +57,8 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
     # Décisions déjà prises pour ce mois, sur les tickets du mois.
     $result = Get-SmJsonBrut (Join-Path $dir 'resultat.json')
     $valides = [ordered]@{}
+    $decisions = Get-SmFactureDecisions $racine
     if ($result -ne 'null') {
-        $decisions = Get-SmFactureDecisions $racine
         foreach ($key in @(($result | ConvertFrom-Json).lignes | ForEach-Object { [string]$_.Ticket } | Sort-Object -Unique)) {
             $d = Find-SmFactureDecision $decisions $key $Mois
             $finMois = '-{0}-{1}' -f $Mois.Substring(5, 2), $Mois.Substring(0, 4)
@@ -71,7 +71,7 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
     foreach ($m in 'simulation', 'application') { $journaux[$m] = Read-SmJson (Join-Path $dir "journal-$m.json") }
     $script = $(if (Test-Path -LiteralPath $ts) { (Get-Item -LiteralPath $ts).LastWriteTime.ToString('o') } else { $null })
     $decisionsLe = (Get-Item -LiteralPath (Join-Path $racine 'decisions.json')).LastWriteTime.ToString('o')
-    $meta = [ordered]@{ mois = $Mois; disponibles = $disponibles; candidats = $candidats; sources = $sources; etapes = $etapes; decisions = $valides
+    $meta = [ordered]@{ mois = $Mois; disponibles = $disponibles; candidats = $candidats; sources = $sources; etapes = $etapes; decisions = $valides; offres = $decisions.Offres
                         journaux = $journaux; scriptLe = $script; decisionsLe = $decisionsLe; clos = (Test-Path -LiteralPath (Join-Path $dir 'cloture.json')) } | ConvertTo-Json -Depth 8 -Compress
     '{"meta":' + $meta + ',"resultat":' + $result + ',"controles":' + (Get-SmJsonBrut (Join-Path $dir 'controles.json')) +
         ',"propositions":' + (Get-SmJsonBrut (Join-Path $dir 'propositions.json')) + ',"verification":' + (Get-SmJsonBrut (Join-Path $dir 'verification.json')) + '}'

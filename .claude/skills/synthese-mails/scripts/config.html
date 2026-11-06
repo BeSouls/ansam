@@ -2514,8 +2514,14 @@ function faLigne(t, l, i, ex) {
     <select class="field" aria-label="Décision de la ligne du ${esc(l.Date)}"><option value="">Suit le ticket</option>${options}</select>
     <input class="field" type="text" placeholder="Motif de la ligne" aria-label="Motif de la ligne du ${esc(l.Date)}" value="${esc(x ? x.motif : '')}"${x ? '' : ' hidden'}></li>`;
 }
+// Offres consignées dans le registre : celle qui couvre le ticket est proposée, jamais appliquée seule.
+const faOffres = t => Object.entries(fa.meta.offres || {}).filter(([, o]) => o && o.Client === t.client).map(([cle, o]) => ({ cle, ...o }));
+const faOffreTicket = t => faOffres(t).find(o => [].concat(o.Tickets || []).includes(t.cle));
+const faOffreMotif = o => `Couvert par l’offre ${o.Reference || o.cle} (${o.Objet || ''}), ${o.HeuresSignees || 0} h signées le ${o.Signee || '?'}.`;
 function faCarte(t) {
   const p = t.prop, a = p && p.p1, b = p && p.p2, ex = faExceptions(t);
+  const offre = faOffreTicket(t), offres = faOffres(t), offreChoisie = (t.prop && t.prop.p1 && t.prop.p1.offre) || (offre && offre.cle) || '';
+  const repere = offre ? `<span class="tag ${offre.HeuresSignees ? 'plus' : ''}">offre ${esc(offre.Reference || offre.cle)} : ${offre.HeuresSignees ? offre.HeuresSignees + ' h signées' : 'licence seule, sans heures'}</span>` : '';
   const defaut = (t.decision && t.decision.statut) || (a && a.statut) || '';
   const options = Object.entries(faStatuts).map(([k, v]) => `<option value="${k}"${k === defaut ? ' selected' : ''}>${esc(v)}</option>`).join('');
   const lien = ticketUrl(t.cle);
@@ -2527,7 +2533,7 @@ function faCarte(t) {
   const lignesDiff = faLignesDifferentes(p) ? '<span class="tag late">lignes différentes selon la lecture</span>' : '';
   const ambigu = faAmbigu(t) ? '<span class="tag late">ligne à préciser</span>' : '';
   return `<div class="fa-carte" data-cle="${esc(t.cle)}">
-    <div class="head"><a class="mono" href="${lien}" target="_blank" rel="noopener">${esc(t.cle)}</a> <span class="title">${esc(t.resume)}</span> <span class="tag">${esc(t.client)}</span> <span class="tag">${t.minutes} min</span> ${accord} ${jugement} ${prise} ${aPart} ${lignesDiff} ${ambigu}</div>
+    <div class="head"><a class="mono" href="${lien}" target="_blank" rel="noopener">${esc(t.cle)}</a> <span class="title">${esc(t.resume)}</span> <span class="tag">${esc(t.client)}</span> <span class="tag">${t.minutes} min</span> ${accord} ${jugement} ${prise} ${aPart} ${lignesDiff} ${ambigu} ${repere}</div>
     <details${ex.size ? ' open' : ''}><summary class="meta">${t.lignes.length} lignes</summary><ul class="fa-lignes">${t.lignes.map((l, i) => faLigne(t, l, i, ex)).join('')}</ul></details>
     ${ancienne ? `<div class="why">${esc(ancienne.Motif || '')} ${faBouton('Reconduire cette décision', 'reconduire:' + t.cle)}</div>` : ''}
     ${a ? `<div class="fa-prop"><b>Lecture 1 :</b> ${esc(faMotifProp(a))}<div>${esc(a.motif || '')}</div><div class="meta">Source : ${esc(a.source || '—')}</div>${faLignesProp(a)}</div>` : ''}
@@ -2536,6 +2542,9 @@ function faCarte(t) {
       <select class="field" aria-label="Décision pour ${esc(t.cle)}"><option value="">Choisir</option>${options}</select>
       <input class="field" type="text" placeholder="Motif" aria-label="Motif pour ${esc(t.cle)}" value="${esc((t.decision && t.decision.motif) || (a && a.motif) || '')}">
       ${faBouton(t.decision ? 'Modifier' : 'Valider', 'decider:' + t.cle, false, true)}
+    </div>
+    <div class="fa-offre" style="margin-top:.4rem"${defaut === 'P' ? '' : ' hidden'}>
+      <select class="field" aria-label="Offre pour ${esc(t.cle)}"><option value="">Choisir l’offre</option>${offreChoisie && !offres.some(o => o.cle === offreChoisie) ? `<option selected>${esc(offreChoisie)}</option>` : ''}${offres.map(o => `<option value="${esc(o.cle)}"${o.cle === offreChoisie ? ' selected' : ''}>${esc(o.Reference || o.cle)} · ${esc(o.Objet || '')} · ${o.HeuresSignees || 0} h</option>`).join('')}</select>
     </div>
   </div>`;
 }
@@ -2648,8 +2657,11 @@ async function faAction(action, bouton) {
       const meme = p.statut === statut;
       const lignes = [...card.querySelectorAll('.fa-ligne')].filter(li => li.querySelector('select') && li.querySelector('select').value)
         .map(li => faLigneEnvoi(t.lignes[Number(li.dataset.i)], li.querySelector('select').value, li.querySelector('input').value.trim()));
+      const offreCle = statut === 'P' ? card.querySelector('.fa-offre select').value : '';
+      if (statut === 'P' && !offreCle) { toast('Choisis l’offre du projet.', null, true); return; }
+      const offreVue = faOffres(t).find(o => o.cle === offreCle);
       await api('POST', '/api/facturation/decision', { mois, cle: arg, client: t.client, statut, motif, source: meme ? p.source : '', confiance: meme ? p.confiance : 'forte',
-        deplacements: meme ? p.deplacements : null, motifDeplacements: meme ? p.motifDeplacements : null, offre: meme ? p.offre : null, heuresOffre: meme ? p.heuresOffre : null, lignes });
+        deplacements: meme ? p.deplacements : null, motifDeplacements: meme ? p.motifDeplacements : null, offre: offreCle || null, heuresOffre: offreVue ? offreVue.HeuresSignees : (meme ? p.heuresOffre : null), lignes });
       toast(`${arg} : décision enregistrée.`);
     } else if (verbe === 'valider-accords') {
       const list = faTickets().filter(faValidable);
@@ -2683,6 +2695,13 @@ $('p-facturation').addEventListener('click', e => {
   if (b) faAction(b.dataset.fa, b);
 });
 $('p-facturation').addEventListener('change', e => {
+  if (e.target.matches('.fa-choix select')) {
+    const carte = e.target.closest('.fa-carte'), projet = e.target.value === 'P';
+    carte.querySelector('.fa-offre').hidden = !projet;
+    const t = projet && faTickets().find(x => x.cle === carte.dataset.cle), o = t && faOffreTicket(t);
+    if (o) carte.querySelector('.fa-choix input').value = faOffreMotif(o);
+    return;
+  }
   if (!e.target.matches('.fa-ligne select')) return;
   const motif = e.target.nextElementSibling;
   motif.hidden = !e.target.value;
