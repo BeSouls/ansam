@@ -257,6 +257,11 @@
   .fa-etape h3 { font-size: .875rem; margin: .9rem 0 .25rem; }
   .fa-lignes { margin: .35rem 0; padding-left: 1.1rem; font-size: .8125rem; }
   .fa-lignes li { margin: .15rem 0; }
+  .fa-ligne { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .fa-ligne .txt { flex: 1 1 20rem; display: list-item; }
+  .fa-ligne select.field { width: 11rem; padding: .2rem .4rem; font-size: .75rem; }
+  .fa-ligne input.field { flex: 1 1 14rem; width: auto; padding: .2rem .4rem; font-size: .75rem; }
+  .fa-ligne input[hidden] { display: none; }
   .fa-carte { border-top: 1px solid var(--line); padding: .7rem 0; }
   .fa-carte .head { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
   .fa-prop { font-size: .8125rem; margin-top: .35rem; }
@@ -2439,7 +2444,7 @@ document.addEventListener('click', e => {
 // Chaque étape s'appuie sur la précédente. Rien n'écrit dans Jira ni dans le fichier commun :
 // le script se lance dans Excel, et son journal revient ici pour être contrôlé ligne à ligne.
 let fa = null, faMois = null, faTimer = null, faFiltre = 'adecider';
-const faStatuts = { N: 'Non facturé', I: 'Inclus', Q: 'Quota', QX: 'Compte (quota)', F: 'Facturé', P: 'Projet' };
+const faStatuts = { N: 'Non facturé', I: 'Inclus', Q: 'Quota', QX: 'Quota, compte utilisateur', F: 'Facturé', P: 'Projet' };
 const faMoisDefaut = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 
 async function chargerFacturation() {
@@ -2477,8 +2482,40 @@ function faTickets() {
     .sort((a, b) => a.client.localeCompare(b.client) || a.cle.localeCompare(b.cle));
 }
 const faMotifProp = p => p ? `${faStatuts[p.statut] || p.statut}${p.jugement ? ' · jugement' : ''} · ${p.confiance || ''}` : 'pas de réponse';
+const faNorm = s => String(s || '').replace(/\s+/g, ' ').trim();
+// Une ligne sous le seuil ou automatique reste non facturée : le moteur l'écarte avant toute décision.
+const faLigneLibre = l => !/^Ligne automatique/.test(l.Regle || '');
+// Une lecture ne donne que la date et la durée : plusieurs lignes du même jour peuvent lui correspondre.
+function faCible(t, e) {
+  return t.lignes.filter(l => l.Date === (e.Date || e.date) && Number(l.Minutes) === Number(e.Minutes ?? e.minutes)
+    && (!e.Auteur || String(l.Auteur).includes(e.Auteur)) && (!e.Commentaire || faNorm(l.Commentaire) === faNorm(e.Commentaire)));
+}
+function faExceptions(t) {
+  const liste = t.decision ? [].concat(t.decision.lignes || []) : [].concat((t.prop && t.prop.p1 && t.prop.p1.lignes) || []);
+  const m = new Map();
+  liste.forEach(e => faCible(t, e).filter(faLigneLibre).forEach(l => m.set(l, { statut: e.Statut || e.statut, motif: e.Motif || e.motif || '' })));
+  return m;
+}
+const faSignature = x => JSON.stringify([].concat((x && x.lignes) || []).map(e => [e.date, Number(e.minutes), e.statut].join('|')).sort());
+const faLignesDifferentes = p => !!(p && p.p1 && p.p2 && faSignature(p.p1) !== faSignature(p.p2));
+const faAmbigu = t => !t.decision && !!(t.prop && t.prop.p1) && [].concat(t.prop.p1.lignes || []).some(e => faCible(t, e).length !== 1);
+// La validation groupée ne prend que ce que les deux lectures disent à l'identique, lignes comprises.
+function faValidable(t) {
+  const p = t.prop;
+  return !t.decision && !!p && !!p.accord && !(p.p1 && p.p1.jugement) && !(p.p2 && p.p2.jugement) && !faLignesDifferentes(p) && !faAmbigu(t);
+}
+const faLigneEnvoi = (l, statut, motif) => ({ date: l.Date, minutes: l.Minutes, auteur: l.Auteur, commentaire: l.Commentaire, statut, motif });
+const faLignesProp = x => [].concat((x && x.lignes) || []).map(e => `<div class="meta">À part : ${esc(e.date)} · ${esc(e.minutes)} min · ${esc(faStatuts[e.statut] || e.statut)} · ${esc(e.motif || '')}</div>`).join('');
+function faLigne(t, l, i, ex) {
+  const x = ex.get(l), texte = `${esc(l.Date)} · ${esc(l.Auteur)} · ${l.Minutes} min · ${esc(l.Type || '')} · <b>${esc(l.Decision || '')}</b> · ${esc(String(l.Commentaire || '').slice(0, 140))}`;
+  if (!faLigneLibre(l)) return `<li class="fa-ligne" data-i="${i}"><span class="txt">${texte}</span></li>`;
+  const options = Object.entries(faStatuts).filter(([k]) => k !== 'P').map(([k, v]) => `<option value="${k}"${x && x.statut === k ? ' selected' : ''}>${esc(v)}</option>`).join('');
+  return `<li class="fa-ligne" data-i="${i}"><span class="txt">${texte}</span>
+    <select class="field" aria-label="Décision de la ligne du ${esc(l.Date)}"><option value="">Suit le ticket</option>${options}</select>
+    <input class="field" type="text" placeholder="Motif de la ligne" aria-label="Motif de la ligne du ${esc(l.Date)}" value="${esc(x ? x.motif : '')}"${x ? '' : ' hidden'}></li>`;
+}
 function faCarte(t) {
-  const p = t.prop, a = p && p.p1, b = p && p.p2;
+  const p = t.prop, a = p && p.p1, b = p && p.p2, ex = faExceptions(t);
   const defaut = (t.decision && t.decision.statut) || (a && a.statut) || '';
   const options = Object.entries(faStatuts).map(([k, v]) => `<option value="${k}"${k === defaut ? ' selected' : ''}>${esc(v)}</option>`).join('');
   const lien = ticketUrl(t.cle);
@@ -2486,12 +2523,15 @@ function faCarte(t) {
   const jugement = (a && a.jugement) || (b && b.jugement) ? '<span class="tag check">jugement</span>' : '';
   const prise = t.decision ? `<span class="tag plus">décidé : ${esc(faStatuts[t.decision.statut] || t.decision.statut)}</span>` : '';
   const ancienne = [...t.lignes].find(l => /autre mois/.test(l.Regle || ''));
+  const aPart = ex.size ? `<span class="tag check">${ex.size} ligne${ex.size > 1 ? 's' : ''} à part</span>` : '';
+  const lignesDiff = faLignesDifferentes(p) ? '<span class="tag late">lignes différentes selon la lecture</span>' : '';
+  const ambigu = faAmbigu(t) ? '<span class="tag late">ligne à préciser</span>' : '';
   return `<div class="fa-carte" data-cle="${esc(t.cle)}">
-    <div class="head"><a class="mono" href="${lien}" target="_blank" rel="noopener">${esc(t.cle)}</a> <span class="title">${esc(t.resume)}</span> <span class="tag">${esc(t.client)}</span> <span class="tag">${t.minutes} min</span> ${accord} ${jugement} ${prise}</div>
-    <details><summary class="meta">${t.lignes.length} lignes</summary><ul class="fa-lignes">${t.lignes.map(l => `<li>${esc(l.Date)} · ${esc(l.Auteur)} · ${l.Minutes} min · ${esc(l.Type || '')} · <b>${esc(l.Decision || '')}</b> · ${esc(String(l.Commentaire || '').slice(0, 140))}</li>`).join('')}</ul></details>
+    <div class="head"><a class="mono" href="${lien}" target="_blank" rel="noopener">${esc(t.cle)}</a> <span class="title">${esc(t.resume)}</span> <span class="tag">${esc(t.client)}</span> <span class="tag">${t.minutes} min</span> ${accord} ${jugement} ${prise} ${aPart} ${lignesDiff} ${ambigu}</div>
+    <details${ex.size ? ' open' : ''}><summary class="meta">${t.lignes.length} lignes</summary><ul class="fa-lignes">${t.lignes.map((l, i) => faLigne(t, l, i, ex)).join('')}</ul></details>
     ${ancienne ? `<div class="why">${esc(ancienne.Motif || '')} ${faBouton('Reconduire cette décision', 'reconduire:' + t.cle)}</div>` : ''}
-    ${a ? `<div class="fa-prop"><b>Lecture 1 :</b> ${esc(faMotifProp(a))}<div>${esc(a.motif || '')}</div><div class="meta">Source : ${esc(a.source || '—')}</div></div>` : ''}
-    ${b ? `<div class="fa-prop"><b>Lecture 2 :</b> ${esc(faMotifProp(b))}<div>${esc(b.motif || '')}</div><div class="meta">Source : ${esc(b.source || '—')}</div></div>` : ''}
+    ${a ? `<div class="fa-prop"><b>Lecture 1 :</b> ${esc(faMotifProp(a))}<div>${esc(a.motif || '')}</div><div class="meta">Source : ${esc(a.source || '—')}</div>${faLignesProp(a)}</div>` : ''}
+    ${b ? `<div class="fa-prop"><b>Lecture 2 :</b> ${esc(faMotifProp(b))}<div>${esc(b.motif || '')}</div><div class="meta">Source : ${esc(b.source || '—')}</div>${faLignesProp(b)}</div>` : ''}
     <div class="fa-choix">
       <select class="field" aria-label="Décision pour ${esc(t.cle)}"><option value="">Choisir</option>${options}</select>
       <input class="field" type="text" placeholder="Motif" aria-label="Motif pour ${esc(t.cle)}" value="${esc((t.decision && t.decision.motif) || (a && a.motif) || '')}">
@@ -2540,7 +2580,7 @@ function afficherFacturation() {
   // 5. Décisions
   const tickets = r ? faTickets() : [];
   const reste = tickets.filter(t => !t.decision && t.aTrancher > 0);
-  const propres = tickets.filter(t => !t.decision && t.prop && t.prop.accord && !(t.prop.p1 && t.prop.p1.jugement) && !(t.prop.p2 && t.prop.p2.jugement));
+  const propres = tickets.filter(faValidable);
   const vues = { adecider: tickets.filter(t => !t.decision), desaccords: tickets.filter(t => t.prop && !t.prop.accord), tous: tickets };
   const vue = vues[faFiltre] || tickets;
   parts.push(faPanneau(5, 'Tes décisions', reste.length ? `<span class="tag late">${reste.length} à trancher</span>` : (r ? '<span class="tag sure">rien à trancher</span>' : ''), `
@@ -2602,19 +2642,22 @@ async function faAction(action, bouton) {
       await api('POST', '/api/facturation/decision', { mois, cle: arg, client: t.client, reconduire: true });
       toast('Décision reconduite : recalcule pour l’appliquer.');
     } else if (verbe === 'decider') {
-      const card = bouton.closest('.fa-carte'), statut = card.querySelector('select').value, motif = card.querySelector('input').value;
+      const card = bouton.closest('.fa-carte'), statut = card.querySelector('.fa-choix select').value, motif = card.querySelector('.fa-choix input').value;
       if (!statut) { toast('Choisis une décision.', null, true); return; }
       const t = faTickets().find(x => x.cle === arg), p = (t.prop && t.prop.p1) || {};
       const meme = p.statut === statut;
+      const lignes = [...card.querySelectorAll('.fa-ligne')].filter(li => li.querySelector('select') && li.querySelector('select').value)
+        .map(li => faLigneEnvoi(t.lignes[Number(li.dataset.i)], li.querySelector('select').value, li.querySelector('input').value.trim()));
       await api('POST', '/api/facturation/decision', { mois, cle: arg, client: t.client, statut, motif, source: meme ? p.source : '', confiance: meme ? p.confiance : 'forte',
-        deplacements: meme ? p.deplacements : null, motifDeplacements: meme ? p.motifDeplacements : null, offre: meme ? p.offre : null, heuresOffre: meme ? p.heuresOffre : null, lignes: meme ? p.lignes : [] });
+        deplacements: meme ? p.deplacements : null, motifDeplacements: meme ? p.motifDeplacements : null, offre: meme ? p.offre : null, heuresOffre: meme ? p.heuresOffre : null, lignes });
       toast(`${arg} : décision enregistrée.`);
     } else if (verbe === 'valider-accords') {
-      const list = faTickets().filter(t => !t.decision && t.prop && t.prop.accord && !(t.prop.p1 && t.prop.p1.jugement) && !(t.prop.p2 && t.prop.p2.jugement));
+      const list = faTickets().filter(faValidable);
       if (!confirm(`Valider ${list.length} décisions proposées par les deux lectures ?`)) return;
       for (const t of list) {
         const p = t.prop.p1;
-        await api('POST', '/api/facturation/decision', { mois, cle: t.cle, client: t.client, statut: p.statut, motif: p.motif, source: p.source, confiance: p.confiance, deplacements: p.deplacements, motifDeplacements: p.motifDeplacements, offre: p.offre, heuresOffre: p.heuresOffre, lignes: p.lignes });
+        const lignes = [].concat(p.lignes || []).flatMap(e => faCible(t, e).filter(faLigneLibre).map(l => faLigneEnvoi(l, e.statut, e.motif)));
+        await api('POST', '/api/facturation/decision', { mois, cle: t.cle, client: t.client, statut: p.statut, motif: p.motif, source: p.source, confiance: p.confiance, deplacements: p.deplacements, motifDeplacements: p.motifDeplacements, offre: p.offre, heuresOffre: p.heuresOffre, lignes });
       }
       toast(`${list.length} décisions enregistrées : recalcule.`);
     } else if (verbe === 'script') {
@@ -2638,6 +2681,12 @@ $('faMois').onchange = e => { faMois = e.target.value; chargerFacturation(); };
 $('p-facturation').addEventListener('click', e => {
   const b = e.target.closest('[data-fa]');
   if (b) faAction(b.dataset.fa, b);
+});
+$('p-facturation').addEventListener('change', e => {
+  if (!e.target.matches('.fa-ligne select')) return;
+  const motif = e.target.nextElementSibling;
+  motif.hidden = !e.target.value;
+  if (e.target.value) motif.focus();
 });
 
 let runMail = false;

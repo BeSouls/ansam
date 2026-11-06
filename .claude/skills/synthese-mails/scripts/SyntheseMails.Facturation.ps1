@@ -61,7 +61,9 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
         $decisions = Get-SmFactureDecisions $racine
         foreach ($key in @(($result | ConvertFrom-Json).lignes | ForEach-Object { [string]$_.Ticket } | Sort-Object -Unique)) {
             $d = Find-SmFactureDecision $decisions $key $Mois
-            if ($d) { $valides[$key] = [ordered]@{ statut = $d.Statut; motif = $d.Motif; source = $d.Source; valide = [bool]$d.Valide; reconduite = (@($d.Reconduite) -contains $Mois) } }
+            $finMois = '-{0}-{1}' -f $Mois.Substring(5, 2), $Mois.Substring(0, 4)
+            $lignesDuMois = @(if ($decisions.Lignes.PSObject.Properties[$key]) { @($decisions.Lignes.$key | Where-Object { $_ -and ([string]$_.Date).EndsWith($finMois) }) })
+            if ($d) { $valides[$key] = [ordered]@{ statut = $d.Statut; motif = $d.Motif; source = $d.Source; valide = [bool]$d.Valide; reconduite = (@($d.Reconduite) -contains $Mois); lignes = $lignesDuMois } }
         }
     }
     $ts = Join-Path $dir "colorer-fichier-commun-$Mois.ts"
@@ -137,12 +139,19 @@ function Set-SmFactureDecision($Config, $Posted) {
             $new.Anciennes = @($existing.Anciennes)
         }
         $decisions.Tickets | Add-Member -NotePropertyName $key -NotePropertyValue ([pscustomobject]$new) -Force
-        foreach ($l in @($Posted.lignes | Where-Object { $_ })) {
-            $entry = [pscustomobject][ordered]@{ Date = [string]$l.date; Minutes = [int]$l.minutes; Statut = [string]$l.statut; Motif = [string]$l.motif; Confiance = 'forte'; Valide = $true; Mois = $mois }
-            if (-not $decisions.Lignes.PSObject.Properties[$key]) { $decisions.Lignes | Add-Member -NotePropertyName $key -NotePropertyValue @() }
-            $others = @($decisions.Lignes.$key | Where-Object { $_ -and -not ($_.Date -eq $entry.Date -and [int]$_.Minutes -eq $entry.Minutes) })
-            $decisions.Lignes.$key = @($others + $entry)
+        # Les décisions de ligne du mois sont remplacées par ce qui vient d'être validé : les autres mois ne bougent pas.
+        $finMois = '-{0}-{1}' -f $mois.Substring(5, 2), $mois.Substring(0, 4)
+        $gardees = @(if ($decisions.Lignes.PSObject.Properties[$key]) { @($decisions.Lignes.$key | Where-Object { $_ -and -not ([string]$_.Date).EndsWith($finMois) }) })
+        $nouvelles = foreach ($l in @($Posted.lignes | Where-Object { $_ })) {
+            if (@('N', 'I', 'Q', 'QX', 'F') -notcontains [string]$l.statut) { throw "Statut de ligne invalide : $($l.statut)" }
+            if (-not ([string]$l.date).EndsWith($finMois)) { throw "Ligne hors du mois : $($l.date)" }
+            $motifLigne = ([string]$l.motif).Trim()
+            [pscustomobject][ordered]@{ Date = [string]$l.date; Minutes = [int]$l.minutes; Auteur = [string]$l.auteur; Commentaire = [string]$l.commentaire; Statut = [string]$l.statut
+                Motif = $(if ($motifLigne) { $motifLigne } else { "Décision du TAM du $today" }); Source = "Décision du TAM du $today"; Confiance = 'forte'; Valide = $true; Mois = $mois }
         }
+        $toutes = @($gardees) + @($nouvelles | Where-Object { $_ })
+        if ($decisions.Lignes.PSObject.Properties[$key]) { [void]$decisions.Lignes.PSObject.Properties.Remove($key) }
+        if ($toutes.Count) { $decisions.Lignes | Add-Member -NotePropertyName $key -NotePropertyValue $toutes }
     }
     Save-SmFactureDecisions $decisions $racine $mois
 }
