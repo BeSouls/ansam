@@ -148,6 +148,13 @@ lanceur écrit `avancement.json` et la page affiche en haut du Suivi les tâches
 concernées et les nouveaux mails, avec les statuts venus de Jira, sans attendre
 la fin de l'analyse.
 
+**Facturation du mois** : l'onglet enchaîne l'outil de `AnsamDiag-Donnees\Facturation` :
+fichier du mois, calcul, contrôles croisés (Jira en direct, contrats récents, éléments
+Panoramix, agenda), deux lectures indépendantes de chaque ticket, tes décisions, report
+du script dans Excel avec contrôle du journal, clôture. `decisions.json` n'est écrit
+que sur ton clic, avec une sauvegarde à chaque fois. Le fichier commun reste modifié
+par toi seul, dans Excel.
+
 **Préparer** : l'onglet propose, sans rien écrire ni envoyer, de classer les tâches
 avant une absence (à finir, à passer, à garder, avec la note de passation et le
 message d'absence), de préparer la clôture d'un ticket (bouton **Clôturer** sur la

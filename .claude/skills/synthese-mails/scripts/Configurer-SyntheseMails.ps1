@@ -49,6 +49,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
+. (Join-Path $PSScriptRoot 'SyntheseMails.Facturation.ps1')
 
 $utf8 = New-Object Text.UTF8Encoding($false)
 $pagePath = Join-Path $PSScriptRoot 'config.html'
@@ -604,6 +605,43 @@ try {
                     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
                         -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" $options" | Out-Null
                     Send-Json $stream 200 ([ordered]@{ message = 'Préparation lancée, 1 à 3 minutes.' })
+                }
+                '^GET /api/facturation$' {
+                    Send-Response $stream 200 'application/json' (Get-SmFactureEtat (Get-SmConfig $WorkDir) $WorkDir ([string]$request.Query['mois']))
+                }
+                '^GET /api/facturation/script$' {
+                    Send-Response $stream 200 'text/plain' (Get-SmFactureScript (Get-SmConfig $WorkDir) ([string]$request.Query['mois']) ($request.Query['appliquer'] -eq '1'))
+                }
+                '^POST /api/facturation/fichier$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    $nom = Copy-SmFactureSource (Get-SmConfig $WorkDir) ([string]$posted.mois) ([string]$posted.nom)
+                    Send-Json $stream 200 ([ordered]@{ message = "Fichier repris : $nom." })
+                }
+                '^POST /api/facturation/etape$' {
+                    # Calcul, contrôles ou lecture des tickets : en arrière-plan. Rien n'est écrit dans Jira ni dans le fichier commun.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $etape = [string]$posted.etape; $mois = [string]$posted.mois
+                    if (@('moteur', 'controles', 'analyse') -notcontains $etape) { throw "Étape inconnue : $etape" }
+                    if ($mois -notmatch '^\d{4}-\d{2}$') { throw "Mois invalide : $mois" }
+                    $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json")
+                    if ($state -and $state.etat -eq 'en_cours' -and $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
+                    Write-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json") ([ordered]@{ etape = $etape; mois = $mois; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Facturation-Etape.ps1'
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Etape $etape -Mois $mois" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Étape lancée.' })
+                }
+                '^POST /api/facturation/decision$' {
+                    Set-SmFactureDecision (Get-SmConfig $WorkDir) ($request.Body | ConvertFrom-Json)
+                    Send-Json $stream 200 ([ordered]@{ message = 'Décision enregistrée.' })
+                }
+                '^POST /api/facturation/journal$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    Send-Json $stream 200 (Test-SmFactureJournal (Get-SmConfig $WorkDir) ([string]$posted.mois) ([string]$posted.mode) ([string]$posted.texte))
+                }
+                '^POST /api/facturation/cloture$' {
+                    Close-SmFacture (Get-SmConfig $WorkDir) ([string]($request.Body | ConvertFrom-Json).mois)
+                    Send-Json $stream 200 ([ordered]@{ message = 'Mois clos.' })
                 }
                 '^POST /api/squad/preparation$' {
                     # Préparation à la demande (même pour un jour d'absence ou férié) : en arrière-plan, 2 à 4 minutes.
