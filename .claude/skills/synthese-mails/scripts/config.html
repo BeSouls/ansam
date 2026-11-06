@@ -2476,7 +2476,8 @@ function faPjTickets(m) {
 function faPjControle(c) {
   if (!c) return '<p class="hint">Pas encore contrôlé : attends le fichier OPS-PJ de ce mois.</p>';
   const man = [].concat(c.manquantes || []), trop = [].concat(c.enTrop || []), pres = [].concat(c.presentes || []);
-  return `<p class="hint">${esc(c.fichier)} contrôlé le ${shortDate(c.le)} : ${pres.length} ligne(s) trouvée(s) sur ${c.attendues}.</p>
+  const vertes = pres.filter(x => x.vert).length;
+  return `<p class="hint">${esc(c.fichier)} contrôlé le ${shortDate(c.le)} : ${pres.length} ligne(s) trouvée(s) sur ${c.attendues}, dont ${vertes} en vert (team projet) et ${pres.length - vertes} sans fond (facturation).</p>
     ${man.length ? '<h3>Absentes du fichier</h3>' + faListe(man.map(x => `<b>${esc(x.ticket)}</b> ${esc(x.date)} · ${esc(x.auteur)} · ${x.minutes} min · ${esc(x.type || '')}`)) : ''}
     ${trop.length ? '<h3>Dans le fichier, mais pas parties en projet</h3>' + faListe(trop.map(x => `<b>${esc(x.client)} ${esc(x.ticket)}</b> ${esc(x.date)} · ${esc(x.auteur)} · ${x.minutes} min`)) : ''}`;
 }
