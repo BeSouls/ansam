@@ -433,7 +433,6 @@
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
-      <button role="tab" data-tab="facturation" aria-selected="false">Facturation du mois</button>
       <button role="tab" data-tab="preparer" aria-selected="false">Préparer</button>
       <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
       <button role="tab" data-tab="annuaire" aria-selected="false">Annuaire <span class="count" id="c-annuaire">–</span></button>
@@ -470,14 +469,6 @@
     <div id="list-variabilite"></div>
   </section>
 
-  <section class="pane" id="p-facturation" hidden>
-    <div class="toolbar">
-      <button class="chip" data-f="ouverts" aria-pressed="true">À traiter</button>
-      <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
-    </div>
-    <div id="list-facturation"></div>
-  </section>
-
   <section class="pane" id="p-attention" hidden>
     <div class="toolbar">
       <button class="chip" data-f="ouverts" aria-pressed="true">À voir</button>
@@ -487,7 +478,15 @@
   </section>
 
   <section class="pane" id="p-facturation" hidden>
-    <div class="bar" style="margin-bottom:.8rem"><label class="f" for="faMois" style="margin:0">Mois</label><select class="field" id="faMois" style="width:auto"></select></div>
+    <details class="panel">
+      <summary><b>Repéré dans les mails</b> <span class="count" id="c-facturation-mails">–</span></summary>
+      <div class="toolbar" style="margin-top:.8rem">
+        <button class="chip" data-f="ouverts" aria-pressed="true">À traiter</button>
+        <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
+      </div>
+      <div id="list-facturation"></div>
+    </details>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem"><label class="f" for="faMois" style="margin:0">Mois</label><select class="field" id="faMois" style="width:auto"></select></div>
     <div id="faCorps"></div>
   </section>
 
@@ -1812,6 +1811,7 @@ function renderCounts() {
   set('c-relancer', leaves().filter(relanceDays).length);
   set('c-variabilite', count('variabilite'));
   set('c-facturation', count('facturation'));
+  set('c-facturation-mails', count('facturation'));
   const lateAttention = elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && e.echeance && String(e.echeance).slice(0, 10) < today).length;
   set('c-attention', count('attention') + count('tam'), lateAttention);
   const waiting = leaves().filter(p => p.statut === 'attente_tiers').length;
