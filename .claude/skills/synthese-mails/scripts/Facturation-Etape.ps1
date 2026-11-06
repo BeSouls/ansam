@@ -42,6 +42,12 @@ $data = [string]$config.dossierAnsamDiag
 $racine = Join-Path $data 'Facturation'
 $dir = Join-Path $racine $Mois
 $statusFile = Join-Path $WorkDir "travaux\facturation-$Etape.json"
+
+# Client facturé par quelqu'un d'autre : toujours (Facturation = false) ou pour un mois (FacturationAutreMois).
+function Test-HorsFacturation($Fiche) {
+    if ($Fiche.Facturation -eq $false) { return $true }
+    return ($Fiche.FacturationAutreMois -and $Fiche.FacturationAutreMois.PSObject.Properties[$Mois])
+}
 function Set-Status([string]$State, [string]$Message) {
     Write-SmJson $statusFile ([ordered]@{ etape = $Etape; mois = $Mois; etat = $State; message = $Message; le = (Get-Date).ToString('o'); pid = $PID })
 }
@@ -141,7 +147,7 @@ function Invoke-Controles {
     $ecarts = New-Object System.Collections.ArrayList
     $fiches = @{}
     foreach ($f in Get-ChildItem -LiteralPath (Join-Path $racine 'Contrats') -Filter '*.json') { $x = Read-Fichier $f.FullName; $fiches[[string]$x.Code] = $x }
-    $billed = @($fiches.Values | Where-Object { $_.Facturation -ne $false })
+    $billed = @($fiches.Values | Where-Object { -not (Test-HorsFacturation $_) })
     $folder = Join-Path $dir 'dossiers'
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
     $complets = 0
@@ -247,7 +253,7 @@ function Invoke-Verification {
     $lines = @(Read-Fichier $file | ForEach-Object { $_ })
     $real = @($lines | Where-Object { $_.Auteur -ne 'Automation for Jira' })
     $fiches = @()
-    foreach ($f in Get-ChildItem -LiteralPath (Join-Path $racine 'Contrats') -Filter '*.json') { $x = Read-Fichier $f.FullName; if ($x.Facturation -eq $false) { $fiches += $x } }
+    foreach ($f in Get-ChildItem -LiteralPath (Join-Path $racine 'Contrats') -Filter '*.json') { $x = Read-Fichier $f.FullName; if (Test-HorsFacturation $x) { $fiches += $x } }
     $start = [datetime]::ParseExact("$Mois-01", 'yyyy-MM-dd', $SmInvariant)
     $end = $start.AddMonths(1).AddDays(-1)
     $epochStart = [DateTimeOffset]::new($start).ToUnixTimeMilliseconds()

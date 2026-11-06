@@ -2607,7 +2607,7 @@ function afficherFacturation() {
   parts.push(faPanneau(7, 'Clôture', m.clos ? '<span class="tag sure">mois clos</span>' : '', `
     ${projets.length ? '<h3>À reporter dans ton fichier projet</h3>' + faListe(projets.map(p => `${esc(p.Client)} · ${esc(p.Offre)} · ${esc(p.Ticket)} · ${p['Minutes travail'] ?? 0} min · ${p['Heures signees'] ?? '?'} h signées · ${p['Deplacements (forfaits)'] ?? 0} déplacement(s)`)) : ''}
     ${faBouton('Clore le mois', 'clore', !(ja && ja.ok) || m.clos, true)}`));
-  // Clients avec un SDM : à part, sans décision ni coloration.
+  // Clients facturés par quelqu'un d'autre : à part, sans décision ni coloration.
   const v = fa.verification;
   let verif = '';
   if (v) {
@@ -2626,7 +2626,7 @@ function afficherFacturation() {
       ${vi.length ? '<h3>Visites à l’agenda</h3>' + faListe(vi.map(x => `${esc(x.client)} · ${shortDate(x.date)} · ${esc(x.objet)} · ${x.deplacementSaisi ? 'déplacement saisi' : '<b>pas de déplacement saisi</b>'}`)) : ''}
       ${v.agendaNote ? `<p class="hint">${esc(v.agendaNote)}</p>` : ''}`;
   }
-  parts.push(`<div class="panel fa-etape"><h2>Clients avec un SDM ${faEtat(e.verification, !!v)}</h2><p class="hint">AVE et ZENIT : le SDM facture, tu vérifies. Rien n’est décidé ici et aucune ligne n’est colorée.</p>${faBouton(v ? 'Relancer' : 'Préparer la vérification', 'etape:verification', !r, true)}${verif}</div>`);
+  parts.push(`<div class="panel fa-etape"><h2>Facturés par quelqu’un d’autre ${faEtat(e.verification, !!v)}</h2><p class="hint">${v ? esc([].concat(v.clients || []).map(k => k.code).join(', ')) + ' : ' : ''}tu vérifies et tu informes. Rien n’est décidé ici et aucune ligne n’est colorée.</p>${faBouton(v ? 'Relancer' : 'Préparer la vérification', 'etape:verification', !r, true)}${verif}</div>`);
   box.innerHTML = parts.join('');
 }
 async function faAction(action, bouton) {
