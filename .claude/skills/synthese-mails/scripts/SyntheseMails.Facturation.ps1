@@ -196,18 +196,24 @@ function Test-SmFactureJournal($Config, [string]$Mois, [string]$Mode, [string]$T
     Add-Point ($rest.Success -and [int]$rest.Groups[1].Value -eq 0) "Lignes de tes clients non traitées : $($rest.Groups[1].Value)"
 
     $index = @{}
-    foreach ($l in @($data.lignes)) { $index["$($l.k)|$($l.d)|$($l.a)|$($l.m)"] = $l }
+    # Plusieurs lignes d'un ticket peuvent avoir le même jour, auteur et durée : elles restent toutes candidates.
+    foreach ($l in @($data.lignes)) {
+        $cleLigne = "$($l.k)|$($l.d)|$($l.a)|$($l.m)"
+        if (-not $index.ContainsKey($cleLigne)) { $index[$cleLigne] = New-Object System.Collections.ArrayList }
+        [void]$index[$cleLigne].Add($l)
+    }
     $changes = New-Object System.Collections.ArrayList
     $faux = 0
     foreach ($c in [regex]::Matches($Texte, '(?m)^ligne (\d+) \| (\S+) \| (\S+) \| (.+?) \| (\d+) min \| (.+?) \| (.*)$')) {
         $g = $c.Groups
-        $line = $index["$($g[2].Value)|$($g[3].Value)|$($g[4].Value)|$($g[5].Value)"]
+        $candidates = @($index["$($g[2].Value)|$($g[3].Value)|$($g[4].Value)|$($g[5].Value)"] | Where-Object { $_ })
         $quoi = $g[6].Value
         $target = [regex]::Match($quoi, '->\s*(\S+)')
-        $conforme = [bool]$line
-        if ($line -and $target.Success) {
+        $conforme = $candidates.Count -gt 0
+        if ($conforme -and $target.Success) {
             $versVert = $target.Groups[1].Value -match '(?i)vert|92D050'
-            $conforme = ($versVert -eq [bool]$line.vert)
+            $motifJournal = $g[7].Value.Trim()
+            $conforme = @($candidates | Where-Object { [bool]$_.vert -eq $versVert -and ([string]$_.motif).Trim() -eq $motifJournal }).Count -gt 0
         }
         if (-not $conforme) { $faux++ }
         [void]$changes.Add([ordered]@{ ligne = [int]$g[1].Value; ticket = $g[2].Value; date = $g[3].Value; auteur = $g[4].Value; minutes = [int]$g[5].Value; quoi = $quoi; decision = $g[7].Value.Trim(); conforme = $conforme })
