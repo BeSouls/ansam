@@ -8,6 +8,8 @@
     règles restent la référence (LISEZMOI.md).
 
     moteur     Facturation-Mois.ps1 sur le fichier du mois.
+    verification  Sans Claude, clients facturés par leur SDM : mêmes contrôles et résumé
+               des tickets à relire, sans aucune décision (<mois>\verification.json).
     controles  Sans Claude : compare le fichier du mois à Jira en direct (temps saisi,
                tickets absents), liste les contrats récents, rapproche les éléments de
                facturation de Panoramix et l'agenda, et écrit un dossier par ticket
@@ -25,7 +27,7 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [ValidateSet('moteur', 'controles', 'analyse')] [string]$Etape,
+    [Parameter(Mandatory)] [ValidateSet('moteur', 'controles', 'verification', 'analyse')] [string]$Etape,
     [Parameter(Mandatory)] [ValidatePattern('^\d{4}-\d{2}$')] [string]$Mois,
     [string]$Source,
     [string]$WorkDir = (Join-Path $env:USERPROFILE 'SyntheseMails'),
@@ -57,6 +59,61 @@ function Get-TicketsDuMois($Resultat) {
         [ordered]@{ cle = $_.Name; client = $first.Client; resume = $first.Resume; contrat = $first.Contrat
                     minutes = [int](($_.Group | Measure-Object Minutes -Sum).Sum); lignes = @($_.Group) }
     })
+}
+
+# Temps saisi d'un ticket sur le mois, par auteur : le fichier contre Jira.
+function Get-EcartsTemps($Acces, [string]$Key, [string]$Client, $Lignes, $DebutMs, $FinMs) {
+    $logs = New-Object System.Collections.ArrayList
+    $at = 0
+    do {
+        $page = Invoke-SmJira $Acces "/rest/api/3/issue/$Key/worklog?startedAfter=$DebutMs&startedBefore=$FinMs&startAt=$at&maxResults=200"
+        foreach ($w in @($page.worklogs)) { if ($w) { [void]$logs.Add($w) } }
+        $at += 200
+    } while ($at -lt [int]$page.total)
+    $jira = @{}
+    foreach ($w in ($logs | Where-Object { $_.author.displayName -ne 'Automation for Jira' })) { $who = [string]$w.author.displayName; $jira[$who] = [int]$jira[$who] + [int][math]::Round([int]$w.timeSpentSeconds / 60) }
+    $file = @{}
+    foreach ($l in $Lignes) { $file[[string]$l.Auteur] = [int]$file[[string]$l.Auteur] + [int]$l.Minutes }
+    foreach ($who in @(@($jira.Keys) + @($file.Keys) | Sort-Object -Unique)) {
+        if ([int]$jira[$who] -ne [int]$file[$who]) { [ordered]@{ code = 'TEMPS-DIFFERENT'; cle = $Key; client = $Client; auteur = $who; fichier = [int]$file[$who]; jira = [int]$jira[$who] } }
+    }
+}
+
+# Tickets avec du temps en Jira pour ces organisations, absents du fichier du mois. $null si la recherche échoue.
+function Get-TicketsAbsents($Acces, $Fiches, [string]$Debut, [string]$Fin, [string[]]$Connus) {
+    $orgs = @($Fiches | ForEach-Object { $_.Organisations } | Sort-Object -Unique | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' })
+    try {
+        $found = @(Find-SmJira $Acces "worklogDate >= `"$Debut`" AND worklogDate <= `"$Fin`" AND Organizations in ($($orgs -join ', '))" @('summary'))
+    } catch { Write-Warning "Recherche par organisation : $($_.Exception.Message)"; return $null }
+    , @($found | Where-Object { $Connus -notcontains [string]$_.key } | ForEach-Object { [ordered]@{ code = 'TICKET-ABSENT'; cle = $_.key; resume = $_.fields.summary } })
+}
+
+# Contrats récents : les tickets « Nouveau contrat » de la Factory, pour ces clients.
+function Get-ContratsRecents($Acces, [string[]]$Codes) {
+    @(Find-SmJira $Acces 'summary ~ "Nouveau contrat" AND created >= -180d ORDER BY created DESC' @('summary', 'status', 'created') | ForEach-Object {
+        $m = [regex]::Match([string]$_.fields.summary, '\b[A-Z]-([A-Z0-9]+)-(\d{6})-(\d+)-(.*)$')
+        if ($m.Success -and $Codes -contains $m.Groups[1].Value) {
+            [ordered]@{ client = $m.Groups[1].Value; reference = $m.Value.Substring(0, $m.Value.Length - $m.Groups[4].Length - 1); objet = $m.Groups[4].Value.Trim()
+                        ticket = $_.key; statut = $_.fields.status.name; creeLe = ([string]$_.fields.created).Substring(0, 10) }
+        }
+    })
+}
+
+# Visites à l'agenda chez ces clients, comparées aux lignes de déplacement. Rendez-vous lus par Export-OutlookAgenda.
+function Get-VisitesAgenda([string]$AgendaFile, [datetime]$Debut, [datetime]$Fin, $Fiches, $Lignes) {
+    if (-not (Test-Path -LiteralPath $AgendaFile)) { & (Join-Path $PSScriptRoot 'Export-OutlookAgenda.ps1') -Debut $Debut -Fin $Fin -OutputFile $AgendaFile | Out-Null }
+    $moved = @($Lignes | Where-Object { $_.Type -eq 'Déplacement' -or $_.Type -eq 'Sur site' })
+    foreach ($event in @((Read-Fichier $AgendaFile).evenements)) {
+        $text = "$($event.objet) $($event.lieu)"
+        foreach ($fiche in $Fiches) {
+            $word = @(([string]$fiche.Nom) -split '\s+' | Where-Object { $_.Length -ge 5 } | Select-Object -First 1)[0]
+            if ($text -notmatch "(?i)\b$([regex]::Escape([string]$fiche.Code))\b" -and -not ($word -and $text -match "(?i)\b$([regex]::Escape($word))\b")) { continue }
+            $day = ([string]$event.debut).Substring(0, 10)
+            $french = '{0}-{1}-{2}' -f $day.Substring(8, 2), $day.Substring(5, 2), $day.Substring(0, 4)
+            [ordered]@{ client = $fiche.Code; date = $day; objet = $event.objet; lieu = $event.lieu
+                        deplacementSaisi = [bool]@($moved | Where-Object { $_.Client -eq $fiche.Code -and $_.Date -eq $french }).Count }
+        }
+    }
 }
 
 function Invoke-Moteur {
@@ -102,22 +159,7 @@ function Invoke-Controles {
         $f = $issue.fields
 
         # Temps saisi : fichier du mois contre Jira.
-        $logs = New-Object System.Collections.ArrayList
-        $at = 0
-        do {
-            $page = Invoke-SmJira $acces "/rest/api/3/issue/$key/worklog?startedAfter=$epochStart&startedBefore=$epochEnd&startAt=$at&maxResults=200"
-            foreach ($w in @($page.worklogs)) { if ($w) { [void]$logs.Add($w) } }
-            $at += 200
-        } while ($at -lt [int]$page.total)
-        $jira = @{}
-        foreach ($w in ($logs | Where-Object { $_.author.displayName -ne 'Automation for Jira' })) { $who = [string]$w.author.displayName; $jira[$who] = [int]$jira[$who] + [int][math]::Round([int]$w.timeSpentSeconds / 60) }
-        $file = @{}
-        foreach ($l in $t.lignes) { $file[[string]$l.Auteur] = [int]$file[[string]$l.Auteur] + [int]$l.Minutes }
-        foreach ($who in @(@($jira.Keys) + @($file.Keys) | Sort-Object -Unique)) {
-            if ([int]$jira[$who] -ne [int]$file[$who]) {
-                [void]$ecarts.Add([ordered]@{ code = 'TEMPS-DIFFERENT'; cle = $key; client = $t.client; auteur = $who; fichier = [int]$file[$who]; jira = [int]$jira[$who] })
-            }
-        }
+        foreach ($e in @(Get-EcartsTemps $acces $key $t.client $t.lignes $epochStart $epochEnd)) { if ($e) { [void]$ecarts.Add($e) } }
 
         # Tous les commentaires, publics et internes.
         $comments = New-Object System.Collections.ArrayList
@@ -164,25 +206,14 @@ function Invoke-Controles {
 
     # Tickets avec du temps en Jira, absents du fichier du mois.
     Set-Status 'en_cours' 'Recherche des tickets absents'
-    $absents = New-Object System.Collections.ArrayList
     $connus = @(@($result.lignes) | ForEach-Object { [string]$_.Ticket } | Sort-Object -Unique)
-    $orgs = @($billed | ForEach-Object { $_.Organisations } | Sort-Object -Unique | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' })
-    $rechercheOk = $true
-    try {
-        $found = @(Find-SmJira $acces "worklogDate >= `"$debut`" AND worklogDate <= `"$fin`" AND Organizations in ($($orgs -join ', '))" @('summary'))
-        foreach ($i in $found) { if ($connus -notcontains [string]$i.key) { [void]$absents.Add([ordered]@{ code = 'TICKET-ABSENT'; cle = $i.key; resume = $i.fields.summary }) } }
-    } catch { $rechercheOk = $false; Write-Warning "Recherche par organisation : $($_.Exception.Message)" }
+    $absents = Get-TicketsAbsents $acces $billed $debut $fin $connus
+    $rechercheOk = $null -ne $absents
 
-    # Contrats récents : les tickets « Nouveau contrat » de la Factory, par client facturé.
+    # Contrats récents, par client facturé.
     Set-Status 'en_cours' 'Contrats récents'
     $codes = @($billed | ForEach-Object { [string]$_.Code })
-    $offres = @(Find-SmJira $acces 'summary ~ "Nouveau contrat" AND created >= -180d ORDER BY created DESC' @('summary', 'status', 'created') | ForEach-Object {
-        $m = [regex]::Match([string]$_.fields.summary, '\b[A-Z]-([A-Z0-9]+)-(\d{6})-(\d+)-(.*)$')
-        if ($m.Success -and $codes -contains $m.Groups[1].Value) {
-            [ordered]@{ client = $m.Groups[1].Value; reference = $m.Value.Substring(0, $m.Value.Length - $m.Groups[4].Length - 1); objet = $m.Groups[4].Value.Trim()
-                        ticket = $_.key; statut = $_.fields.status.name; creeLe = ([string]$_.fields.created).Substring(0, 10) }
-        }
-    })
+    $offres = @(Get-ContratsRecents $acces $codes)
     $projets = @(@($result.lignes) | Where-Object { $_.'Offre / projet' } | Group-Object 'Offre / projet' | ForEach-Object { [ordered]@{ projet = $_.Name; tickets = @($_.Group | ForEach-Object { $_.Ticket } | Sort-Object -Unique) } })
 
     # Éléments de facturation repérés par Panoramix.
@@ -193,29 +224,75 @@ function Invoke-Controles {
 
     # Agenda : visites chez un client facturé, à comparer aux lignes de déplacement.
     Set-Status 'en_cours' 'Agenda du mois'
-    $visites = New-Object System.Collections.ArrayList
     $agendaNote = $null
+    $visites = @()
     try {
         $agendaFile = Join-Path $dir 'agenda.json'
-        & (Join-Path $PSScriptRoot 'Export-OutlookAgenda.ps1') -Debut $start -Fin $end -OutputFile $agendaFile | Out-Null
-        $moved = @(@($result.lignes) | Where-Object { $_.Type -eq 'Déplacement' -or $_.Type -eq 'Sur site' })
-        foreach ($event in @((Read-Fichier $agendaFile).evenements)) {
-            $text = "$($event.objet) $($event.lieu)"
-            foreach ($fiche in $billed) {
-                $word = @(([string]$fiche.Nom) -split '\s+' | Where-Object { $_.Length -ge 5 } | Select-Object -First 1)[0]
-                if ($text -notmatch "(?i)\b$([regex]::Escape([string]$fiche.Code))\b" -and -not ($word -and $text -match "(?i)\b$([regex]::Escape($word))\b")) { continue }
-                $day = ([string]$event.debut).Substring(0, 10)
-                $french = '{0}-{1}-{2}' -f $day.Substring(8, 2), $day.Substring(5, 2), $day.Substring(0, 4)
-                [void]$visites.Add([ordered]@{ client = $fiche.Code; date = $day; objet = $event.objet; lieu = $event.lieu
-                                               deplacementSaisi = [bool]@($moved | Where-Object { $_.Client -eq $fiche.Code -and $_.Date -eq $french }).Count })
-            }
-        }
+        Remove-Item -LiteralPath $agendaFile -ErrorAction SilentlyContinue
+        $visites = @(Get-VisitesAgenda $agendaFile $start $end $billed @($result.lignes))
     } catch { $agendaNote = "Agenda non lu : $($_.Exception.Message)" }
 
     Write-Fichier (Join-Path $dir 'controles.json') ([ordered]@{
         genereLe = (Get-Date).ToString('o'); tickets = $tickets.Count; commentairesComplets = $complets; rechercheAbsents = $rechercheOk
         ecarts = @($ecarts); absents = @($absents); offres = @($offres); projets = @($projets); elements = @($elements); visites = @($visites); agendaNote = $agendaNote })
-    Set-Status 'ok' "$($tickets.Count) tickets lus, $($ecarts.Count) écarts de temps, $($absents.Count) tickets absents."
+    Set-Status 'ok' "$($tickets.Count) tickets lus, $($ecarts.Count) écarts de temps, $(@($absents).Count) tickets absents."
+}
+
+# Clients facturés par leur SDM : je vérifie et j'apporte des informations, sans rien décider.
+function Invoke-Verification {
+    $acces = Get-SmJiraAcces $WorkDir
+    if (-not $acces) { throw 'Jeton Jira absent : Definir-JetonJira.ps1.' }
+    $file = Join-Path $dir 'lignes-sdm.json'
+    if (-not (Test-Path -LiteralPath $file)) { throw 'Lance d''abord le calcul.' }
+    $lines = @(Read-Fichier $file | ForEach-Object { $_ })
+    $real = @($lines | Where-Object { $_.Auteur -ne 'Automation for Jira' })
+    $fiches = @()
+    foreach ($f in Get-ChildItem -LiteralPath (Join-Path $racine 'Contrats') -Filter '*.json') { $x = Read-Fichier $f.FullName; if ($x.Facturation -eq $false) { $fiches += $x } }
+    $start = [datetime]::ParseExact("$Mois-01", 'yyyy-MM-dd', $SmInvariant)
+    $end = $start.AddMonths(1).AddDays(-1)
+    $epochStart = [DateTimeOffset]::new($start).ToUnixTimeMilliseconds()
+    $epochEnd = [DateTimeOffset]::new($end.AddDays(1)).ToUnixTimeMilliseconds()
+
+    $groups = @($real | Group-Object Ticket)
+    $ecarts = New-Object System.Collections.ArrayList
+    $n = 0
+    foreach ($g in $groups) {
+        $n++
+        Set-Status 'en_cours' "Temps comparé à Jira : $n sur $($groups.Count) tickets"
+        foreach ($e in @(Get-EcartsTemps $acces $g.Name $g.Group[0].Client $g.Group $epochStart $epochEnd)) { if ($e) { [void]$ecarts.Add($e) } }
+    }
+    Set-Status 'en_cours' 'Tickets absents et contrats'
+    $connus = @($lines | ForEach-Object { [string]$_.Ticket } | Sort-Object -Unique)
+    $absents = Get-TicketsAbsents $acces $fiches $start.ToString('yyyy-MM-dd') $end.ToString('yyyy-MM-dd') $connus
+    $codes = @($fiches | ForEach-Object { [string]$_.Code })
+    $offres = @(Get-ContratsRecents $acces $codes)
+    $archives = Get-SmArchives $WorkDir
+    $elements = @($archives.elements | Where-Object { $_.type -eq 'facturation' -and $_.statut -eq 'a_traiter' -and $codes -contains [string]$_.client } | ForEach-Object {
+        [ordered]@{ id = $_.id; client = $_.client; element = $_.element; source = $_.source; certitude = $_.certitude }
+    })
+    $agendaNote = $null
+    $visites = @()
+    try { $visites = @(Get-VisitesAgenda (Join-Path $dir 'agenda.json') $start $end $fiches $lines) }
+    catch { $agendaNote = "Agenda non lu : $($_.Exception.Message)" }
+
+    $clients = @($fiches | ForEach-Object {
+        $code = [string]$_.Code
+        $own = @($real | Where-Object { $_.Client -eq $code })
+        $tickets = @($own | Group-Object Ticket | ForEach-Object {
+            $first = $_.Group[0]
+            [ordered]@{ cle = $_.Name; resume = $first.Resume; statutJira = $first.StatutJira; minutes = [int](($_.Group | Measure-Object Minutes -Sum).Sum)
+                        aFacturer = [int](($_.Group | Where-Object { $_.PremierPassage -eq 'Oui' } | Measure-Object Minutes -Sum).Sum)
+                        projet = @($_.Group | ForEach-Object { $_.Projet } | Where-Object { $_ } | Sort-Object -Unique) -join ', '
+                        auteurs = @($_.Group | ForEach-Object { $_.Auteur } | Sort-Object -Unique) -join ', ' }
+        } | Sort-Object { $_.minutes } -Descending)
+        [ordered]@{ code = $code; nom = $_.Nom; lignes = $own.Count; minutes = [int](($own | Measure-Object Minutes -Sum).Sum)
+                    aFacturer = [int](($own | Where-Object { $_.PremierPassage -eq 'Oui' } | Measure-Object Minutes -Sum).Sum)
+                    deplacements = @($own | Where-Object { $_.Type -eq 'Déplacement' -or $_.Type -eq 'Sur site' } | ForEach-Object { [ordered]@{ ticket = $_.Ticket; date = $_.Date; auteur = $_.Auteur; minutes = $_.Minutes; type = $_.Type } })
+                    tickets = $tickets }
+    })
+    Write-Fichier (Join-Path $dir 'verification.json') ([ordered]@{ genereLe = (Get-Date).ToString('o'); rechercheAbsents = ($null -ne $absents); clients = $clients
+        ecarts = @($ecarts); absents = @($absents); offres = $offres; elements = $elements; visites = $visites; agendaNote = $agendaNote })
+    Set-Status 'ok' "$($groups.Count) tickets comparés, $($ecarts.Count) écarts de temps, $(@($absents).Count) tickets absents."
 }
 
 function Invoke-Analyse {
@@ -300,6 +377,7 @@ try {
     switch ($Etape) {
         'moteur'    { Invoke-Moteur }
         'controles' { Invoke-Controles }
+        'verification' { Invoke-Verification }
         'analyse'   { Invoke-Analyse }
     }
 } catch {

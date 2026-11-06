@@ -45,7 +45,7 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
     $sources = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^Jira.*\.(xlsx|csv)$' } | Sort-Object LastWriteTime -Descending | ForEach-Object { $_.Name })
     $disponibles = @(Get-ChildItem -LiteralPath $racine -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}$' } | Sort-Object Name -Descending | ForEach-Object { $_.Name })
     $etapes = [ordered]@{}
-    foreach ($e in 'moteur', 'controles', 'analyse') {
+    foreach ($e in 'moteur', 'controles', 'verification', 'analyse') {
         $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$e.json")
         if ($state -and $state.mois -ne $Mois) { $state = $null }
         if ($state -and $state.etat -eq 'en_cours') {
@@ -72,7 +72,7 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
     $meta = [ordered]@{ mois = $Mois; disponibles = $disponibles; candidats = $candidats; sources = $sources; etapes = $etapes; decisions = $valides
                         journaux = $journaux; scriptLe = $script; decisionsLe = $decisionsLe; clos = (Test-Path -LiteralPath (Join-Path $dir 'cloture.json')) } | ConvertTo-Json -Depth 8 -Compress
     '{"meta":' + $meta + ',"resultat":' + $result + ',"controles":' + (Get-SmJsonBrut (Join-Path $dir 'controles.json')) +
-        ',"propositions":' + (Get-SmJsonBrut (Join-Path $dir 'propositions.json')) + '}'
+        ',"propositions":' + (Get-SmJsonBrut (Join-Path $dir 'propositions.json')) + ',"verification":' + (Get-SmJsonBrut (Join-Path $dir 'verification.json')) + '}'
 }
 
 # Copie le fichier téléchargé dans le dossier du mois. Le nom vient de la liste des Téléchargements.

@@ -153,7 +153,8 @@ fichier du mois, calcul, contrôles croisés (Jira en direct, contrats récents,
 Panoramix, agenda), deux lectures indépendantes de chaque ticket, tes décisions, report
 du script dans Excel avec contrôle du journal, clôture. `decisions.json` n'est écrit
 que sur ton clic, avec une sauvegarde à chaque fois. Le fichier commun reste modifié
-par toi seul, dans Excel.
+par toi seul, dans Excel. Les clients facturés par leur SDM ont une vue de vérification
+à part : mêmes contrôles, sans décision ni coloration.
 
 **Préparer** : l'onglet propose, sans rien écrire ni envoyer, de classer les tâches
 avant une absence (à finir, à passer, à garder, avec la note de passation et le

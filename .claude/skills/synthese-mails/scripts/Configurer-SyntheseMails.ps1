@@ -621,7 +621,7 @@ try {
                     # Calcul, contrôles ou lecture des tickets : en arrière-plan. Rien n'est écrit dans Jira ni dans le fichier commun.
                     $posted = $request.Body | ConvertFrom-Json
                     $etape = [string]$posted.etape; $mois = [string]$posted.mois
-                    if (@('moteur', 'controles', 'analyse') -notcontains $etape) { throw "Étape inconnue : $etape" }
+                    if (@('moteur', 'controles', 'verification', 'analyse') -notcontains $etape) { throw "Étape inconnue : $etape" }
                     if ($mois -notmatch '^\d{4}-\d{2}$') { throw "Mois invalide : $mois" }
                     $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json")
                     if ($state -and $state.etat -eq 'en_cours' -and $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }

@@ -2567,6 +2567,26 @@ function afficherFacturation() {
   parts.push(faPanneau(7, 'Clôture', m.clos ? '<span class="tag sure">mois clos</span>' : '', `
     ${projets.length ? '<h3>À reporter dans ton fichier projet</h3>' + faListe(projets.map(p => `${esc(p.Client)} · ${esc(p.Offre)} · ${esc(p.Ticket)} · ${p['Minutes travail'] ?? 0} min · ${p['Heures signees'] ?? '?'} h signées · ${p['Deplacements (forfaits)'] ?? 0} déplacement(s)`)) : ''}
     ${faBouton('Clore le mois', 'clore', !(ja && ja.ok) || m.clos, true)}`));
+  // Clients avec un SDM : à part, sans décision ni coloration.
+  const v = fa.verification;
+  let verif = '';
+  if (v) {
+    const ec = [].concat(v.ecarts || []), abs = [].concat(v.absents || []), of = [].concat(v.offres || []), el = [].concat(v.elements || []), vi = [].concat(v.visites || []);
+    verif = `<p class="hint">Comparaison à Jira : ${ec.length} écart de temps, ${v.rechercheAbsents ? abs.length + ' ticket absent' : 'recherche des absents impossible'}. Les minutes « à facturer » sont celles du premier passage du fichier, pas une décision.</p>
+      ${faListe(ec.map(x => `<b>${esc(x.client)} ${esc(x.cle)}</b> ${esc(x.auteur)} : fichier ${x.fichier} min, Jira ${x.jira} min`))}
+      ${faListe(abs.map(x => `<b>${esc(x.cle)}</b> absent du fichier : ${esc(x.resume)}`))}
+      ${[].concat(v.clients || []).map(k => {
+        const dep = [].concat(k.deplacements || []), tickets = [].concat(k.tickets || []);
+        return `<h3>${esc(k.code)} · ${k.minutes} min sur ${tickets.length} tickets · ${k.aFacturer} min à facturer au premier passage · ${dep.length} déplacement(s)</h3>
+          ${faListe(dep.map(d => `${esc(d.date)} · ${esc(d.ticket)} · ${esc(d.auteur)} · ${esc(d.type)} · ${d.minutes} min`))}
+          <details><summary class="meta">Voir les ${tickets.length} tickets</summary><div class="table-scroll"><table><thead><tr><th>Ticket</th><th>Sujet</th><th>Min.</th><th>À facturer</th><th>Projet</th><th>Statut</th><th>Par</th></tr></thead><tbody>${tickets.map(t => `<tr><td><a href="${ticketUrl(t.cle)}" target="_blank" rel="noopener">${esc(t.cle)}</a></td><td>${esc(t.resume)}</td><td>${t.minutes}</td><td>${t.aFacturer}</td><td>${esc(t.projet)}</td><td>${esc(t.statutJira)}</td><td class="meta">${esc(t.auteurs)}</td></tr>`).join('')}</tbody></table></div></details>`;
+      }).join('')}
+      ${of.length ? '<h3>Contrats récents</h3>' + faListe(of.map(x => `${esc(x.client)} · ${esc(x.reference)} · ${esc(x.objet)} · ${esc(x.ticket)} · ${esc(x.statut)}`)) : ''}
+      ${el.length ? '<h3>À signaler au SDM (éléments repérés par Panoramix)</h3>' + faListe(el.map(x => `${esc(x.client)} · ${esc(x.element)}`)) : ''}
+      ${vi.length ? '<h3>Visites à l’agenda</h3>' + faListe(vi.map(x => `${esc(x.client)} · ${shortDate(x.date)} · ${esc(x.objet)} · ${x.deplacementSaisi ? 'déplacement saisi' : '<b>pas de déplacement saisi</b>'}`)) : ''}
+      ${v.agendaNote ? `<p class="hint">${esc(v.agendaNote)}</p>` : ''}`;
+  }
+  parts.push(`<div class="panel fa-etape"><h2>Clients avec un SDM ${faEtat(e.verification, !!v)}</h2><p class="hint">AVE et ZENIT : le SDM facture, tu vérifies. Rien n’est décidé ici et aucune ligne n’est colorée.</p>${faBouton(v ? 'Relancer' : 'Préparer la vérification', 'etape:verification', !r, true)}${verif}</div>`);
   box.innerHTML = parts.join('');
 }
 async function faAction(action, bouton) {
