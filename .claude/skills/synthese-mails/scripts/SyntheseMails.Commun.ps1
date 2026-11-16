@@ -511,12 +511,16 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
         foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
         }
-        # Une prise de contact rédigée avec tout le dossier (redigeLe) tient tant qu'aucun message
-        # n'est arrivé après elle ; sinon le brouillon de la synthèse la remplace.
+        # Une prise de contact rédigée avec tout le dossier (redigeLe) tient tant que rien n'a bougé
+        # après elle et que l'analyse vise la même personne. Elle est remplacée par celle de l'analyse
+        # dès qu'un mail ou un commentaire Jira (le mien compris : ma réponse peut avoir réglé ce
+        # contact) est plus récent, ou que l'analyse désigne un autre destinataire (étape suivante).
         if ($update.PSObject.Properties.Name -contains 'contact') {
             $written = $(if ($point.contact -and $point.contact.redigeLe) { ConvertTo-SmDateTime $point.contact.redigeLe })
             $lastMessage = ConvertTo-SmDateTime $update.dernierMessage
-            $keep = $written -and $update.contact -and -not ($lastMessage -and $lastMessage -gt $written)
+            $lastJira = $(if ($point.jiraDernier) { ConvertTo-SmDateTime $point.jiraDernier.le })
+            $same = $update.contact -and $point.contact -and (Test-SmMemeContact $point.contact $update.contact)
+            $keep = $written -and $same -and -not ($lastMessage -and $lastMessage -gt $written) -and -not ($lastJira -and $lastJira -gt $written)
             if (-not $keep) { $point.contact = $update.contact }
         }
 
@@ -786,6 +790,13 @@ function Test-SmMemePersonne([string]$A, [string]$B) {
     if (-not $A -or -not $B) { return $false }
     $words = { param($t) @((ConvertTo-SmCle $t) -split ' ' | Where-Object { $_ } | Sort-Object) -join ' ' }
     (& $words $A) -eq (& $words $B)
+}
+
+# Deux prises de contact visent-elles la même personne (même adresse, sinon même nom) ?
+function Test-SmMemeContact($A, $B) {
+    $ea = ([string]$A.email).Trim().ToLower(); $eb = ([string]$B.email).Trim().ToLower()
+    if ($ea -and $eb) { return $ea -eq $eb }
+    Test-SmMemePersonne ([string]$A.nom) ([string]$B.nom)
 }
 
 function Update-SmActiviteJira($Suivi, $Activite, [string]$Moi) {
