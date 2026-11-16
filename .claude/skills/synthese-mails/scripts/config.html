@@ -2817,6 +2817,8 @@ async function pollRun() {
   try { r = await api('GET', '/api/lancement'); } catch (e) { pollTimer = setTimeout(pollRun, 8000); return; }
   const starting = !r.enCours && watching && Date.now() - runStartedAt < 25000;   // le temps que le lanceur pose son verrou
   const b = $('run'), f = $('refresh');
+  const spinner = $('runState').querySelector('.spinner');
+  if (spinner) spinner.style.display = '';
   if (r.enCours || starting) {
     if (r.enCours && !watching) { watching = true; runStartedAt = Date.parse(r.debut) || Date.now(); }
     if (r.enCours && r.mail != null) runMail = r.mail;
@@ -2831,6 +2833,13 @@ async function pollRun() {
     return;
   }
   $('runState').hidden = true;
+  // Retour d'absence : la synthèse du matin attend le tri de la boîte.
+  const d0 = r.dernier || {};
+  if (d0.resultat === 'attente_tri' && String(d0.debut || '').slice(0, 10) === new Date().toLocaleDateString('sv-SE')) {
+    $('runText').textContent = `${d0.message} Clique sur « Envoyer la synthèse » quand c’est fait.`;
+    if (spinner) spinner.style.display = 'none';
+    $('runState').hidden = false;
+  }
   $('moved').hidden = true;
   movedSeen = null;
   b.disabled = f.disabled = false;

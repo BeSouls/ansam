@@ -210,7 +210,7 @@ function Get-TravailState([string]$Nom) {
     $state = Read-SmJson (Join-Path $WorkDir "travaux\$Nom.json")
     if ($state -and $state.etat -eq 'en_cours') {
         $since = ((Get-Date) - (ConvertTo-SmDateTime $state.le)).TotalSeconds
-        $alive = $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)
+        $alive = Test-SmProcessus $state.pid $state.le
         if (-not $alive -and ($state.pid -or $since -gt 30)) { $state.etat = 'echec'; $state.message = 'Travail interrompu avant la fin.' }
     }
     $state
@@ -219,7 +219,7 @@ function Get-TravailState([string]$Nom) {
 # Lancement à la demande (bouton de la page) : même lanceur que la tâche du matin, avec -Force.
 function Get-RunState {
     $lock = Read-SmJson (Join-Path $WorkDir 'lancement.lock')
-    $running = [bool]($lock -and (Get-Process -Id $lock.pid -ErrorAction SilentlyContinue))
+    $running = [bool]($lock -and (Test-SmProcessus $lock.pid $lock.debut))
     $step = $null
     $log = Join-Path $WorkDir ("logs\{0:yyyy-MM-dd}.log" -f (Get-Date))
     if ($running -and (Test-Path $log)) {
@@ -246,7 +246,7 @@ function Get-RedactionState([string]$Id) {
     if (-not $state) { return [ordered]@{ id = $Id; etat = 'aucune' } }
     if ($state.etat -eq 'en_cours') {
         $since = ConvertTo-SmDateTime $state.le
-        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        $dead = $(if ($state.pid) { -not (Test-SmProcessus $state.pid $state.le) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
         if ($dead) { $state.etat = 'echec'; $state.message = 'Rédaction interrompue.' }
     }
     $state
@@ -258,7 +258,7 @@ function Get-SquadPreparationState {
     if (-not $state) { return [ordered]@{ etat = 'aucune' } }
     if ($state.etat -eq 'en_cours') {
         $since = ConvertTo-SmDateTime $state.le
-        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        $dead = $(if ($state.pid) { -not (Test-SmProcessus $state.pid $state.le) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
         if ($dead) { $state.etat = 'echec'; $state.message = 'Préparation interrompue.' }
     }
     $state
@@ -275,7 +275,7 @@ function Get-ChatState([string]$Id) {
     }
     if ($state -and $state.etat -eq 'en_cours') {
         $since = ConvertTo-SmDateTime $state.le
-        $dead = $(if ($state.pid) { -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
+        $dead = $(if ($state.pid) { -not (Test-SmProcessus $state.pid $state.le) } else { $since -and ((Get-Date) - $since).TotalSeconds -gt 30 })
         if ($dead) { $state.etat = 'echec'; $state.erreur = 'Réponse interrompue.'; $state.activite = $null; $state.partiel = $null }
     }
     $state
@@ -638,7 +638,7 @@ try {
                         $sourceEtape = " -Source `"$nomProjet`""
                     }
                     $state = Read-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json")
-                    if ($state -and $state.etat -eq 'en_cours' -and $state.pid -and (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
+                    if ($state -and $state.etat -eq 'en_cours' -and (Test-SmProcessus $state.pid $state.le)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
                     Write-SmJson (Join-Path $WorkDir "travaux\facturation-$etape.json") ([ordered]@{ etape = $etape; mois = $mois; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
                     $script = Join-Path $PSScriptRoot 'Facturation-Etape.ps1'
                     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `

@@ -50,7 +50,7 @@ function Get-SmFactureEtat($Config, [string]$WorkDir, [string]$Mois) {
         if ($state -and $state.mois -ne $Mois) { $state = $null }
         if ($state -and $state.etat -eq 'en_cours') {
             $since = ((Get-Date) - (ConvertTo-SmDateTime $state.le)).TotalSeconds
-            if (($state.pid -and -not (Get-Process -Id $state.pid -ErrorAction SilentlyContinue)) -or (-not $state.pid -and $since -gt 30)) { $state.etat = 'echec'; $state.message = 'Étape interrompue avant la fin.' }
+            if (($state.pid -and -not (Test-SmProcessus $state.pid $state.le)) -or (-not $state.pid -and $since -gt 30)) { $state.etat = 'echec'; $state.message = 'Étape interrompue avant la fin.' }
         }
         $etapes[$e] = $state
     }

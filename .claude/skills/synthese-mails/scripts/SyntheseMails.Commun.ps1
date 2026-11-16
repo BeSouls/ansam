@@ -239,6 +239,17 @@ function Get-SmFerie($Config, [datetime]$Date) {
     (Get-SmFeries $Config.cantonFeries $Date.Year)[$Date.ToString('yyyy-MM-dd')]
 }
 
+# Le processus enregistré dans un état est-il toujours celui qui l'a écrit ? Après un redémarrage, Windows
+# réattribue les numéros : un processus créé après $Depuis (marge d'une minute) n'est pas le bon.
+function Test-SmProcessus($Id, $Depuis) {
+    if (-not $Id) { return $false }
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$Id)" -ErrorAction SilentlyContinue
+    if (-not $process) { return $false }
+    $since = ConvertTo-SmDateTime $Depuis
+    if ($since -and $process.CreationDate -gt $since.AddMinutes(1)) { return $false }
+    $true
+}
+
 function Get-SmAbsence($Config, [datetime]$Date) {
     foreach ($absence in @($Config.absences)) {
         $start = ConvertTo-SmDate $absence.debut
@@ -286,6 +297,13 @@ function Get-SmPlan($Config, $Etat, [datetime]$Moment = (Get-Date)) {
     # La fenêtre couvre au moins la période écoulée depuis la dernière synthèse, plus une semaine.
     $gap = [int][math]::Ceiling(($Moment - $last).TotalDays)
     $plan.jours = [math]::Max([int]$Config.fenetreJours, $gap + 7)
+    # Retour après une absence ou plus de 4 jours sans synthèse : le TAM trie d'abord sa boîte. La tâche
+    # s'abstient ; le bouton de la page (-Force) lance la synthèse sur toute la période depuis la dernière.
+    if ($plan.absences.Count -or $gap -gt 4) {
+        $plan.retour = $true
+        $plan.raison = "Retour après $gap jours : trie ta boîte, puis lance la synthèse depuis Panoramix."
+        return $plan
+    }
     $plan.lancer = $true
     $plan
 }

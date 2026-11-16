@@ -99,7 +99,7 @@ try {
     # Une seule synthèse à la fois (tâche du matin, bouton de la page).
     $lockPath = Join-Path $WorkDir 'lancement.lock'
     $other = Read-SmJson $lockPath
-    if ($other -and $other.pid -ne $PID -and (Get-Process -Id $other.pid -ErrorAction SilentlyContinue)) {
+    if ($other -and $other.pid -ne $PID -and (Test-SmProcessus $other.pid $other.debut)) {
         Write-Host "Synthèse déjà en cours (processus $($other.pid))."
         $outcome = $null
         return
@@ -117,7 +117,12 @@ try {
     }
     $plan = Get-SmPlan $config $etat $start
     if (-not $plan.lancer) {
-        if (-not $Force) { Write-Host "Pas de synthèse : $($plan.raison)"; $outcome.message = $plan.raison; return }
+        if (-not $Force) {
+            Write-Host "Pas de synthèse : $($plan.raison)"
+            $outcome.message = $plan.raison
+            if ($plan.retour) { $outcome.resultat = 'attente_tri' }
+            return
+        }
         Write-Host "Lancement forcé malgré : $($plan.raison)"
         if (-not $plan.depuis) { $plan.depuis = $start.Date.AddDays(-1).AddHours(7) }
     }
