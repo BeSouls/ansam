@@ -435,6 +435,7 @@
     <div class="run" id="runState" role="status" aria-live="polite" hidden><span class="spinner"></span><span id="runText"></span></div>
     <nav class="seg" role="tablist" aria-label="Vues">
       <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
+      <button role="tab" data-tab="mois" aria-selected="false">Mois <span class="count hot" id="c-mois" title="Rappels du cycle mensuel" hidden></span></button>
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span> <span class="count hot" id="c-projets" title="Mois en attente du fichier projet" hidden></span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
@@ -480,6 +481,11 @@
       <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
     </div>
     <div id="list-attention"></div>
+  </section>
+
+  <section class="pane" id="p-mois" hidden>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem"><label class="f" for="moMois" style="margin:0">Mois</label><select class="field" id="moMois" style="width:auto"></select></div>
+    <div id="moCorps"><div class="empty">Chargement…</div></div>
   </section>
 
   <section class="pane" id="p-facturation" hidden>
@@ -788,6 +794,7 @@ function showTab(name) {
   if (name === 'annuaire') loadAnnuaire();
   if (name === 'preparer') chargerPreparer();
   if (name === 'facturation') chargerFacturation();
+  if (name === 'mois') chargerMois();
   document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
   try { localStorage.setItem('sm-tab', name); } catch (e) { }
@@ -2855,6 +2862,204 @@ async function pollRun() {
 }
 
 // --- Démarrage ---------------------------------------------------------------
+// --- Mois : cycle mensuel (facturation, variabilité, plus-value) --------------
+// La page prépare : le TAM saisit dans Kiosk, commente dans Jira et envoie les mails lui-même.
+let mo = null, moMois = null, moTimer = null, moOuvert = null, moSem = null;
+const MO_METRIQUES = [['#Users', 'Utilisateurs (support L1)'], ['#USERnoSUPPORT', 'Utilisateurs sans support L1'], ['#VM', 'VM'], ['#Serveur Physique', 'Serveurs physiques'],
+  ['#Site Actuel', 'Sites'], ['#NAS', 'NAS'], ['#SAN', 'SAN'], ['#VM Repliquee', 'VM répliquées'], ['#TAM', 'TAM'], ['#SDM', 'SDM']];
+const MO_MANUELS = [['VM', 'VM'], ['ServeurPhysique', 'Serveurs physiques'], ['SiteActuel', 'Sites'], ['NAS', 'NAS'], ['SAN', 'SAN'], ['VMRepliquee', 'VM répliquées'], ['USERnoSUPPORT', 'Sans support L1']];
+const MO_MOIS_LONGS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const moLong = (m) => m ? `${MO_MOIS_LONGS[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}` : '';
+const moJour = (d) => d ? d.slice(0, 10).split('-').reverse().join('.') : '';
+function moMoisCourant() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+function moListeMois() {
+  const d = new Date(), out = [];
+  for (let i = 0; i < 13; i++) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`); }
+  return out;
+}
+function moListeSemestres() {
+  const an = new Date().getFullYear(), out = [];
+  for (let a = an; a >= an - 1; a--) out.push(`${a}-H2`, `${a}-H1`);
+  return out;
+}
+async function chargerMois(silencieux) {
+  clearTimeout(moTimer);
+  if (!moMois) {
+    moMois = moMoisCourant();
+    const sel = $('moMois');
+    sel.innerHTML = moListeMois().map(m => `<option value="${m}">${esc(moLong(m))}</option>`).join('');
+    sel.value = moMois;
+    sel.onchange = () => { moMois = sel.value; moOuvert = null; chargerMois(); };
+  }
+  try { mo = await api('GET', '/api/mois?mois=' + encodeURIComponent(moMois)); }
+  catch (e) { if (!silencieux) toast(e.message, null, true); return; }
+  if (!moSem) moSem = mo.plusValue.semestre;
+  const n = [].concat(mo.rappels || []).length, c = $('c-mois');
+  c.hidden = !n; c.textContent = n;
+  if (tab === 'mois') afficherMois();
+  const running = Object.values(mo.etapes || {}).some(s => s && s.etat === 'en_cours');
+  if (running && tab === 'mois') moTimer = setTimeout(chargerMois, 4000);
+}
+function moBouton(texte, action, opts = {}) {
+  const attrs = Object.entries(opts.data || {}).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
+  return `<button class="btn${opts.principal ? ' primary' : ''}${opts.lien ? ' link plain' : ''}" type="button" data-mo="${esc(action)}"${attrs}${opts.off ? ' disabled' : ''}>${esc(texte)}</button>`;
+}
+function moTagEtat(e) {
+  const cls = e === 'fait' ? 'sure' : (/absente|à faire/.test(e) ? 'late' : 'check');
+  return `<span class="tag ${cls}">${esc(e)}</span>`;
+}
+function moValeur(c, cle) {
+  const t = c.calcul && [].concat(c.calcul.tableau || []).find(x => x.metrique === cle);
+  return t ? t.valeur : '';
+}
+function moEcartTag(c, cle) {
+  const t = c.calcul && [].concat(c.calcul.tableau || []).find(x => x.metrique === cle);
+  if (!t || t.ecart === '' || t.ecart === null || +t.ecart === 0) return '';
+  return ` <span class="tag ${+t.ecart > 0 ? 'plus' : 'minus'}" title="mois précédent : ${esc(t.avant)}">${+t.ecart > 0 ? '+' : ''}${esc(t.ecart)}</span>`;
+}
+function moRegistre(c) {
+  const r = c.releves && c.releves.mois;
+  if (!r) return '<span class="meta">—</span>';
+  const v = Object.values(r);
+  return v.every(x => x.statut === 'valide') ? '<span class="tag sure">validé</span>' : '<span class="tag check">à vérifier</span>';
+}
+// Valeurs à saisir dans Kiosk : les compteurs du calcul, avec le mois précédent.
+function moKiosk(c) {
+  return [].concat((c.calcul && c.calcul.tableau) || []).filter(t => +t.valeur || +t.avant).map(t => {
+    const lib = (MO_METRIQUES.find(m => m[0] === t.metrique) || [t.metrique, t.metrique])[1];
+    return { metrique: t.metrique, libelle: lib, valeur: t.valeur, avant: t.avant, ecart: t.ecart, source: t.source };
+  });
+}
+function moTexteJira(c) {
+  const lignes = moKiosk(c).map(k => `- ${k.libelle} : ${k.valeur}${k.avant !== '' && k.avant !== null && k.avant !== undefined ? ` (mois précédent : ${k.avant})` : ''}`);
+  const inv = c.calcul && c.calcul.inventaires, src = [];
+  if (inv && inv.M365) src.push(`inventaire Microsoft 365 du ${moJour(inv.M365)}`);
+  if (inv && inv.AD) src.push(`inventaire Active Directory du ${moJour(inv.AD)}`);
+  if (c.manuelConfirme) src.push(`serveurs, VM et sites vérifiés le ${moJour(c.manuelConfirme)}`);
+  const mv = [].concat((c.calcul && c.calcul.mouvements) || []).map(m => `${m.mouvement === 'Arrivee' ? 'arrivée' : 'départ'} de ${m.compte}`);
+  return [`Revue des variabilités de ${moLong(mo.mois)}`, '', ...lignes, '',
+    src.length ? `Relevé : ${src.join(' ; ')}.` : '',
+    mv.length ? `Mouvements du mois : ${mv.join(' ; ')}.` : 'Aucun mouvement d’utilisateur ce mois.',
+    c.kiosk ? `Valeurs saisies dans Kiosk le ${moJour(c.kiosk)}.` : 'Valeurs saisies dans Kiosk.'].filter((l, i, a) => l !== '' || (a[i - 1] !== '' && i < a.length - 1)).join('\n');
+}
+function moJql(code) {
+  return 'https://ansamgroup.atlassian.net/issues/?jql=' + encodeURIComponent(`project = ${code} AND summary ~ "variabilit*" ORDER BY created DESC`);
+}
+function moDetail(c) {
+  const parts = [];
+  if (c.erreurs && c.erreurs.length) return `<p class="hint">${esc(c.erreurs.join(' '))}</p>`;
+  const inv = c.inventaires, invTxt = ['M365', 'AD'].filter(t => inv[t].requis).map(t =>
+    `${t} : ${inv[t].duMois ? `<span class="tag sure">du ${moJour(inv[t].duMois)}</span>` : `<span class="tag late">aucun ce mois</span>${inv[t].dernier ? ` <span class="meta">(dernier : ${moJour(inv[t].dernier)})</span>` : ''}`}`).join(' · ');
+  parts.push(`<h3>Inventaires</h3><p>${invTxt || '<span class="meta">aucun inventaire requis</span>'}</p>`);
+  if (inv.AD.requis && !inv.AD.duMois) parts.push(`<p class="hint">L’inventaire AD se lance par MeshCentral sur un contrôleur de domaine du client (outil Inventaire.AD), puis s’importe dans AnsamDiag.</p>`);
+  if (inv.M365.requis && !inv.M365.duMois && mo.mois === moMoisCourant()) parts.push(`<p>${moBouton('Collecter l’inventaire M365 de ' + c.code, 'etape:collecte', { data: { client: c.code } })}</p>`);
+  if (c.calcul) {
+    const rows = [].concat(c.calcul.tableau || []).filter(t => +t.valeur || +t.avant).map(t =>
+      `<tr><td>${esc((MO_METRIQUES.find(m => m[0] === t.metrique) || [0, t.metrique])[1])}</td><td>${esc(t.avant)}</td><td><b>${esc(t.valeur)}</b>${moEcartTag(c, t.metrique)}</td><td class="meta">${esc(t.source || '')}</td></tr>`).join('');
+    parts.push(`<h3>Compteurs <span class="meta">calculés le ${esc(c.calcul.calcule || '?')}</span></h3>${c.calcul.version31 ? '' : '<p class="hint">Calcul fait avec une ancienne version de l’outil : recalculer avant de valider.</p>'}
+      <div class="table-scroll"><table><thead><tr><th>Compteur</th><th>Mois précédent</th><th>Ce mois</th><th>Source</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="meta">Tous les compteurs sont à 0.</td></tr>'}</tbody></table></div>`);
+    const mv = [].concat(c.calcul.mouvements || []);
+    if (mv.length) parts.push(`<h3>Mouvements</h3><ul>${mv.map(m => `<li>${m.mouvement === 'Arrivee' ? 'Arrivée' : 'Départ'} : ${esc(m.compte)} <span class="meta">${esc(m.licences || '')}</span></li>`).join('')}</ul>`);
+    const tr = [].concat(c.calcul.aTrancher || []);
+    if (tr.length) parts.push(`<h3>Comptes nouveaux à trancher</h3><p class="hint">Compter : le compte reste dans le total. Exclure : il est ajouté aux exclusions de la fiche, avec ta raison, puis il faut recalculer.</p>
+      <div class="table-scroll"><table><tbody>${tr.map((t, i) => `<tr><td>${esc(t.compte)}<div class="meta">${esc(t.email)} · ${esc(t.licences)}</div></td><td>${t.decision ? `<span class="tag ${t.decision === 'compter' ? 'sure' : 'check'}">${t.decision === 'compter' ? 'compté' : 'exclu'}</span> ${moBouton('Annuler', `tranche:${c.code}::${i}`, { lien: true })}`
+        : `${moBouton('Compter', `tranche:${c.code}:compter:${i}`)} ${moBouton('Exclure', `tranche:${c.code}:exclure:${i}`, { lien: true })}`}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+  parts.push(`<h3>Valeurs manuelles <span class="meta">${c.manuelConfirme ? 'confirmées le ' + moJour(c.manuelConfirme) : 'jamais confirmées'}</span> ${c.manuelOk ? '<span class="tag sure">ce mois</span>' : '<span class="tag check">à confirmer ce mois</span>'}</h3>
+    <p class="hint">Ce qui ne se lit pas dans M365 : à vérifier chaque mois (vCenter, Veeam, Kiosk, inventaire du client).${c.reglesSansSupport ? ' Les utilisateurs sans support L1 sont comptés par les règles de la fiche.' : ''}</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:.5rem">${MO_MANUELS.filter(m => !(m[0] === 'USERnoSUPPORT' && c.reglesSansSupport)).map(([k, lib]) =>
+      `<label class="f" style="margin:0">${esc(lib)}<input class="field" type="number" min="0" step="1" data-manuel="${k}" value="${esc(c.manuel[k])}"></label>`).join('')}</div>
+    <p>${moBouton('Confirmer ces valeurs', 'manuel:' + c.code)}</p>`);
+  parts.push(`<h3>Registre et validation</h3><p>${moRegistre(c)} ${moBouton('Recalculer ' + c.code, 'etape:calcul', { data: { client: c.code }, lien: true })} ${moBouton('Valider ' + c.code, 'valider:' + c.code, { off: !c.calcul || /trancher|recalculer|confirmer|inventaire/.test(c.etat) })}</p>`);
+  const kiosk = moKiosk(c);
+  if (kiosk.length) {
+    parts.push(`<h3>Kiosk <span class="meta">liste « Contrats SOM »</span></h3><div class="table-scroll"><table><thead><tr><th>Champ</th><th>Valeur à saisir</th><th>Mois précédent</th></tr></thead><tbody>${kiosk.map(k => `<tr><td>${esc(k.metrique)} <span class="meta">${esc(k.libelle)}</span></td><td><b>${esc(k.valeur)}</b></td><td>${esc(k.avant)}</td></tr>`).join('')}</tbody></table></div>
+      <p>${c.kiosk ? `<span class="tag sure">saisi le ${moJour(c.kiosk)}</span> ${moBouton('Annuler', `marque:${c.code}:kiosk:0`, { lien: true })}` : moBouton('Saisi dans Kiosk', `marque:${c.code}:kiosk:1`, { off: moRegistre(c).indexOf('validé') < 0 })}</p>`);
+    parts.push(`<h3>Jira <a class="meta" href="${moJql(c.code)}" target="_blank" rel="noopener">trouver le ticket « Revue des variabilités »</a></h3><pre class="mono" style="white-space:pre-wrap">${esc(moTexteJira(c))}</pre>
+      <p>${moBouton('Copier le commentaire', 'copier-jira:' + c.code)} ${c.jira ? `<span class="tag sure">commenté le ${moJour(c.jira)}</span> ${moBouton('Annuler', `marque:${c.code}:jira:0`, { lien: true })}` : moBouton('Commenté dans Jira', `marque:${c.code}:jira:1`, { off: !c.kiosk })}</p>`);
+  }
+  return parts.join('');
+}
+function afficherMois() {
+  if (!mo) return;
+  const e = mo.etapes || {}, parts = [], courant = mo.mois === moMoisCourant();
+  const rappels = [].concat(mo.rappels || []);
+  if (rappels.length) parts.push(`<div class="panel"><h2>Rappels</h2><ul>${rappels.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>`);
+  parts.push(`<div class="panel fa-etape"><h2>Facturation de ${esc(moLong(mo.facturation.mois))} <span class="tag ${mo.facturation.etat === 'clos' ? 'sure' : 'check'}">${esc(mo.facturation.etat)}</span></h2>
+    <p class="hint">La facturation porte sur le mois écoulé. Elle se fait dans son onglet.</p>${moBouton('Ouvrir la facturation', 'onglet:facturation')}</div>`);
+
+  const clients = [].concat(mo.clients || []);
+  const manqueM365 = clients.filter(c => c.inventaires && c.inventaires.M365.requis && !c.inventaires.M365.duMois).length;
+  const rows = clients.map(c => `<tr data-mo="ouvrir:${esc(c.code)}" style="cursor:pointer"${moOuvert === c.code ? ' aria-current="true"' : ''}>
+      <td><b>${esc(c.code)}</b><div class="meta">${esc(c.nom || '')}${c.contrat ? ' · ' + esc(c.contrat) : ''}${c.modele === 'BWS' && c.contrat !== 'BWS' ? ' · BWS' : ''}</div></td>
+      <td>${moTagEtat(c.etat)}</td>
+      <td>${c.inventaires ? (c.inventaires.M365.duMois ? moJour(c.inventaires.M365.duMois) : (c.inventaires.M365.requis ? '<span class="meta">—</span>' : '<span class="meta">AD</span>')) : ''}</td>
+      <td>${esc(moValeur(c, '#Users'))}${moEcartTag(c, '#Users')}</td><td>${esc(moValeur(c, '#USERnoSUPPORT'))}${moEcartTag(c, '#USERnoSUPPORT')}</td>
+      <td>${esc(moValeur(c, '#VM'))}${moEcartTag(c, '#VM')}</td><td>${esc(moValeur(c, '#Site Actuel'))}</td>
+      <td>${moRegistre(c)}</td><td>${c.kiosk ? '<span class="tag sure">✓</span>' : ''}</td><td>${c.jira ? '<span class="tag sure">✓</span>' : ''}</td></tr>
+      ${moOuvert === c.code ? `<tr><td colspan="10" class="fa-etape">${moDetail(c)}</td></tr>` : ''}`).join('');
+  parts.push(`<div class="panel fa-etape"><h2>Variabilité de ${esc(moLong(mo.mois))} ${faEtat(e['variabilite-collecte'])} ${faEtat(e['variabilite-calcul'])} ${faEtat(e['releves-reporter'])}</h2>
+    <p class="hint">1. Collecte des inventaires M365 en fin de mois, une connexion par code d’appareil et par client dans la console AnsamDiag. 2. Calcul. 3. Pour chaque client : comptes nouveaux tranchés, valeurs manuelles confirmées, puis validation dans le registre. 4. Saisie dans Kiosk, puis commentaire dans le ticket Jira. Clique sur un client pour le détail.</p>
+    <p>${courant ? moBouton(manqueM365 ? `Collecter les inventaires M365 (${manqueM365})` : 'Inventaires M365 à jour', 'etape:collecte', { principal: !!manqueM365, off: !manqueM365 }) : '<span class="meta">La collecte se fait pendant le mois relevé.</span>'}
+      ${moBouton('Calculer', 'etape:calcul', { principal: !manqueM365 })} ${moBouton('Reporter dans le registre (à vérifier)', 'etape:reporter', { lien: true })}</p>
+    <div class="table-scroll"><table><thead><tr><th>Client</th><th>Où en est</th><th>Inventaire M365</th><th>Utilisateurs</th><th>Sans support</th><th>VM</th><th>Sites</th><th>Registre</th><th>Kiosk</th><th>Jira</th></tr></thead><tbody>${rows}</tbody></table></div></div>`);
+
+  const pv = mo.plusValue, res = pv.resultat && pv.resultat.semestre === moSem ? pv.resultat : null;
+  const pvRows = res ? [].concat(res.clients || []).map(k => {
+    const err = [].concat(k.Erreurs || []), av = [].concat(k.Avertissements || []);
+    const etat = err.length ? '<span class="tag late">refusé</span>' : (k.Provisoire ? '<span class="tag check">provisoire</span>' : '<span class="tag sure">prêt</span>');
+    return `<tr><td><b>${esc(k.Code)}</b><div class="meta">${esc(k.Type || '')}</div></td><td>${etat}</td><td>${err.length ? '' : esc(Number(k.Total).toFixed(2)) + ' CHF'}</td><td class="meta">${esc(err.length ? err.join(' · ') : (k.Fichier || (av.length ? av.length + ' relevé(s) à vérifier' : '')))}</td></tr>`;
+  }).join('') : '';
+  parts.push(`<div class="panel fa-etape"><h2>Plus-value ${faEtat(e['plusvalue-controle'])} ${faEtat(e['plusvalue-generer'])}</h2>
+    <p class="hint">Décompte semestriel au format de Mario, à partir des 6 relevés du registre, de la base et du tarif du contrat. Calculé deux fois (script et Excel). Dû en janvier et en juillet ; ${pv.du ? '<b>ce mois</b>.' : 'possible à tout moment.'} Le fichier va dans le dossier « plus value » du client ; tu l’envoies à Finances, Mario en copie.</p>
+    <p><select class="field" id="moSem" style="width:auto">${moListeSemestres().map(s => `<option value="${s}"${s === moSem ? ' selected' : ''}>${s.replace('-H', ' — semestre ')}</option>`).join('')}</select>
+      ${moBouton('Contrôler', 'etape:pv-controle')} ${moBouton('Générer les fichiers', 'etape:pv-generer', { principal: true })}</p>
+    ${res ? `<p class="meta">${res.etape === 'generer' ? 'Générés' : 'Contrôlés'} le ${esc(new Date(res.le).toLocaleString('fr-CH'))}</p><div class="table-scroll"><table><thead><tr><th>Client</th><th>État</th><th>Total</th><th>Détail</th></tr></thead><tbody>${pvRows}</tbody></table></div>` : '<p class="meta">Pas encore contrôlé pour ce semestre.</p>'}</div>`);
+  $('moCorps').innerHTML = parts.join('');
+  const s = $('moSem'); if (s) s.onchange = () => { moSem = s.value; afficherMois(); };
+}
+async function moAction(action, el) {
+  const [verbe, code, a, b] = action.split(':');
+  const mois = mo.mois;
+  try {
+    if (verbe === 'ouvrir') { moOuvert = moOuvert === code ? null : code; afficherMois(); return; }
+    if (verbe === 'onglet') { showTab(code); return; }
+    const c = [].concat(mo.clients || []).find(x => x.code === code);
+    if (verbe === 'etape') {
+      const client = el.dataset.client || '';
+      const body = { etape: code, mois, client, semestre: moSem };
+      if (code === 'collecte' && !confirm(`Collecter l’inventaire M365 ${client ? 'de ' + client : 'des clients sans inventaire ce mois'} ?\n\nLa console AnsamDiag te demandera une connexion par code d’appareil pour chaque client (notification Windows). Lecture seule.`)) return;
+      if (code === 'pv-generer') {
+        if (!confirm(`Générer les décomptes de plus-value ${moSem} ?`)) return;
+        body.remplacer = confirm('Remplacer les fichiers déjà présents ? (l’ancien est mis de côté dans « sauvegardes »)\n\nOK : remplacer · Annuler : garder l’existant');
+      }
+      toast((await api('POST', '/api/mois/etape', body)).message);
+    } else if (verbe === 'valider') {
+      const vals = moKiosk(c).map(k => `${k.libelle} : ${k.valeur}`).join('\n');
+      if (!confirm(`Valider les relevés de ${code} pour ${moLong(mois)} ?\n\n${vals}\n\nIls serviront à la plus-value. Un relevé validé ne se remplace plus sans action explicite.`)) return;
+      toast((await api('POST', '/api/mois/etape', { etape: 'reporter', mois, client: code, valider: true })).message);
+    } else if (verbe === 'manuel') {
+      const valeurs = {};
+      el.closest('td').querySelectorAll('[data-manuel]').forEach(i => { valeurs[i.dataset.manuel] = i.value; });
+      toast((await api('POST', '/api/mois/manuel', { client: code, valeurs })).message);
+    } else if (verbe === 'tranche') {
+      const t = c.calcul.aTrancher[+b];
+      let note = '';
+      if (a === 'exclure') { note = prompt(`Pourquoi exclure ${t.compte} ? (la raison reste dans la fiche du client)`, ''); if (!note) return; }
+      toast((await api('POST', '/api/mois/tranche', { mois, client: code, id: t.id, compte: t.compte, decision: a, note })).message);
+    } else if (verbe === 'marque') {
+      toast((await api('POST', '/api/mois/marque', { mois, client: code, quoi: a, fait: b === '1' })).message);
+    } else if (verbe === 'copier-jira') { await copyText(moTexteJira(c), 'Commentaire copié.'); return; }
+    await chargerMois();
+  } catch (err) { toast(err.message, null, true); }
+}
+$('moCorps').addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-mo]');
+  if (!el || el.disabled) return;
+  if (el.tagName === 'TR' && ev.target.closest('button, a, input, select')) return;
+  moAction(el.dataset.mo, el);
+});
+
 async function load() {
   // Le serveur répond aux requêtes une à une : d'abord ce qu'on lit, ensuite les réglages.
   try {
@@ -2865,6 +3070,7 @@ async function load() {
     renderAll();
     await loadAnnuaire();
     chargerProjets();
+    if (tab !== 'mois') await chargerMois(true);
     state = await api('GET', '/api/etat');
     renderSettings();
     renderCounts();

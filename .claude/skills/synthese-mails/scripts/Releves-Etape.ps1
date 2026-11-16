@@ -32,6 +32,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
 . (Join-Path $PSScriptRoot 'SyntheseMails.PlusValue.ps1')
 . (Join-Path $PSScriptRoot 'SyntheseMails.Releves.ps1')
+. (Join-Path $PSScriptRoot 'SyntheseMails.Mois.ps1')
 $data = [string](Get-SmConfig $WorkDir).dossierAnsamDiag
 $statusFile = Join-Path $WorkDir "travaux\releves-$Etape.json"
 function Set-Status([string]$State, [string]$Message) {
@@ -42,12 +43,12 @@ Set-Status 'en_cours' 'Démarrage'
 try {
     $codes = if ($Tous) {
         @(Get-ChildItem -LiteralPath (Join-Path $data 'variabilite\_etat') -Directory | Where-Object { Test-Path (Join-Path $_.FullName "Mois-$Mois.json") } | ForEach-Object { $_.Name })
-    } elseif ($Client) { @($Client | ForEach-Object { $_.ToUpper() }) } else { throw 'Indiquer -Client ou -Tous.' }
+    } elseif ($Client) { @($Client | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ }) } else { throw 'Indiquer -Client ou -Tous.' }
 
     $resultats = @()
     foreach ($c in $codes) {
         Set-Status 'en_cours' "Relevés $c"
-        $r = Get-SmRvReport -Code $c -Mois $Mois -Data $data
+        $r = Get-SmRvReport -Code $c -Mois $Mois -Data $data -Tranches (Get-SmMoisTranches $WorkDir $Mois $c)
         $r.Ecrit = $null
         if ($Etape -eq 'reporter' -and -not $r.Erreurs.Count) {
             try { $r.Ecrit = Save-SmRvReport -Report $r -Data $data -Valider:$Valider -Remplacer:$Remplacer }

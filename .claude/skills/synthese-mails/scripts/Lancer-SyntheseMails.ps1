@@ -64,6 +64,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
+. (Join-Path $PSScriptRoot 'SyntheseMails.Mois.ps1')
 
 # $PSScriptRoot est vide dans les valeurs par défaut du param() sous Windows PowerShell 5.1.
 if (-not $RepoDir) { $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path }
@@ -226,6 +227,12 @@ try {
                "registres complets, à chercher avec Grep seulement pour un détail ancien : $suiviFile, $archivesFile ; " +
                "points à reprendre obligatoirement, avec ce qui a bougé et leurs derniers commentaires Jira : $reviewFile ($($toReview.Count) points) ; " +
                "annuaire des tiers (canal officiel quand c'est ce tiers qu'il faut contacter) : $(Format-SmContactsTiers $config.contactsTiers)."
+    # Cycle mensuel (facturation, variabilité, plus-value) : calculé ici, sans Claude.
+    $rappels = @()
+    try { $rappels = @(Get-SmMoisRappels $config $WorkDir (Get-Date)) } catch { Write-Warning "Rappels du cycle mensuel non calculés : $($_.Exception.Message)" }
+    if ($rappels.Count) {
+        $sources += " Rappels du cycle mensuel, établis par Panoramix, à reprendre tels quels en tête des points d'attention (sans point de suivi) : " + ($rappels -join ' | ')
+    }
     $deltaNote = $(if ($delta -and $delta.nouveaux) { "Fils avec du nouveau depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')), complets : $deltaFile ($($delta.selection) fils) ; " }
                    elseif ($delta) { "Aucun fil n'a de message depuis $($deltaSince.ToString('dd.MM.yyyy HH:mm')) ; " })
     if ($mode -eq 'incrementale') {

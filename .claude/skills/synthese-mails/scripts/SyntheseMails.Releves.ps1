@@ -42,7 +42,7 @@ function ConvertTo-SmRvTable($o) {
 }
 
 function Get-SmRvReport {
-    param([Parameter(Mandatory)][string]$Code, [Parameter(Mandatory)][string]$Mois, [Parameter(Mandatory)][string]$Data)
+    param([Parameter(Mandatory)][string]$Code, [Parameter(Mandatory)][string]$Mois, [Parameter(Mandatory)][string]$Data, [string[]]$Tranches = @())
     $Code = $Code.ToUpper()
     $r = [ordered]@{ Code = $Code; Mois = $Mois; Erreurs = @(); Bloquants = @(); Ecritures = @(); Inchanges = @(); Conflits = @(); Ignores = @() }
     if ($Mois -notmatch '^\d{4}-(0[1-9]|1[0-2])$') { $r.Erreurs += "Mois attendu au format AAAA-MM : $Mois"; return $r }
@@ -51,7 +51,8 @@ function Get-SmRvReport {
     if (-not $calc.PSObject.Properties['Inventaires']) { $r.Erreurs += "Calcul de $Mois antérieur à Variabilite.Metriques 3.1 (date des inventaires inconnue) : le relancer"; return $r }
 
     # Conditions de validation
-    $nTrancher = @($calc.ATrancher | Where-Object { $_ }).Count
+    # Comptes nouveaux : bloquants tant que le TAM ne les a pas tranchés (Tranches = Email, ou nom sans e-mail).
+    $nTrancher = @($calc.ATrancher | Where-Object { $_ -and $(if ($_.Email) { [string]$_.Email } else { [string]$_.Compte }) -notin $Tranches }).Count
     if ($nTrancher) { $r.Bloquants += "$nTrancher compte(s) à trancher" }
     $conf = [string]$calc.ValeursManuellesVerifiees
     if (-not $conf -or $conf.Substring(0, [math]::Min(7, $conf.Length)) -lt $Mois) { $r.Bloquants += "valeurs manuelles non confirmées pour $Mois (dernière : $(if ($conf) { $conf } else { 'aucune' }))" }

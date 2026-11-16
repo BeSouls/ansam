@@ -23,6 +23,12 @@
     garder (<WorkDir>\archives.json), établis ou à vérifier, que je marque
     reportés / traités / vus ou écartés.
 
+    Onglet « Mois » : le cycle mensuel (SyntheseMails.Mois.ps1). État de la facturation
+    du mois écoulé ; variabilité client par client (collecte M365 par le relais AnsamDiag,
+    calcul, comptes à trancher, valeurs manuelles, validation dans le registre, valeurs
+    Kiosk et commentaire Jira prêts à copier) ; plus-value semestrielle au format de Mario.
+    Le TAM saisit dans Kiosk, commente dans Jira et envoie les mails lui-même.
+
     Onglet « Squad » : la fiche de la réunion squad (<WorkDir>\squad\AAAA-MM-JJ.json),
     préparée par Preparer-Squad.ps1, modifiable sur place, copiable pour OneNote.
 
@@ -50,6 +56,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
 . (Join-Path $PSScriptRoot 'SyntheseMails.Facturation.ps1')
+. (Join-Path $PSScriptRoot 'SyntheseMails.Mois.ps1')
 
 $utf8 = New-Object Text.UTF8Encoding($false)
 $pagePath = Join-Path $PSScriptRoot 'config.html'
@@ -656,6 +663,51 @@ try {
                 '^POST /api/facturation/cloture$' {
                     Close-SmFacture (Get-SmConfig $WorkDir) ([string]($request.Body | ConvertFrom-Json).mois)
                     Send-Json $stream 200 ([ordered]@{ message = 'Mois clos.' })
+                }
+                '^GET /api/mois$' {
+                    $mois = [string]$request.Query['mois']; if (-not $mois) { $mois = (Get-Date).ToString('yyyy-MM') }
+                    Send-Json $stream 200 (Get-SmMoisEtat (Get-SmConfig $WorkDir) $WorkDir $mois)
+                }
+                '^POST /api/mois/manuel$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    Send-Json $stream 200 ([ordered]@{ message = (Set-SmMoisManuel (Get-SmConfig $WorkDir) ([string]$posted.client) $posted.valeurs) })
+                }
+                '^POST /api/mois/marque$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    Set-SmMoisMarque $WorkDir ([string]$posted.mois) ([string]$posted.client) ([string]$posted.quoi) ([bool]$posted.fait)
+                    Send-Json $stream 200 ([ordered]@{ message = $(if ($posted.fait) { 'Marqué comme fait.' } else { 'Marque retirée.' }) })
+                }
+                '^POST /api/mois/tranche$' {
+                    $posted = $request.Body | ConvertFrom-Json
+                    Send-Json $stream 200 ([ordered]@{ message = (Set-SmMoisTranche (Get-SmConfig $WorkDir) $WorkDir ([string]$posted.mois) ([string]$posted.client) ([string]$posted.id) ([string]$posted.compte) ([string]$posted.decision) ([string]$posted.note)) })
+                }
+                '^POST /api/mois/etape$' {
+                    # Collecte, calcul, report des relevés, plus-value : en arrière-plan. Rien n'est écrit dans Kiosk ni dans Jira.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $etape = [string]$posted.etape; $mois = [string]$posted.mois; $codeClient = ([string]$posted.client).ToUpper()
+                    if ($codeClient -and $codeClient -notmatch '^[A-Z0-9]{2,10}$') { throw "Client invalide : $codeClient" }
+                    $optClient = $(if ($codeClient) { " -Client $codeClient" } else { '' })
+                    switch ($etape) {
+                        { $_ -in 'collecte', 'calcul' } { Assert-SmMois $mois; $nom = "variabilite-$etape"; $scriptEtape = 'Variabilite-Etape.ps1'; $options = "-Etape $etape -Mois $mois$optClient" }
+                        'reporter' {
+                            Assert-SmMois $mois; $nom = 'releves-reporter'; $scriptEtape = 'Releves-Etape.ps1'
+                            $options = "-Etape reporter -Mois $mois" + $(if ($codeClient) { $optClient } else { ' -Tous' }) + $(if ($posted.valider) { ' -Valider' } else { '' })
+                        }
+                        { $_ -in 'pv-controle', 'pv-generer' } {
+                            $sem = [string]$posted.semestre
+                            if ($sem -notmatch '^\d{4}-H[12]$') { throw "Semestre invalide : $sem" }
+                            $e = $etape.Substring(3); $nom = "plusvalue-$e"; $scriptEtape = 'PlusValue-Etape.ps1'
+                            $options = "-Etape $e -Semestre $sem" + $(if ($codeClient) { $optClient } else { ' -Tous' }) + $(if ($posted.remplacer) { ' -Remplacer' } else { '' })
+                        }
+                        default { throw "Étape inconnue : $etape" }
+                    }
+                    $state = Read-SmJson (Join-Path $WorkDir "travaux\$nom.json")
+                    if ($state -and $state.etat -eq 'en_cours' -and (Test-SmProcessus $state.pid $state.le)) { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
+                    Write-SmJson (Join-Path $WorkDir "travaux\$nom.json") ([ordered]@{ etape = $etape; mois = $mois; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $chemin = Join-Path $PSScriptRoot $scriptEtape
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$chemin`" $options -WorkDir `"$WorkDir`"" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Étape lancée.' })
                 }
                 '^POST /api/squad/preparation$' {
                     # Préparation à la demande (même pour un jour d'absence ou férié) : en arrière-plan, 2 à 4 minutes.
