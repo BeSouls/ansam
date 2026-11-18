@@ -304,6 +304,13 @@
   .rwhy kbd, .rkeys kbd { font: 600 .75rem ui-monospace, Consolas, monospace; padding: .05rem .35rem; border-radius: 5px; border: 1px solid var(--line); background: var(--surface); }
   .rkeys { display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: .6rem; }
   .why.reo { color: var(--orange); }
+  nav.seg button[hidden] { display: none; }
+  .secbanner { all: unset; box-sizing: border-box; display: flex; width: 100%; cursor: pointer; padding: .6rem .9rem; margin: 0 0 .8rem; border-radius: 12px;
+    background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); font-size: .875rem; }
+  .secbanner b { color: var(--red); }
+  .secbanner:focus-visible { outline: 2px solid var(--accent); }
+  .attfold { margin-top: 1rem; } .attfold > summary { cursor: pointer; }
+  .btn.classer { font-size: .8125rem; padding: .3rem .75rem; }
   /* Étapes : finir une étape sans fermer la tâche */
   .btn.stepdone { font-size: .8125rem; padding: .3rem .75rem; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: var(--green-soft); }
   .stepform { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; padding: .75rem .8rem; border-radius: 12px; background: var(--surface-2); }
@@ -599,7 +606,7 @@
       <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
       <button role="tab" data-tab="publier" aria-selected="false" title="Clôtures prêtes à saisir dans Jira, et ce que Jira en montre">Publier <span class="count" id="c-publier">–</span></button>
       <button role="tab" data-tab="mois" aria-selected="false">Mois <span class="count hot" id="c-mois" title="Rappels du cycle mensuel" hidden></span></button>
-      <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
+      <button role="tab" data-tab="variabilite" aria-selected="false" hidden>Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span> <span class="count hot" id="c-projets" title="Mois en attente du fichier projet" hidden></span></button>
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
       <button role="tab" data-tab="preparer" aria-selected="false">Préparer</button>
@@ -617,6 +624,7 @@
       <p class="hint" style="margin:0">Lu à l’instant. L’analyse vérifie maintenant les statuts de ces tâches.</p>
       <ul id="movedList"></ul>
     </div>
+    <div id="secBanner"></div>
     <div class="kpis" role="group" aria-label="Filtrer le suivi">
       <button class="kpi k-red" type="button" data-kpi="client" aria-pressed="false" title="Un client t'a écrit (mail ou commentaire Jira public) et attend ta réponse. Heures ouvrées, lundi-vendredi 8 h-18 h."><span class="kpi-l">Clients en attente</span><span class="kpi-n" id="k-client">–</span><span class="kpi-s" id="ks-client"></span></button>
       <button class="kpi k-faire" type="button" data-kpi="a_faire" aria-pressed="false"><span class="kpi-l">À faire</span><span class="kpi-n" id="k-faire">–</span><span class="kpi-s" id="ks-faire"></span><span class="kpi-bar" id="kb-faire" aria-hidden="true"></span></button>
@@ -1000,6 +1008,7 @@ function hideToast() { $('toast').classList.remove('show'); }
 
 // --- Navigation --------------------------------------------------------------
 function showTab(name) {
+  if (name === 'variabilite') name = 'mois';   // les indices des mails sont dans l'onglet Mois
   tab = name;
   if (name === 'annuaire') loadAnnuaire();
   if (name === 'preparer') chargerPreparer();
@@ -2117,6 +2126,19 @@ function elementCard(el) {
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(labels[el.type] || labels.attention, el.statut, v => setElement(el, v, el.noteMoi || '')));
   foot.appendChild(noteField(el.noteMoi, v => setElement(el, el.statut, v, true).then(() => toast('Note enregistrée.'))));
+  if (el.type === 'tam' && el.statut === 'a_traiter' && el.client) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn primary classer';
+    b.textContent = 'Classer chez ' + el.client;
+    b.title = el.client === 'ANSAM' ? 'Ajoute une ligne datée dans ANSAM\\infos-tam.md, puis marque Archivé' : `Ajoute une ligne datée dans CLIENTS\\${el.client}\\infos-tam.md, puis marque Archivé`;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { const r = await api('POST', '/api/archives/classer', { id: el.id }); Object.assign(el, r.element); renderAll(); toast(r.message); }
+      catch (e) { b.disabled = false; toast(e.message, null, true); }
+    });
+    foot.appendChild(b);
+  }
   return card;
 }
 
@@ -2359,6 +2381,7 @@ async function revueAction(k) {
   }
 }
 $('revueBtn').addEventListener('click', openRevue);
+$('secBanner').addEventListener('click', () => { filters.attention = 'securite'; showTab('attention'); renderAll(); window.scrollTo(0, 0); });
 $('rClose').addEventListener('click', () => closeRevue(false));
 $('rsheet').addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) revueAction(b.dataset.r); });
 document.addEventListener('keydown', e => {
@@ -2390,6 +2413,8 @@ function renderKpis() {
     k.classList.toggle('zero', n === 0);
     k.classList.toggle('alert', !!alert && n > 0);
   };
+  const sec = attSecu();
+  $('secBanner').innerHTML = sec.length ? `<button class="banner secbanner" type="button"><div><b>Sécurité : ${sec.length} point${sec.length > 1 ? 's' : ''} à traiter</b> · ${esc(sec.slice(0, 2).map(e => e.element).join(' · '))}${sec.length > 2 ? '…' : ''}</div></button>` : '';
   const nRevue = aRevoirMoi().length;
   $('c-revue').textContent = nRevue;
   $('c-revue').classList.toggle('hot', leaves().some(reouverture));
@@ -2455,41 +2480,53 @@ function renderAll() {
 }
 
 // Attention : ce qui demande un coup d'œil, en retard, à vérifier, ou qui traîne depuis plus de 14 jours.
+// Familles des points d'attention : la sécurité passe devant, la cohérence des données se range à part
+// (elle relève des statuts à aligner ou de /fiche). Classement par mots-clés : une aide à lire, pas une décision.
+const ATT_SECU = /mot de passe|identifiants?\b|en clair|\bmfa\b|double authentification|alerte|phishing|hame[çc]onn|compromis|jeton|invit[ée].*hors demande|acc[eè]s ouvert/i;
+const ATT_COHERENCE = /statuts? .*align|assign|absent du contexte|fiche client|automation|absent de la fiche|sans contenu|marqu[ée] .*mais|toujours (en cours|cit[ée])|rattach[ée] à l'organisation/i;
+const attFamille = e => e.type === 'tam' ? 'tam' : ATT_SECU.test(e.element + ' ' + (e.indice || '')) ? 'securite' : ATT_COHERENCE.test(e.element) ? 'coherence' : 'autre';
+const attSecu = () => elements.filter(e => e.type === 'attention' && e.statut === 'a_traiter' && attFamille(e) === 'securite');
 function renderAttention() {
   const f = filters.attention;
   const open = elements.filter(e => (e.type === 'attention' || e.type === 'tam') && e.statut === 'a_traiter');
-  const att = open.filter(e => e.type === 'attention'), tam = open.filter(e => e.type === 'tam');
-  const isLate = e => e.type === 'attention' && dueIn(e.echeance) !== null && dueIn(e.echeance) < 0;
-  const isOld = e => (daysSince(e.creeLe) ?? 0) > 14;
-  const late = att.filter(isLate), check = open.filter(e => e.certitude === 'a_verifier'), old = open.filter(isOld);
-  const oldest = Math.max(0, ...open.map(e => daysSince(e.creeLe) ?? 0));
+  const att = open.filter(e => e.type === 'attention');
+  const secu = att.filter(e => attFamille(e) === 'securite'), coh = att.filter(e => attFamille(e) === 'coherence'), autre = att.filter(e => attFamille(e) === 'autre');
+  const isLate = e => dueIn(e.echeance) !== null && dueIn(e.echeance) < 0;
+  const late = att.filter(isLate);
+  const tam = open.filter(e => e.type === 'tam'), tamRecent = tam.filter(e => (daysSince(e.creeLe) ?? 0) <= 30), tamOld = tam.filter(e => (daysSince(e.creeLe) ?? 0) > 30);
   $('sum-attention').innerHTML = tilesHtml([
-    { key: 'attention', l: 'Points à voir', n: att.length, c: 'accent', s: att.length ? `${att.filter(e => e.certitude !== 'a_verifier').length} établis` : 'rien à voir' },
-    { key: 'retard', l: 'En retard', n: late.length, c: 'red', alert: true, s: late.length ? 'échéance passée' : 'aucun' },
-    { key: 'verifier', l: 'À vérifier', n: check.length, c: 'orange', s: check.length ? 'un indice à confirmer' : 'aucun doute' },
-    { key: 'anciens', l: 'Plus de 14 jours', n: old.length, c: 'grey', s: old.length ? `le plus ancien : ${oldest} j · à trier` : 'rien ne traîne', title: 'Repérés il y a plus de 14 jours et toujours ouverts : l’onglet Préparer propose un tri' },
-    { key: 'tam', l: 'Infos à archiver', n: tam.length, c: 'blue', s: tam.length ? 'à classer chez le client' : 'rien à classer' }
+    { key: 'securite', l: 'Sécurité', n: secu.length, c: 'red', alert: true, s: secu.length ? 'identifiants, MFA, accès : en premier' : 'rien à signaler' },
+    { key: 'attention', l: 'Points à voir', n: autre.length, c: 'accent', s: late.length ? `<b>${late.length}</b> en retard` : 'aucun en retard' },
+    { key: 'tam', l: 'Infos à classer', n: tamRecent.length, c: 'blue', s: tamOld.length ? `+ ${tamOld.length} de plus de 30 j, masquées` : 'un clic les range chez le client' },
+    { key: 'coherence', l: 'Cohérence des données', n: coh.length, c: 'grey', s: 'statuts, assignations, fiches', title: 'Relève de « Statuts à aligner » (Préparer) ou de /fiche : rangé à part pour ne pas encombrer' }
   ], f === 'ouverts' || f === 'tous' ? null : f);
   syncChips('attention', f);
-  const pick = { attention: att, retard: late, verifier: check, anciens: old, tam }[f];
   const box = $('list-attention');
   box.innerHTML = '';
   const sorted = list => list.filter(matches).sort((a, b) => String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(b.creeLe).localeCompare(String(a.creeLe)));
-  const section = (title, list) => {
+  const section = (title, list, replie) => {
+    list = sorted(list);
     if (!list.length) return;
-    const h = document.createElement('h2');
-    h.className = 'group';
-    h.innerHTML = `${esc(title)} <span class="count">${list.length}</span>`;
-    box.appendChild(h);
-    list.forEach(e => box.appendChild(elementCard(e)));
+    const parent = replie ? document.createElement('details') : box;
+    if (replie) { parent.className = 'panel attfold'; parent.innerHTML = `<summary><b>${esc(title)}</b> <span class="count">${list.length}</span></summary>`; box.appendChild(parent); }
+    else { const h = document.createElement('h2'); h.className = 'group'; h.innerHTML = `${esc(title)} <span class="count">${list.length}</span>`; box.appendChild(h); }
+    list.forEach(e => parent.appendChild(elementCard(e)));
   };
-  if (pick) section({ attention: 'Points d’attention', retard: 'En retard', verifier: 'À vérifier', anciens: 'Plus de 14 jours', tam: 'Informations TAM à archiver' }[f], sorted(pick));
+  const all = f === 'tous';
+  const pool = type => elements.filter(e => e.type === type && (all || e.statut === 'a_traiter'));
+  if (f === 'securite') section('Sécurité', secu);
+  else if (f === 'attention') section('Points d’attention', autre);
+  else if (f === 'tam') { section('Informations TAM à classer', tamRecent); section('Plus de 30 jours', tamOld, true); }
+  else if (f === 'coherence') section('Cohérence des données', coh);
   else {
-    const all = f === 'tous';
-    section('Points d’attention', sorted(elements.filter(e => e.type === 'attention' && (all || e.statut === 'a_traiter'))));
-    section('Informations TAM à archiver', sorted(elements.filter(e => e.type === 'tam' && (all || e.statut === 'a_traiter'))));
+    const attAll = pool('attention'), tamAll = pool('tam');
+    section('Sécurité', attAll.filter(e => attFamille(e) === 'securite'));
+    section('Points d’attention', attAll.filter(e => attFamille(e) === 'autre'));
+    section('Informations TAM à classer', all ? tamAll : tamRecent);
+    section('Cohérence des données', attAll.filter(e => attFamille(e) === 'coherence'), true);
+    if (!all) section('Infos TAM de plus de 30 jours', tamOld, true);
   }
-  if (!box.children.length) box.innerHTML = emptyState('Rien ici', f === 'tous' ? 'Aucun point d’attention enregistré.' : 'Aucun point d’attention ouvert ne correspond.');
+  if (!box.children.length) box.innerHTML = emptyState('Rien ici', all ? 'Aucun point d’attention enregistré.' : 'Aucun point d’attention ouvert ne correspond.');
 }
 
 // --- Réglages ----------------------------------------------------------------
@@ -3833,6 +3870,7 @@ function moDetail(c) {
   }
   return parts.join('');
 }
+const nIndTile = () => elements.filter(e => e.type === 'variabilite' && e.statut === 'a_traiter' && mo && elementMonth(e) === mo.mois).length;
 function afficherMois() {
   if (!mo) return;
   const e = mo.etapes || {}, parts = [], courant = mo.mois === moMoisCourant();
@@ -3851,6 +3889,7 @@ function afficherMois() {
     { key: 'val', l: 'Relevés validés', n: `${valides}/${nb}`, c: 'accent', ok: nb > 0 && valides === nb, s: manqueM365 ? `<b>${manqueM365}</b> inventaire${manqueM365 > 1 ? 's' : ''} M365 manquant${manqueM365 > 1 ? 's' : ''}` : 'inventaires à jour', bar: pct(valides), attrs: ' data-mo="goto:mo-variabilite"' },
     { key: 'kio', l: 'Saisis dans Kiosk', n: `${kiosk}/${nb}`, c: 'blue', ok: nb > 0 && kiosk === nb, s: kiosk < nb ? `${nb - kiosk} à saisir` : 'tout est saisi', bar: pct(kiosk), attrs: ' data-mo="goto:mo-variabilite"' },
     { key: 'jir', l: 'Commentés dans Jira', n: `${jira}/${nb}`, c: 'blue', ok: nb > 0 && jira === nb, s: jira < nb ? `${nb - jira} à commenter` : 'tout est commenté', bar: pct(jira), attrs: ' data-mo="goto:mo-variabilite"' },
+    { key: 'ind', l: 'Indices des mails', n: nIndTile(), c: 'accent', s: 'à reporter ou écarter', attrs: ' data-mo="goto:moIndicesPanel"' },
     { key: 'pv', l: `Plus-value ${String(moSem || '').replace('-H', ' S')}`, n: pvRes ? (pvRes.etape === 'generer' ? 'générée' : 'contrôlée') : (pvM.du ? 'due' : '—'), c: pvM.du && !pvRes ? 'red' : 'orange', alert: pvM.du && !pvRes, s: [pvM.du ? '<b>due ce mois</b>' : 'due en janvier et juillet', pvRefus ? `${pvRefus} client${pvRefus > 1 ? 's' : ''} refusé${pvRefus > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '), attrs: ' data-mo="goto:mo-plusvalue"' }
   ], null)}</div>`);
   if (rappels.length) parts.push(`<div class="banner"><div><b>À ne pas oublier</b><ul>${rappels.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div></div>`);
@@ -3868,6 +3907,9 @@ function afficherMois() {
       ${moBouton('Calculer', 'etape:calcul', { principal: !manqueM365 })} ${moBouton('Reporter dans le registre (à vérifier)', 'etape:reporter', { lien: true })}</p>
     <div class="table-scroll"><table><thead><tr><th>Client</th><th>Où en est</th><th>Inventaire M365</th><th>Utilisateurs</th><th>Sans support</th><th>VM</th><th>Sites</th><th>Registre</th><th>Kiosk</th><th>Jira</th></tr></thead><tbody>${rows}</tbody></table></div></div>`);
 
+  const nInd = elements.filter(e => e.type === 'variabilite' && e.statut === 'a_traiter' && elementMonth(e) === mo.mois).length;
+  parts.push(`<details class="panel" id="moIndicesPanel"${nInd ? ' open' : ''}><summary><b>Indices repérés dans les mails</b> <span class="count">${nInd}</span></summary>
+    <p class="hint" style="margin-top:.6rem">Ce que les mails disent de la variabilité de ${esc(moLong(mo.mois))} (arrivées, départs, licences) : à reporter dans les valeurs du client, ou à écarter.</p><div id="moIndices"></div></details>`);
   const pv = mo.plusValue, res = pv.resultat && pv.resultat.semestre === moSem ? pv.resultat : null;
   const pvRows = res ? [].concat(res.clients || []).map(k => {
     const err = [].concat(k.Erreurs || []), av = [].concat(k.Avertissements || []);
@@ -3880,6 +3922,20 @@ function afficherMois() {
       ${moBouton('Contrôler', 'etape:pv-controle')} ${moBouton('Générer les fichiers', 'etape:pv-generer', { principal: true })}</p>
     ${res ? `<p class="meta">${res.etape === 'generer' ? 'Générés' : 'Contrôlés'} le ${esc(new Date(res.le).toLocaleString('fr-CH'))}</p><div class="table-scroll"><table><thead><tr><th>Client</th><th>État</th><th>Total</th><th>Détail</th></tr></thead><tbody>${pvRows}</tbody></table></div>` : '<p class="meta">Pas encore contrôlé pour ce semestre.</p>'}</div>`);
   $('moCorps').innerHTML = parts.join('');
+  const ind = $('moIndices');
+  if (ind) {
+    const list = elements.filter(e => e.type === 'variabilite' && e.statut === 'a_traiter' && elementMonth(e) === mo.mois);
+    const byClient = {};
+    list.forEach(e => (byClient[e.client || 'Client à identifier'] ||= []).push(e));
+    Object.keys(byClient).sort().forEach(c => {
+      const h = document.createElement('h3');
+      h.className = 'client';
+      h.textContent = c;
+      ind.appendChild(h);
+      byClient[c].forEach(e => ind.appendChild(elementCard(e)));
+    });
+    if (!list.length) ind.innerHTML = '<p class="meta">Rien à reporter pour ce mois.</p>';
+  }
   const s = $('moSem'); if (s) s.onchange = () => { moSem = s.value; afficherMois(); };
 }
 async function moAction(action, el) {
@@ -3888,7 +3944,7 @@ async function moAction(action, el) {
   try {
     if (verbe === 'ouvrir') { moOuvert = moOuvert === code ? null : code; afficherMois(); return; }
     if (verbe === 'onglet') { showTab(code); return; }
-    if (verbe === 'goto') { const t = $(code); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (verbe === 'goto') { const t = $(code); if (t) { if (t.tagName === 'DETAILS') t.open = true; t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
     const c = [].concat(mo.clients || []).find(x => x.code === code);
     if (verbe === 'etape') {
       const client = el.dataset.client || '';

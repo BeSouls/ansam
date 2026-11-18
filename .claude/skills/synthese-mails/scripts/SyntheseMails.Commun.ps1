@@ -1326,6 +1326,35 @@ function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$N
     $item
 }
 
+# Classe une information TAM chez le client : une ligne datée, avec sa source, dans
+# CLIENTS\<CODE>\infos-tam.md (ANSAM\infos-tam.md pour l'interne), puis l'élément passe « Archivé ».
+# Écrit seulement dans les dossiers du TAM ; jamais dans Jira ni Confluence.
+function Add-SmInfoClient($Archives, [string]$Id, [string]$DossierClients) {
+    $item = $Archives.elements | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $item) { throw "Élément « $Id » introuvable." }
+    $code = ([string]$item.client).Trim().ToUpperInvariant()
+    if ($code -notmatch '^[A-Z0-9]{2,12}$') { throw "Client inconnu pour cet élément : le classer à la main." }
+    if (-not $DossierClients -or -not (Test-Path -LiteralPath $DossierClients)) { throw 'Dossier des clients introuvable (Réglages).' }
+    $dir = $(if ($code -eq 'ANSAM') { Join-Path (Split-Path $DossierClients) 'ANSAM' } else { Join-Path $DossierClients $code })
+    if ($code -ne 'ANSAM' -and -not (Test-Path -LiteralPath $dir) -and -not (Test-Path -LiteralPath (Join-Path $DossierClients "$code.json"))) {
+        throw "Pas de client $code dans le dossier des clients."
+    }
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $file = Join-Path $dir 'infos-tam.md'
+    $utf8 = New-Object Text.UTF8Encoding($true)
+    if (-not (Test-Path -LiteralPath $file)) {
+        [IO.File]::WriteAllText($file, "# Informations TAM : $code`r`n`r`nFaits durables repérés par Panoramix et classés par le TAM, du plus ancien au plus récent.`r`n`r`n", $utf8)
+    }
+    $when = $(if ($item.dateEffet) { ([string]$item.dateEffet).Substring(0, 10) } else { (Get-Date).ToString('yyyy-MM-dd') })
+    $line = "- **$when** : $(([string]$item.element).Trim())" +
+            $(if ($item.indice) { " — $(([string]$item.indice) -replace '\s+', ' ')" } else { '' }) +
+            $(if ($item.source) { " _(source : $(([string]$item.source) -replace '\s+', ' '))_" } else { '' }) + "`r`n"
+    [IO.File]::AppendAllText($file, $line, $utf8)
+    $relative = $(if ($code -eq 'ANSAM') { 'ANSAM\infos-tam.md' } else { "CLIENTS\$code\infos-tam.md" })
+    [void](Set-SmArchiveStatut $Archives $Id 'fait' "Classé dans $relative le $((Get-Date).ToString('dd.MM.yyyy'))")
+    [ordered]@{ element = $item; fichier = $relative }
+}
+
 # --- Actualisation en cours de journée ------------------------------------------
 # Vue par fil réduite aux fils qui ont un message depuis $Since, complets, avec les fils qui
 # portent la même clé de ticket dans leur titre (Outlook coupe une conversation au moindre

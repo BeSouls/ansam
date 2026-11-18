@@ -860,6 +860,14 @@ try {
                     Save-SmArchives $archives $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = 'Enregistré.'; element = $item })
                 }
+                '^POST /api/archives/classer$' {
+                    # Information TAM classée chez le client (fichier local infos-tam.md), sur mon clic.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $archives = Get-SmArchives $WorkDir
+                    $r = Add-SmInfoClient $archives ([string]$posted.id) ([string](Get-SmConfig $WorkDir).dossierClients)
+                    Save-SmArchives $archives $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = "Classé dans $($r.fichier)."; element = $r.element })
+                }
                 '^POST /api/tache$' {
                     Install-Task
                     Send-Json $stream 200 ([ordered]@{ message = "Tâches installées : synthèse à $((Get-SmConfig $WorkDir).heure), page permanente à l'ouverture de session."; etat = (Get-State) })
