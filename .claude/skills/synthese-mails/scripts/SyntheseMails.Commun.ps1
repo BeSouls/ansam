@@ -516,7 +516,7 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
             if (-not $keepAction) { $point.Remove('actionPar') }
         }
         # Champs descriptifs : toujours mis à jour.
-        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
+        foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage', 'clientAttend', 'clientNom') {
             if ($field -eq 'action' -and $keepAction) { continue }
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
         }

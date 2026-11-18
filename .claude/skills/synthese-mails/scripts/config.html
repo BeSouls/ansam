@@ -173,6 +173,7 @@
   .kpi-s { font-size: .75rem; line-height: 1.35; color: var(--muted); }
   .kpi-s b { color: var(--text); font-weight: 600; }
   .kpi.k-faire .kpi-s { padding-bottom: .45rem; }
+  #p-suivi .kpis { grid-template-columns: repeat(auto-fit, minmax(8.4rem, 1fr)); }
   .kpi-bar { display: flex; gap: 2px; height: 4px; margin-top: auto; border-radius: 2px; overflow: hidden; background: var(--surface-2); }
   .kpi-bar span { display: block; height: 100%; }
   .kpi.k-faire { --k: var(--accent); } .kpi.k-echeance { --k: var(--red); } .kpi.k-attente { --k: var(--orange); }
@@ -606,6 +607,7 @@
       <ul id="movedList"></ul>
     </div>
     <div class="kpis" role="group" aria-label="Filtrer le suivi">
+      <button class="kpi k-red" type="button" data-kpi="client" aria-pressed="false" title="Un client t'a écrit (mail ou commentaire Jira public) et attend ta réponse. Heures ouvrées, lundi-vendredi 8 h-18 h."><span class="kpi-l">Clients en attente</span><span class="kpi-n" id="k-client">–</span><span class="kpi-s" id="ks-client"></span></button>
       <button class="kpi k-faire" type="button" data-kpi="a_faire" aria-pressed="false"><span class="kpi-l">À faire</span><span class="kpi-n" id="k-faire">–</span><span class="kpi-s" id="ks-faire"></span><span class="kpi-bar" id="kb-faire" aria-hidden="true"></span></button>
       <button class="kpi k-echeance" type="button" data-kpi="echeances" aria-pressed="false" title="Tâches ouvertes en retard ou à rendre aujourd'hui"><span class="kpi-l">Échéances</span><span class="kpi-n" id="k-echeance">–</span><span class="kpi-s" id="ks-echeance"></span></button>
       <button class="kpi k-attente" type="button" data-kpi="attente" aria-pressed="false" title="Ton action est faite : tu attends le client, un collègue ou un fournisseur"><span class="kpi-l">En attente</span><span class="kpi-n" id="k-attente">–</span><span class="kpi-s" id="ks-attente"></span></button>
@@ -1814,6 +1816,7 @@ function pointCard(p, inSheet) {
   const last = (p.historique || []).slice(-1)[0];
   const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
   const relance = open ? relanceDays(p) : 0;
+  const wait = clientWait(p);
   const moved = lastMove(p);
   const steps = [].concat(p.etapes || []).filter(Boolean), lastStep = steps[steps.length - 1];
   // Le détail (dernier mail, raison du statut, preuve Jira) reste replié : une ligne suffit pour juger.
@@ -1830,6 +1833,7 @@ function pointCard(p, inSheet) {
       ${p.jiraEncoreOuvert ? '<span class="tag late" title="Réglé ici, mais le ticket est encore ouvert dans Jira">à clôturer dans Jira</span>' : ''}
       ${open && p.aRevoir ? `<span class="tag late" title="Statut pas encore revu depuis : ${esc(p.aRevoir)}">à revérifier</span>` : ''}
       ${relance ? `<span class="tag soon" title="Dernier mouvement sur le mail, le ticket ou le statut">sans nouvelles depuis ${relance} j</span>` : ''}
+      ${wait ? `<span class="tag ${wait.level || 'jira'}" title="Message du ${new Date(wait.since).toLocaleString('fr-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, sans réponse de ta part">${esc(wait.who || 'le client')} attend depuis ${fmtWait(wait.h)}</span>` : ''}
     </div>
     ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
     ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
@@ -1918,7 +1922,7 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
-  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira' };
+  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira', client: 'Clients qui attendent ta réponse' };
   $('suiviTitre').textContent = titles[f] || '';
   $('suiviReset').hidden = ['ouverts', 'regles', 'tous'].includes(f);
   const heading = (title, n) => {
@@ -1944,6 +1948,12 @@ function renderSuivi() {
       heading(title, part.length);
       part.forEach(p => box.appendChild(pointCard(p)));
     }
+    return;
+  }
+  if (f === 'client') {
+    const list = leaves().filter(p => clientWait(p) && matches(p)).sort((a, b) => clientWait(b).h - clientWait(a).h);
+    if (!list.length) { box.innerHTML = emptyState('Personne n’attend ta réponse', 'Aucun message de client sans réponse de ta part.'); return; }
+    list.forEach(p => box.appendChild(pointCard(p)));
     return;
   }
   if (f === 'cloturer') {
@@ -2153,6 +2163,32 @@ const syncChips = (pane, f) => document.querySelectorAll(`#p-${pane} .toolbar .c
 const daysSince = (iso) => iso ? Math.floor((Date.now() - Date.parse(iso)) / 864e5) : null;
 const fmtMin = (m) => { m = Math.round(+m || 0); const h = Math.floor(m / 60), r = m % 60; return h ? `${h} h${r ? ' ' + String(r).padStart(2, '0') : ''}` : `${r} min`; };
 
+// Heures ouvrées écoulées depuis t (lundi-vendredi, 8 h-18 h), par quarts d'heure.
+function workHours(t) {
+  let q = 0;
+  const end = Date.now();
+  for (let d = new Date(t); d < end && q < 4 * 10 * 30; d = new Date(d.getTime() + 9e5)) {
+    const day = d.getDay(), h = d.getHours();
+    if (day > 0 && day < 6 && h >= 8 && h < 18) q++;
+  }
+  return q / 4;
+}
+const fmtWait = h => h < 1 ? 'moins d’1 h' : h < 10 ? `${Math.floor(h)} h` : `${Math.floor(h / 10)} j ouvré${h >= 20 ? 's' : ''}`;
+// Un client attend ma réponse : signalé par l'analyse (mails et Jira), sinon dernier commentaire public
+// d'un tiers dans Jira. Une étape faite ou un commentaire de moi plus récent veut dire que j'ai répondu.
+function clientWait(p) {
+  if (!isOpen(p) || p.statut !== 'a_faire') return null;
+  const c = p.jiraDernier;
+  let since = p.clientAttend ? Date.parse(p.clientAttend) : NaN, who = p.clientNom || '';
+  if (isNaN(since) && c && !c.moi && c.public && !/automation/i.test(c.auteur || '')) { since = jiraDate(c.le); who = c.auteur; }
+  if (isNaN(since)) return null;
+  const steps = [].concat(p.etapes || []).filter(Boolean), last = steps[steps.length - 1];
+  if (last && Date.parse(last.le) > since) return null;
+  if (c && c.moi && jiraDate(c.le) > since) return null;
+  const h = workHours(since);
+  return { since, who, h, level: h >= 10 ? 'late' : h >= 4 ? 'soon' : '' };
+}
+
 // Tuiles du Suivi : un chiffre, et la ligne qui dit s'il faut s'en inquiéter.
 function renderKpis() {
   const open = leaves().filter(isOpen);
@@ -2173,6 +2209,8 @@ function renderKpis() {
     k.classList.toggle('zero', n === 0);
     k.classList.toggle('alert', !!alert && n > 0);
   };
+  const waits = open.map(clientWait).filter(Boolean).sort((a, b) => b.h - a.h);
+  tile('client', waits.length, waits.length ? `le plus ancien : <b>${fmtWait(waits[0].h)}</b>` : 'personne n’attend', true);
   const red = byPrio('rouge');
   tile('faire', todo.length, red ? `<b>${red}</b> urgente${red > 1 ? 's' : ''}` : 'aucune urgente');
   $('kb-faire').innerHTML = todo.length ? [['rouge', 'var(--red)'], ['orange', 'var(--orange)'], ['vert', 'var(--green)']]
