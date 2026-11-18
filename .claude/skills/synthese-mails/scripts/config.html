@@ -279,6 +279,16 @@
   details.more > summary:hover { color: var(--text); }
   details.more > .meta { margin: .35rem 0 0 .25rem; padding-left: .7rem; border-left: 2px solid var(--line); }
   details.more > .meta + .meta { margin-top: .2rem; }
+  /* Étapes : finir une étape sans fermer la tâche */
+  .btn.stepdone { font-size: .8125rem; padding: .3rem .75rem; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: var(--green-soft); }
+  .stepform { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; padding: .75rem .8rem; border-radius: 12px; background: var(--surface-2); }
+  .stepform textarea.field { font-family: inherit; font-size: .875rem; resize: vertical; }
+  .stepnext { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .stepnext input.field { flex: 1 1 14rem; width: auto; }
+  .stepnext .btn { font-size: .8125rem; padding: .35rem .75rem; }
+  .laststep { font-size: .8125rem; color: var(--green); margin: .1rem 0 .2rem; }
+  .steplabel { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+  ol.steplist { margin: .2rem 0 0; padding-left: 1.2rem; }
 
   /* Réglages */
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
@@ -1022,7 +1032,8 @@ function emptyState(title, text) {
 }
 
 // --- Suivi -------------------------------------------------------------------
-const pointStatus = [['a_faire', 'À faire'], ['attente_tiers', 'En attente'], ['traite', 'Traité'], ['ignore', 'Sans objet']];
+// « Terminée » ferme toute la tâche (le ticket entier) ; une étape finie passe par « Étape faite ».
+const pointStatus = [['a_faire', 'À faire'], ['attente_tiers', 'En attente'], ['traite', 'Terminée'], ['ignore', 'Sans objet']];
 const prioOrder = { rouge: 0, orange: 1, vert: 2 };
 
 const isOpen = (p) => p.statut === 'a_faire' || p.statut === 'attente_tiers';
@@ -1778,6 +1789,7 @@ function pointCard(p, inSheet) {
   const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
   const relance = open ? relanceDays(p) : 0;
   const moved = lastMove(p);
+  const steps = [].concat(p.etapes || []).filter(Boolean), lastStep = steps[steps.length - 1];
   // Le détail (dernier mail, raison du statut, preuve Jira) reste replié : une ligne suffit pour juger.
   const summary = [moved ? `Dernier mouvement ${ago(moved)}` : '', p.revuLe ? `revu le ${shortDate(p.revuLe)}` : (open ? 'pas encore revu' : '')].filter(Boolean).join(' · ') || 'Détails';
   card.innerHTML = `
@@ -1793,12 +1805,14 @@ function pointCard(p, inSheet) {
       ${open && p.aRevoir ? `<span class="tag late" title="Statut pas encore revu depuis : ${esc(p.aRevoir)}">à revérifier</span>` : ''}
       ${relance ? `<span class="tag soon" title="Dernier mouvement sur le mail, le ticket ou le statut">sans nouvelles depuis ${relance} j</span>` : ''}
     </div>
-    ${p.action ? `<div class="body">${esc(p.action)}</div>` : ''}
+    ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
+    ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
     <details class="more"><summary>${esc(summary)}</summary>
       <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
       ${proofLine(p)}
+      ${steps.length ? `<div class="meta"><b>Étapes faites</b><ol class="steplist">${steps.map(s => `<li>${shortDate(s.le)} – ${esc(s.texte)}${s.note ? ` <i>(${esc(s.note)})</i>` : ''}</li>`).join('')}</ol></div>` : ''}
       <div class="meta">Référence <span class="mono">${esc(p.id)}</span></div>
     </details>
     <div class="foot"></div>`;
@@ -1806,6 +1820,15 @@ function pointCard(p, inSheet) {
   if (prep) prep.addEventListener('click', e => { e.stopPropagation(); openContact(p, card); });
   card.querySelector('.head').appendChild(flagButton(p));
   const foot = card.querySelector('.foot');
+  if (open) {
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'btn stepdone';
+    done.textContent = '✓ Étape faite';
+    done.title = 'Cette étape est finie, la tâche continue : tu dis ce qui suit';
+    done.addEventListener('click', e => { e.stopPropagation(); openStepForm(p, card); });
+    foot.appendChild(done);
+  }
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
   const closable = (open || p.jiraEncoreOuvert) && p.ticket;
@@ -1826,6 +1849,42 @@ function pointCard(p, inSheet) {
     card.querySelector('.head').prepend(selectButton(p));
   }
   return card;
+}
+
+// « Étape faite » : la tâche reste ouverte. Ce qui suit : j'attends un retour, ou une étape suivante
+// (écrite ici, sinon proposée par la prochaine analyse).
+function openStepForm(p, card) {
+  if (card.querySelector('.stepform')) return;
+  const box = document.createElement('div');
+  box.className = 'stepform';
+  box.innerHTML = `<label class="f">Ce que j’ai fini</label>
+    <textarea class="field" rows="2" data-k="texte"></textarea>
+    <input class="field" type="text" data-k="note" placeholder="Note (facultatif) : ce qui a été dit, décidé…">
+    <label class="f" style="margin-top:.2rem">Et maintenant ?</label>
+    <div class="stepnext">
+      <button class="btn" type="button" data-ensuite="attente" title="La tâche passe En attente">J’attends un retour</button>
+      <input class="field" type="text" data-k="suivante" placeholder="Étape suivante (vide : Panoramix la propose)">
+      <button class="btn primary" type="button" data-ensuite="suivante">Étape suivante</button>
+      <button class="btn link plain" type="button" data-annuler>Annuler</button>
+    </div>`;
+  box.querySelector('[data-k=texte]').value = p.action || '';
+  box.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (e.target.closest('[data-annuler]')) { box.remove(); return; }
+    const b = e.target.closest('[data-ensuite]');
+    if (!b) return;
+    const val = k => box.querySelector(`[data-k=${k}]`).value.trim();
+    box.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    try {
+      const r = await api('POST', '/api/etape', { id: p.id, texte: val('texte'), note: val('note'), ensuite: b.dataset.ensuite, suivante: val('suivante') });
+      points = r.points;
+      renderAll();
+      toast(r.message);
+    } catch (err) { box.querySelectorAll('button').forEach(x => { x.disabled = false; }); toast(err.message, null, true); }
+  });
+  box.addEventListener('keydown', e => { if (e.key === 'Escape') box.remove(); });
+  card.querySelector('.foot').before(box);
+  box.querySelector('[data-k=note]').focus();
 }
 
 function renderSuivi() {

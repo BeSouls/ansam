@@ -465,6 +465,14 @@ try {
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
                 }
+                '^POST /api/etape$' {
+                    # Étape faite : la tâche reste ouverte, en attente ou avec l'étape suivante.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = Add-SmEtape $suivi ([string]$posted.id) ([string]$posted.texte) ([string]$posted.note) ([string]$posted.ensuite) ([string]$posted.suivante)
+                    Save-SmSuivi $suivi $WorkDir
+                    Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : étape enregistrée, la tâche reste ouverte."; point = $point; points = @($suivi.points) })
+                }
                 '^GET /api/annuaire$' {
                     $annuaire = Get-SmAnnuaire $WorkDir
                     Send-Json $stream 200 ([ordered]@{ contacts = @($annuaire.contacts | Where-Object { -not $_.retire }) })

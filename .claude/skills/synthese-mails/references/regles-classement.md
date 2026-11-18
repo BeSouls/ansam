@@ -108,6 +108,24 @@ Sources, de la plus forte à la plus faible :
    `attente_tiers` ; il clôt le sujet → `traite` ; un message ou un
    commentaire plus récent que le mien me demande quelque chose → `a_faire`.
 
+### Une tâche, des étapes
+
+Un point est **une tâche entière** (le sujet, souvent tout le ticket) ; son
+`action` n'est que **l'étape en cours**. Quand je finis une étape, la page
+l'ajoute à `etapes` (date, texte, note) et garde la tâche ouverte :
+`attente_tiers` si j'attends un retour, `a_faire` sinon.
+
+- Ne jamais proposer une action déjà dans `etapes` : l'action est l'étape
+  **suivante**, déduite des étapes faites, des mails et des commentaires.
+- Un point marqué « étape suivante à proposer » (dans `a-revoir.json`) reçoit
+  une action concrète, ou passe `attente_tiers` si le dernier échange le dit.
+- `actionPar` = `moi` : j'ai écrit l'étape suivante moi-même. La reprendre
+  telle quelle, sauf message ou commentaire d'un tiers plus récent qui la
+  rend caduque.
+- Une étape faite n'est **jamais** une raison de passer le point `traite`.
+  `traite` veut dire que toute la tâche est finie : ticket Terminé dans Jira,
+  ou mon marquage « Terminée ».
+
 ### Lire les commentaires Jira
 
 Les commentaires (`jira-activite.json`, `a-revoir.json`) passent avant le

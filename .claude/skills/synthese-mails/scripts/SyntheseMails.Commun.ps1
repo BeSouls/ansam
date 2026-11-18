@@ -507,8 +507,17 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
             [void]$Suivi.points.Add($point)
         }
 
+        # L'étape suivante que j'ai écrite moi-même tient, sauf message ou commentaire d'un tiers plus récent.
+        $keepAction = $false
+        if ($point.actionPar -eq 'moi') {
+            $mine = ConvertTo-SmDateTime $point.actionLe
+            $news = @((ConvertTo-SmDateTime $update.dernierMessage), (ConvertTo-SmDateTime $point.jiraDernierAutre) | Where-Object { $_ }) | Sort-Object -Descending | Select-Object -First 1
+            $keepAction = -not ($mine -and $news -and $news -gt $mine)
+            if (-not $keepAction) { $point.Remove('actionPar') }
+        }
         # Champs descriptifs : toujours mis à jour.
         foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage') {
+            if ($field -eq 'action' -and $keepAction) { continue }
             if ($update.PSObject.Properties.Name -contains $field) { $point[$field] = $update.$field }
         }
         # Une prise de contact rédigée avec tout le dossier (redigeLe) tient tant que rien n'a bougé
@@ -590,6 +599,33 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
         Add-SmHistorique $point 'moi' $Statut $Note
         $point.Remove('aRevoir')     # je viens de trancher : plus rien à signaler
     }
+    Update-SmGroupes $Suivi
+    $point
+}
+
+# Étape faite par moi : la tâche (le sujet, souvent le ticket) reste ouverte. L'étape rejoint `etapes`,
+# le statut dit la suite : 'attente' (j'attends un retour) ou 'suivante' (une autre action m'attend ;
+# $Suivante la décrit, sinon l'analyse la propose). Seul « Terminée » (traite) ferme la tâche.
+function Add-SmEtape($Suivi, [string]$Id, [string]$Texte, [string]$Note, [string]$Ensuite, [string]$Suivante) {
+    $point = $Suivi.points | Where-Object { $_.id -eq $Id -and -not $_.estGroupe } | Select-Object -First 1
+    if (-not $point) { throw "Point « $Id » introuvable." }
+    if (@('attente', 'suivante') -notcontains $Ensuite) { throw "Suite inconnue : $Ensuite." }
+    $Texte = $Texte.Trim(); $Note = $Note.Trim(); $Suivante = $Suivante.Trim()
+    if (-not $Texte) { $Texte = [string]$point.action }
+    if ($Texte.Length -gt 600) { $Texte = $Texte.Substring(0, 600) }
+    if ($Note.Length -gt 2000) { $Note = $Note.Substring(0, 2000) }
+    $now = (Get-Date).ToString('o')
+    $etape = [ordered]@{ le = $now; texte = $Texte; note = $(if ($Note) { $Note } else { $null }) }
+    $point.etapes = @(@($point.etapes | Where-Object { $_ }) + $etape | Select-Object -Last 30)
+    $statut = $(if ($Ensuite -eq 'attente') { 'attente_tiers' } else { 'a_faire' })
+    if ($Suivante) { $point.action = $Suivante; $point.actionPar = 'moi'; $point.actionLe = $now }
+    elseif ($Ensuite -eq 'suivante') { $point.action = "Étape suivante à définir (après : $Texte)"; $point.Remove('actionPar') }
+    else { $point.action = "En attente d'un retour après : $Texte"; $point.Remove('actionPar') }
+    $point.statut = $statut
+    $point.majPar = 'moi'
+    $point.majLe = $now
+    $point.Remove('aRevoir')
+    Add-SmHistorique $point 'moi' $statut ("Étape faite : $Texte" + $(if ($Note) { " – $Note" } else { '' }))
     Update-SmGroupes $Suivi
     $point
 }
@@ -839,12 +875,19 @@ function Update-SmARevoir($Suivi, $Activite, $Context, [string[]]$ClesMail = @()
             if ($note -and (-not $seen -or $note -gt $seen)) { [void]$why.Add("note AnsamDiag du $($note.ToString('dd.MM HH:mm'))") }
             if ($ClesMail -contains $point.ticket) { [void]$why.Add('nouveau mail sur le ticket') }
         }
+        # Étape faite par moi depuis la dernière revue : l'analyse confirme la suite (ou la propose).
+        $step = @($point.etapes | Where-Object { $_ }) | Select-Object -Last 1
+        $stepAt = $(if ($step) { ConvertTo-SmDateTime $step.le })
+        if ($stepAt -and (-not $seen -or $stepAt -gt $seen)) {
+            [void]$why.Add("étape faite le $($stepAt.ToString('dd.MM HH:mm')) : $($step.texte)" + $(if ($point.actionPar -ne 'moi' -and $point.statut -eq 'a_faire') { ' ; étape suivante à proposer' } else { '' }))
+        }
         if (-not $why.Count) {
             if (-not $point.aRevoir) { continue }   # une revue précédente ne l'a pas repris : toujours dû
             [void]$why.Add([string]$point.aRevoir)
         }
         $point.aRevoir = ($why -join ' ; ')
         [void]$list.Add([ordered]@{ id = $point.id; ticket = $point.ticket; statut = $point.statut; jiraStatut = $point.jiraStatut; action = $point.action
+                                    actionPar = $point.actionPar; etapes = @(@($point.etapes | Where-Object { $_ }) | Select-Object -Last 5)
                                     pourquoi = $point.aRevoir; commentaires = $(if ($point.ticket) { $comments[[string]$point.ticket] }) })
     }
     , $list
@@ -882,6 +925,7 @@ function Write-SmDossierAnalyse($Suivi, $Archives, [string]$SuiviFile, [string]$
         if ($_.estGroupe -or $_.statut -eq 'a_faire' -or $_.statut -eq 'attente_tiers') {
             $open = Get-SmEssentiel $_ @('jiraDernier', 'jiraDernierAutre', 'jiraStatutRevu')
             if ($open.Contains('historique')) { $open.historique = @($last) }
+            if ($open.Contains('etapes')) { $open.etapes = @(@($open.etapes | Where-Object { $_ }) | Select-Object -Last 5) }
             $open
         } else {
             # Un point réglé reste connu : pas de doublon, et mon marquage tient face à un nouveau message.
