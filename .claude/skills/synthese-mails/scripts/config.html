@@ -279,6 +279,19 @@
   details.more > summary:hover { color: var(--text); }
   details.more > .meta { margin: .35rem 0 0 .25rem; padding-left: .7rem; border-left: 2px solid var(--line); }
   details.more > .meta + .meta { margin-top: .2rem; }
+  /* Publier : une ligne par élément à saisir, cochée quand Jira le montre */
+  .publist { display: flex; flex-direction: column; gap: .15rem; margin-top: .55rem; }
+  .pubrow > summary { list-style: none; display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; border-radius: 8px; cursor: pointer; }
+  .pubrow > summary::-webkit-details-marker { display: none; }
+  .pubrow > summary:hover, .pubrow[open] > summary { background: var(--surface-2); }
+  .pubt { font-weight: 600; font-size: .875rem; flex: none; }
+  .pubd { color: var(--muted); font-size: .8125rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pubrow .btn.link { font-size: .8125rem; color: var(--accent); flex: none; }
+  .pubtext { white-space: pre-wrap; font-size: .875rem; line-height: 1.5; padding: .5rem .7rem .6rem 2.2rem; }
+  .pubmark { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; font-size: .75rem; font-weight: 700; flex: none; background: var(--surface-2); color: var(--muted); }
+  .pubmark.ok { background: var(--green); color: #fff; } .pubmark.ko { background: var(--red); color: #fff; } .pubmark.info { background: var(--orange-soft); color: var(--orange); }
+  .pubgroup-h { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); padding: .45rem .5rem .1rem; }
+  .pubavant { margin-top: .5rem; } .pubavant > summary { cursor: pointer; } .pubavant .pubtext { padding-left: 0; }
   /* Étapes : finir une étape sans fermer la tâche */
   .btn.stepdone { font-size: .8125rem; padding: .3rem .75rem; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: var(--green-soft); }
   .stepform { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; padding: .75rem .8rem; border-radius: 12px; background: var(--surface-2); }
@@ -572,6 +585,7 @@
     <div class="run" id="runState" role="status" aria-live="polite" hidden><span class="spinner"></span><span id="runText"></span></div>
     <nav class="seg" role="tablist" aria-label="Vues">
       <button role="tab" data-tab="suivi" aria-selected="true">Suivi <span class="count" id="c-suivi">–</span></button>
+      <button role="tab" data-tab="publier" aria-selected="false" title="Clôtures prêtes à saisir dans Jira, et ce que Jira en montre">Publier <span class="count" id="c-publier">–</span></button>
       <button role="tab" data-tab="mois" aria-selected="false">Mois <span class="count hot" id="c-mois" title="Rappels du cycle mensuel" hidden></span></button>
       <button role="tab" data-tab="variabilite" aria-selected="false">Variabilité <span class="count" id="c-variabilite">–</span></button>
       <button role="tab" data-tab="facturation" aria-selected="false">Facturation <span class="count" id="c-facturation">–</span> <span class="count hot" id="c-projets" title="Mois en attente du fichier projet" hidden></span></button>
@@ -609,6 +623,17 @@
       </div>
     </div>
     <div id="list-suivi"></div>
+  </section>
+
+  <section class="pane" id="p-publier" hidden>
+    <div class="panebar">
+      <h2>À publier dans Jira</h2>
+      <span class="info" title="Les clôtures préparées (Clôturer, /cloture) attendent ici. Tu saisis dans Jira toi-même ; Panoramix vérifie ensuite, en lecture seule, le statut, les worklogs jour par jour et le message au client. Rien n’est écrit dans Jira.">i</span>
+      <button class="btn" type="button" id="pubVerifier" title="Relit Jira pour toute la file (lecture seule)">Vérifier dans Jira</button>
+    </div>
+    <div class="run" id="pubEtat" role="status" hidden><span class="spinner"></span><span id="pubEtatTexte"></span></div>
+    <div class="kpis" id="sum-publier" role="group" aria-label="Filtrer la file"></div>
+    <div id="pubListe"><div class="empty">Chargement…</div></div>
   </section>
 
   <section class="pane" id="p-variabilite" hidden>
@@ -950,6 +975,7 @@ function showTab(name) {
   if (name === 'preparer') chargerPreparer();
   if (name === 'facturation') chargerFacturation();
   if (name === 'mois') chargerMois();
+  if (name === 'publier') chargerPublier();
   document.querySelectorAll('nav.seg button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('.pane').forEach(p => { p.hidden = p.id !== 'p-' + name; });
   try { localStorage.setItem('sm-tab', name); } catch (e) { }
@@ -2763,6 +2789,11 @@ function afficherCloture(s) {
     const at = part.indexOf('\n');
     box.appendChild(prepTexte(part.slice(0, at).trim(), part.slice(at + 1).trim()));
   });
+  // La clôture rejoint la file « Publier », qui vérifiera dans Jira ce que tu auras saisi.
+  const go = document.createElement('p');
+  go.innerHTML = '<button class="btn primary" type="button">Ouvrir dans Publier</button> <span class="meta">tout est aussi dans l’onglet Publier, avec la vérification dans Jira</span>';
+  go.querySelector('button').onclick = () => { showTab('publier'); window.scrollTo(0, 0); };
+  box.prepend(go);
 }
 function afficherTri(s) {
   const box = $('triResultat');
@@ -2870,6 +2901,124 @@ document.addEventListener('click', e => {
   if (!b) return;
   e.stopPropagation();
   if (b.dataset.cloture) preparerCloture(b.dataset.cloture); else preparerRelance(b.dataset.relance);
+});
+
+// --- Publier : le dernier kilomètre ---------------------------------------------------
+// Une clôture préparée attend ici jusqu'à ce que Jira montre ce qu'elle annonce. Je publie ; la page vérifie.
+let pubs = [], pubFiltre = null, pubTimer = null, pubJob = {};
+const PUB_ORDRE = ['titre', 'statut', 'resolution', 'public', 'interne', 'worklog', 'categorie', 'kb', 'autre'];
+const pubEtatDe = p => p.verification && p.verification.complet ? 'verifie' : (p.publieLe && p.verification ? 'ecarts' : 'a_publier');
+async function chargerPublier(silencieux) {
+  clearTimeout(pubTimer);
+  let r;
+  try { r = await api('GET', '/api/publier'); } catch (e) { if (!silencieux) toast(e.message, null, true); return; }
+  pubs = r.publications || [];
+  const before = pubJob.etat;
+  pubJob = r.verification || {};
+  const enCours = pubJob.etat === 'en_cours';
+  $('pubEtat').hidden = !enCours;
+  $('pubEtatTexte').textContent = pubJob.message || 'Vérification';
+  $('pubVerifier').disabled = enCours;
+  if (enCours) pubTimer = setTimeout(() => chargerPublier(true), 3000);
+  else if (before === 'en_cours') toast(pubJob.message || 'Vérification terminée.', null, pubJob.etat === 'echec');
+  renderPublier();
+}
+function pubCheck(p, type, jour) {
+  const v = p.verification;
+  if (!v) return null;
+  return [].concat(v.controles || []).find(c => c.type === type && (!jour || c.jour === jour)) || null;
+}
+const pubMark = c => !c ? '<span class="pubmark" title="Pas encore vérifié">·</span>'
+  : c.ok ? '<span class="pubmark ok" title="Trouvé dans Jira">✓</span>'
+  : `<span class="pubmark ${c.bloquant === false ? 'info' : 'ko'}" title="${c.bloquant === false ? 'Conseillé' : 'Manquant dans Jira'}">${c.bloquant === false ? '!' : '✗'}</span>`;
+function renderPublier() {
+  const open = pubs.filter(p => pubEtatDe(p) !== 'verifie');
+  const ecarts = pubs.filter(p => pubEtatDe(p) === 'ecarts');
+  const missingDays = open.reduce((n, p) => n + [].concat((p.verification && p.verification.controles) || []).filter(c => c.type === 'worklog' && !c.ok).length, 0);
+  const c = $('c-publier');
+  c.textContent = open.length;
+  c.classList.toggle('hot', ecarts.length > 0 || missingDays > 0);
+  const fin = pubJob && pubJob.fin;
+  $('sum-publier').innerHTML = tilesHtml([
+    { key: 'a_publier', l: 'À publier', n: pubs.filter(p => pubEtatDe(p) === 'a_publier').length, c: 'accent', s: 'préparés, pas encore complets dans Jira' },
+    { key: 'ecarts', l: 'Publiés, incomplets', n: ecarts.length, c: 'red', alert: true, s: ecarts.length ? 'Jira ne montre pas tout' : 'aucun écart' },
+    { key: 'worklogs', l: 'Jours sans worklog', n: missingDays, c: 'orange', alert: true, s: missingDays ? 'à saisir avant la facturation' : 'tout est saisi' },
+    { key: 'verifie', l: 'Vérifiés', n: pubs.length - open.length, c: 'green', ok: pubs.length - open.length > 0, s: fin ? `vérifié ${ago(fin)} à ${new Date(fin).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : 'pas encore vérifié' }
+  ], pubFiltre);
+  const keep = {
+    a_publier: p => pubEtatDe(p) === 'a_publier', ecarts: p => pubEtatDe(p) === 'ecarts', verifie: p => pubEtatDe(p) === 'verifie',
+    worklogs: p => pubEtatDe(p) !== 'verifie' && [].concat((p.verification && p.verification.controles) || []).some(c => c.type === 'worklog' && !c.ok)
+  }[pubFiltre] || (p => pubEtatDe(p) !== 'verifie');
+  const list = pubs.filter(keep).filter(p => matches({ a: p.cle, b: p.titre, c: p.client }));
+  const box = $('pubListe');
+  box.innerHTML = '';
+  if (!list.length) { box.innerHTML = emptyState(pubFiltre === 'verifie' ? 'Rien de vérifié' : 'Rien à publier', 'Les clôtures préparées (bouton Clôturer, ou /cloture dans Claude) arrivent ici.'); return; }
+  list.forEach(p => box.appendChild(pubCard(p)));
+}
+function pubCard(p) {
+  const etat = pubEtatDe(p), url = ticketUrl(p.cle), v = p.verification;
+  const card = document.createElement('div');
+  card.className = 'card task ' + (etat === 'ecarts' ? 'p-rouge' : etat === 'verifie' ? 'p-vert' : 'p-orange') + (etat === 'verifie' ? ' done' : '');
+  const etatTag = etat === 'verifie' ? '<span class="tag sure">vérifié dans Jira</span>'
+    : etat === 'ecarts' ? `<span class="tag late">${v.manques} manque${v.manques > 1 ? 's' : ''} dans Jira</span>`
+    : v ? `<span class="tag soon">${v.manques} à faire dans Jira</span>` : '<span class="tag soon">à publier</span>';
+  const blocs = [].concat(p.blocs || []).sort((a, b) => PUB_ORDRE.indexOf(a.type) - PUB_ORDRE.indexOf(b.type));
+  const rows = blocs.map((b, i) => {
+    if (b.type === 'worklog' && (b.jours || []).length) {
+      return `<div class="pubgroup"><div class="pubgroup-h">${esc(b.titre)}</div>${b.jours.map((j, k) => {
+        const chk = pubCheck(p, 'worklog', j.jour);
+        return `<details class="pubrow"><summary>${pubMark(chk)}<span class="pubt">${esc(j.libelle)}</span><span class="pubd">${esc(chk ? chk.detail : String(j.texte).split('\n').length + ' ligne(s)')}</span><button class="btn link" type="button" data-copy="${i}:${k}">Copier</button></summary><div class="pubtext">${esc(j.texte)}</div></details>`;
+      }).join('')}${b.note ? `<div class="why">${esc(b.note)}</div>` : ''}</div>`;
+    }
+    const chk = ['public', 'interne', 'statut'].includes(b.type) ? pubCheck(p, b.type) : undefined;
+    return `<details class="pubrow"${b.type === 'public' && etat !== 'verifie' ? ' open' : ''}><summary>${chk === undefined ? '<span class="pubmark none">·</span>' : pubMark(chk)}<span class="pubt">${esc(b.titre)}</span><span class="pubd">${esc(chk ? chk.detail : String(b.texte || '').split('\n')[0].slice(0, 90))}</span><button class="btn link" type="button" data-copy="${i}">Copier</button></summary><div class="pubtext">${esc(b.texte)}</div></details>`;
+  }).join('');
+  card.innerHTML = `
+    <div class="head"><span class="title">${esc(p.titre)}</span>${etatTag}</div>
+    <div class="chips">
+      ${p.client ? `<span class="tag">${esc(p.client)}</span>` : ''}
+      ${url ? `<a class="tag" href="${url}" target="_blank" rel="noopener">${esc(p.cle)}</a>` : `<span class="tag">${esc(p.cle)}</span>`}
+      ${v ? `<span class="tag jira">Jira : ${esc(v.jiraStatut)}</span>` : (p.jiraStatut ? `<span class="tag jira">Jira : ${esc(p.jiraStatut)}</span>` : '')}
+      <span class="tag" title="${esc(p.fichier)}">préparé ${ago(p.fichierLe)}</span>
+      ${p.publieLe ? `<span class="tag">publié ${ago(p.publieLe)}</span>` : ''}
+    </div>
+    ${p.avant && etat !== 'verifie' ? `<details class="clue pubavant"><summary><b>À lire avant de publier</b></summary><div class="pubtext">${esc(p.avant)}</div></details>` : ''}
+    <div class="publist">${rows}</div>
+    <div class="foot">
+      ${url ? `<a class="btn" href="${url}" target="_blank" rel="noopener">Ouvrir dans Jira</a>` : ''}
+      ${etat !== 'verifie' ? '<button class="btn primary" type="button" data-pub="publie">J’ai publié : vérifier</button>' : ''}
+      <button class="btn link" type="button" data-pub="verifier">Revérifier</button>
+      ${etat !== 'verifie' ? '<button class="btn link plain" type="button" data-pub="ecarter" title="Ne concerne plus Jira (ou déjà fait autrement) : retirer de la file">Retirer de la file</button>' : ''}
+    </div>`;
+  card.addEventListener('click', async e => {
+    const cp = e.target.closest('[data-copy]');
+    if (cp) {
+      e.preventDefault();
+      const [i, k] = cp.dataset.copy.split(':').map(Number);
+      const b = blocs[i];
+      copyText(k >= 0 && b.jours ? b.jours[k].texte : b.texte, 'Copié.');
+      return;
+    }
+    const a = e.target.closest('[data-pub]');
+    if (!a) return;
+    a.disabled = true;
+    try {
+      if (a.dataset.pub !== 'verifier') toast((await api('POST', '/api/publier', { cle: p.cle, fichierLe: p.fichierLe, action: a.dataset.pub })).message);
+      if (a.dataset.pub !== 'ecarter') await api('POST', '/api/publier', { cle: p.cle, action: 'verifier' });
+      await chargerPublier(true);
+    } catch (err) { a.disabled = false; toast(err.message, null, true); }
+  });
+  return card;
+}
+$('sum-publier').addEventListener('click', e => {
+  const k = e.target.closest('[data-tile]');
+  if (!k) return;
+  pubFiltre = pubFiltre === k.dataset.tile ? null : k.dataset.tile;
+  renderPublier();
+});
+$('pubVerifier').addEventListener('click', async () => {
+  try { toast((await api('POST', '/api/publier', { action: 'verifier' })).message); await chargerPublier(true); }
+  catch (e) { toast(e.message, null, true); }
 });
 
 // --- Facturation --------------------------------------------------------------
@@ -3552,6 +3701,7 @@ async function load() {
     renderAll();
     await loadAnnuaire();
     chargerProjets();
+    await chargerPublier(true);
     if (tab !== 'mois') await chargerMois(true);
     state = await api('GET', '/api/etat');
     renderSettings();

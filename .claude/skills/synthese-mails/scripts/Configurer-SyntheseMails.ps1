@@ -57,6 +57,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SyntheseMails.Commun.ps1')
 . (Join-Path $PSScriptRoot 'SyntheseMails.Facturation.ps1')
 . (Join-Path $PSScriptRoot 'SyntheseMails.Mois.ps1')
+. (Join-Path $PSScriptRoot 'SyntheseMails.Publier.ps1')
 
 $utf8 = New-Object Text.UTF8Encoding($false)
 $pagePath = Join-Path $PSScriptRoot 'config.html'
@@ -472,6 +473,34 @@ try {
                     $point = Add-SmEtape $suivi ([string]$posted.id) ([string]$posted.texte) ([string]$posted.note) ([string]$posted.ensuite) ([string]$posted.suivante)
                     Save-SmSuivi $suivi $WorkDir
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : étape enregistrée, la tâche reste ouverte."; point = $point; points = @($suivi.points) })
+                }
+                '^GET /api/publier$' {
+                    # File « À publier » : clôtures prêtes, et ce que Jira en montre (dernière vérification).
+                    $list = Get-SmPublications (Get-SmConfig $WorkDir) $WorkDir (Get-SmSuivi $WorkDir)
+                    $job = Get-TravailState 'publier'
+                    Send-Json $stream 200 ([ordered]@{ publications = @($list); verification = $(if ($job) { $job } else { [ordered]@{ etat = 'aucun' } }) })
+                }
+                '^POST /api/publier$' {
+                    # publie / ecarter / rouvrir : état local ; verifier : lecture de Jira en arrière-plan.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $cle = [string]$posted.cle
+                    if ($cle -and $cle -notmatch '^[A-Za-z0-9-]+$') { throw "Ticket invalide : $cle" }
+                    $action = [string]$posted.action
+                    if ($action -eq 'verifier') {
+                        $job = Get-TravailState 'publier'
+                        if ($job -and $job.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Vérification déjà en cours.') }); break }
+                        Write-SmJson (Join-Path $WorkDir 'travaux\publier.json') ([ordered]@{ travail = 'publier'; id = $cle; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                        $script = Join-Path $PSScriptRoot 'Publier-Etape.ps1'
+                        $options = "-WorkDir `"$WorkDir`"" + $(if ($cle) { " -Cle $cle" } else { '' })
+                        Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                            -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" $options" | Out-Null
+                        Send-Json $stream 200 ([ordered]@{ message = 'Vérification dans Jira lancée (lecture seule).' })
+                        break
+                    }
+                    if (-not $cle) { throw 'Ticket manquant.' }
+                    $entry = Set-SmPublication $WorkDir $cle ([string]$posted.fichierLe) $action
+                    $message = $(switch ($action) { 'publie' { "$cle : noté publié." } 'ecarter' { "$cle : retiré de la file." } default { "$cle : remis dans la file." } })
+                    Send-Json $stream 200 ([ordered]@{ message = $message; entree = $entry })
                 }
                 '^GET /api/annuaire$' {
                     $annuaire = Get-SmAnnuaire $WorkDir
