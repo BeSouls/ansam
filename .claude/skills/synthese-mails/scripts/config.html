@@ -296,6 +296,14 @@
   .ansamline { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; font-size: .8125rem; color: var(--muted); margin: .35rem 0 .1rem; }
   .ansamline.none { color: var(--orange); }
   .ansamline .btn.link { font-size: .8125rem; color: var(--accent); padding: 0 .2rem; }
+  /* Revue : une tâche à la fois */
+  .btn.revuebtn { font-size: .8125rem; padding: .3rem .7rem; display: inline-flex; gap: .35rem; align-items: center; }
+  #rsheet { z-index: 33; }
+  .rwhy { margin: .3rem 0 .7rem; padding: .6rem .75rem; border-radius: 10px; background: var(--surface-2); font-size: .875rem; }
+  .rwhy.reo { background: var(--orange-soft); }
+  .rwhy kbd, .rkeys kbd { font: 600 .75rem ui-monospace, Consolas, monospace; padding: .05rem .35rem; border-radius: 5px; border: 1px solid var(--line); background: var(--surface); }
+  .rkeys { display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: .6rem; }
+  .why.reo { color: var(--orange); }
   /* Étapes : finir une étape sans fermer la tâche */
   .btn.stepdone { font-size: .8125rem; padding: .3rem .75rem; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: var(--green-soft); }
   .stepform { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; padding: .75rem .8rem; border-radius: 12px; background: var(--surface-2); }
@@ -621,6 +629,7 @@
       <span class="vt" id="suiviTitre">Tâches ouvertes</span>
       <span class="info" title="Un statut que tu poses tient jusqu'à ce qu'un nouveau message arrive sur le point. « En attente » : ton action est faite, tu attends le client, un collègue ou un fournisseur.">i</span>
       <button class="reset" type="button" id="suiviReset" hidden>Tout afficher</button>
+      <button class="btn revuebtn" type="button" id="revueBtn" title="Une tâche à la fois, au clavier : les statuts proposés par la synthèse depuis ta dernière revue">Revue <span class="count" id="c-revue">0</span></button>
       <div class="status" role="group" aria-label="Statut" id="suiviVue">
         <button class="opt" type="button" data-f="ouverts" aria-pressed="true">Ouverts</button>
         <button class="opt" type="button" data-f="regles" aria-pressed="false">Réglés</button>
@@ -905,6 +914,22 @@
     <button class="btn link" type="button" id="sheetDissolve">Dissoudre le groupe</button>
   </div>
   <div id="sheetList"></div>
+</div>
+
+<div class="sheet" id="rsheet" role="dialog" aria-modal="true" aria-labelledby="rTitle" hidden>
+  <div class="sheet-head">
+    <h2 class="sheet-h" id="rTitle">Revue</h2>
+    <span class="meta" id="rPos"></span>
+    <button class="close" type="button" id="rClose" aria-label="Fermer">✕</button>
+  </div>
+  <div class="prog"><span id="rProg"></span></div>
+  <div class="rwhy" id="rWhy"></div>
+  <div id="rCard"></div>
+  <div class="rkeys">
+    <button class="btn" type="button" data-r="prev">← Précédente</button>
+    <span class="meta"><kbd>E</kbd> étape faite · <kbd>A</kbd> en attente · <kbd>T</kbd> terminée · <kbd>S</kbd> sans objet · <kbd>D</kbd> drapeau · <kbd>G</kbd> garder mon statut</span>
+    <button class="btn primary" type="button" data-r="next">Juste, suivante →</button>
+  </div>
 </div>
 
 <div class="menu" id="cmenu" role="menu" aria-label="Ouvrir dans Claude" hidden></div>
@@ -1277,7 +1302,7 @@ function closeSheet() {
   if (sheetOrigin && document.body.contains(sheetOrigin)) sheetOrigin.focus();
 }
 $('sheetClose').addEventListener('click', closeSheet);
-$('scrim').addEventListener('click', () => { if (!$('csheet').hidden) closeContact(); else closeSheet(); });
+$('scrim').addEventListener('click', () => { if (revue) closeRevue(false); else if (!$('csheet').hidden) closeContact(); else closeSheet(); });
 // --- Ouvrir dans Claude ---------------------------------------------------------
 // Menu ancré au bouton : un skill AnsamDiag sur le ticket, une session libre, ou la reprise d'une session.
 function claudeButton(p) {
@@ -1821,6 +1846,7 @@ function pointCard(p, inSheet) {
   const relance = open ? relanceDays(p) : 0;
   const wait = clientWait(p);
   const divergence = ansamCible(p);
+  const reo = reouverture(p);
   const moved = lastMove(p);
   const steps = [].concat(p.etapes || []).filter(Boolean), lastStep = steps[steps.length - 1];
   // Le détail (dernier mail, raison du statut, preuve Jira) reste replié : une ligne suffit pour juger.
@@ -1843,6 +1869,7 @@ function pointCard(p, inSheet) {
     ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
     ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
+    ${reo && !inSheet ? `<div class="why reo">↺ Rouverte le ${shortDate(reo.le)} après ton « ${reo.avant === 'traite' ? 'Terminée' : 'Sans objet'} » : ${esc(reo.texte)}</div>` : ''}
     ${ansamLigne(p)}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
     <details class="more"><summary>${esc(summary)}</summary>
@@ -1883,14 +1910,14 @@ function pointCard(p, inSheet) {
     foot.appendChild(al);
   }
   foot.appendChild(claudeButton(p));
-  if (inSheet) {
+  if (inSheet === true) {
     const out = document.createElement('button');
     out.type = 'button';
     out.className = 'btn link';
     out.textContent = 'Sortir du groupe';
     out.addEventListener('click', () => groupAction({ action: 'retirer', ids: [p.id] }, restoreParents([[p.id, p.parent]])));
     foot.appendChild(out);
-  } else {
+  } else if (!inSheet) {
     card.querySelector('.head').prepend(selectButton(p));
   }
   return card;
@@ -1925,6 +1952,7 @@ function openStepForm(p, card) {
       points = r.points;
       renderAll();
       toast(r.message);
+      if (revue && revue.ids[revue.i] === p.id) { revue.i++; renderRevue(); }
     } catch (err) { box.querySelectorAll('button').forEach(x => { x.disabled = false; }); toast(err.message, null, true); }
   });
   box.addEventListener('keydown', e => { if (e.key === 'Escape') box.remove(); });
@@ -2231,7 +2259,7 @@ function ansamLigne(p) {
   if (!a || !p.ticket) return '';
   if (!a.dossier) return isOpen(p) ? `<div class="ansamline none">Pas encore de dossier AnsamDiag <button class="btn link" type="button" data-ansam-ticket="${esc(p.id)}" title="Ouvre /ticket dans Claude (Windows Terminal) : brief, hypothèses, plan de mesures">Analyser le ticket</button></div>` : '';
   const d = a.derniere;
-  const bits = [`AnsamDiag ${esc(ANSAM_LIB[a.statut] || a.statut || '?')}`,
+  const bits = [a.statut ? `AnsamDiag ${esc(ANSAM_LIB[a.statut] || a.statut)}` : 'Dossier AnsamDiag',
     a.executions ? `${a.executions} mesure${a.executions > 1 ? 's' : ''}` : 'aucune mesure',
     d ? `dernière : ${esc(d.outil)} ${ago(d.le)}` : ''].filter(Boolean).join(' · ');
   const res = d ? (d.ko ? `<span class="tag late">${d.ko} KO</span>` : '') + (d.attention ? `<span class="tag soon">${d.attention} attention</span>` : '') + (!d.ko && !d.attention && d.statut ? '<span class="tag sure">OK</span>' : '') : '';
@@ -2257,6 +2285,91 @@ async function alignerAnsam(p, btn) {
   } catch (e) { btn.disabled = false; toast(e.message, null, true); }
 }
 
+// --- Revue : confirmer ce que la synthèse a proposé ------------------------------------
+// Rouverte par la synthèse après mon « Terminée » ou « Sans objet » : on dit pourquoi, on peut refuser.
+function reouverture(p) {
+  const h = [].concat(p.historique || []).filter(Boolean);
+  if (!isOpen(p) || h.length < 2) return null;
+  const last = h[h.length - 1], prev = h[h.length - 2];
+  if (last.par !== 'synthese' || prev.par !== 'moi' || (prev.statut !== 'traite' && prev.statut !== 'ignore')) return null;
+  return { texte: last.texte || '', le: last.le, avant: prev.statut };
+}
+let revueLe = 0, revueVus = {};
+try { revueLe = +localStorage.getItem('sm-revue') || 0; revueVus = JSON.parse(localStorage.getItem('sm-revue-vus') || '{}') || {}; } catch (e) { }
+// Vue dans une revue (même interrompue) : ne revient que si la synthèse change encore son statut.
+function marquerVu(id) {
+  revueVus[id] = Date.now();
+  try { localStorage.setItem('sm-revue-vus', JSON.stringify(revueVus)); } catch (e) { }
+}
+// À revoir : tâches ouvertes dont le statut vient de la synthèse depuis ma dernière revue (toutes la première fois).
+const aRevoirMoi = () => leaves().filter(p => isOpen(p) && p.majPar === 'synthese' && Date.parse(p.majLe || p.creeLe || 0) > Math.max(revueLe, revueVus[p.id] || 0))
+  .sort((a, b) => (reouverture(b) ? 1 : 0) - (reouverture(a) ? 1 : 0) || (prioOrder[a.priorite] ?? 3) - (prioOrder[b.priorite] ?? 3));
+let revue = null;   // { ids, i }
+function openRevue() {
+  const ids = aRevoirMoi().map(p => p.id);
+  if (!ids.length) { toast('Rien à revoir : tous les statuts proposés ont été vus.'); return; }
+  revue = { ids, i: 0, debut: Date.now() };
+  const sheet = $('rsheet'), scrim = $('scrim');
+  sheet.hidden = scrim.hidden = false;
+  sheet.style.transformOrigin = 'center top';
+  renderRevue();
+  requestAnimationFrame(() => { sheet.classList.add('open'); scrim.classList.add('open'); });
+}
+function closeRevue(fini) {
+  if (!revue) return;
+  if (fini) { revueLe = revue.debut; try { localStorage.setItem('sm-revue', String(revueLe)); } catch (e) { } }
+  revue = null;
+  const sheet = $('rsheet');
+  sheet.classList.remove('open');
+  $('scrim').classList.remove('open');
+  setTimeout(() => { sheet.hidden = true; if ($('sheet').hidden && $('csheet').hidden) $('scrim').hidden = true; }, 220);
+  renderAll();
+}
+function renderRevue() {
+  if (!revue) return;
+  if (revue.i >= revue.ids.length) { const n = revue.ids.length; closeRevue(true); toast(`Revue terminée : ${n} tâche${n > 1 ? 's' : ''} vue${n > 1 ? 's' : ''}.`); return; }
+  const p = points.find(x => x.id === revue.ids[revue.i]);
+  if (!p) { revue.i++; renderRevue(); return; }
+  $('rPos').textContent = `${revue.i + 1} / ${revue.ids.length}`;
+  $('rProg').style.width = `${Math.round(revue.i / revue.ids.length * 100)}%`;
+  const reo = reouverture(p), last = [].concat(p.historique || []).filter(Boolean).slice(-1)[0];
+  $('rWhy').innerHTML = reo
+    ? `<b>↺ Rouverte par la synthèse</b> le ${shortDate(reo.le)} alors que tu l’avais mise « ${reo.avant === 'traite' ? 'Terminée' : 'Sans objet'} » : ${esc(reo.texte)}<div class="meta">Si ce n’est pas justifié : <kbd>G</kbd> garde ton statut.</div>`
+    : `<b>Pourquoi « ${esc((pointStatus.find(s => s[0] === p.statut) || [0, p.statut])[1])} »</b> : ${esc((last && last.texte) || 'proposé par la synthèse')}`;
+  $('rWhy').className = 'rwhy' + (reo ? ' reo' : '');
+  const box = $('rCard');
+  box.innerHTML = '';
+  box.appendChild(pointCard(p, 'revue'));
+}
+async function revueAction(k) {
+  if (!revue) return;
+  const p = points.find(x => x.id === revue.ids[revue.i]);
+  if (!p) return;
+  if (k === 'next') { marquerVu(p.id); revue.i++; renderRevue(); return; }
+  if (k === 'prev') { revue.i = Math.max(0, revue.i - 1); renderRevue(); return; }
+  if (k === 'e') { const c = $('rCard').querySelector('.card'); if (c) openStepForm(p, c); return; }
+  if (k === 'd') { await setFlag(p, !p.drapeau, true); renderRevue(); return; }
+  const target = { a: 'attente_tiers', t: 'traite', s: 'ignore' }[k];
+  if (target) { await setPoint(p, target, p.noteMoi || '', true); revue.i++; renderRevue(); return; }
+  if (k === 'g') {
+    const reo = reouverture(p);
+    if (!reo) { toast('Cette tâche n’a pas été rouverte : rien à garder.'); return; }
+    await setPoint(p, reo.avant, [p.noteMoi, 'Réouverture refusée : ' + reo.texte.slice(0, 120)].filter(Boolean).join(' · '), true);
+    revue.i++; renderRevue();
+  }
+}
+$('revueBtn').addEventListener('click', openRevue);
+$('rClose').addEventListener('click', () => closeRevue(false));
+$('rsheet').addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) revueAction(b.dataset.r); });
+document.addEventListener('keydown', e => {
+  if (!revue || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && e.target.closest && e.target.closest('input, textarea, select')) { if (e.key === 'Escape') e.target.blur(); return; }
+  const map = { ArrowRight: 'next', ' ': 'next', Enter: 'next', ArrowLeft: 'prev', e: 'e', a: 'a', t: 't', s: 's', d: 'd', g: 'g' };
+  if (e.key === 'Escape') { e.preventDefault(); closeRevue(false); return; }
+  const k = map[e.key] || map[e.key.toLowerCase()];
+  if (k) { e.preventDefault(); revueAction(k); }
+});
+
 // Tuiles du Suivi : un chiffre, et la ligne qui dit s'il faut s'en inquiéter.
 function renderKpis() {
   const open = leaves().filter(isOpen);
@@ -2277,6 +2390,10 @@ function renderKpis() {
     k.classList.toggle('zero', n === 0);
     k.classList.toggle('alert', !!alert && n > 0);
   };
+  const nRevue = aRevoirMoi().length;
+  $('c-revue').textContent = nRevue;
+  $('c-revue').classList.toggle('hot', leaves().some(reouverture));
+  $('revueBtn').disabled = !nRevue;
   const waits = open.map(clientWait).filter(Boolean).sort((a, b) => b.h - a.h);
   tile('client', waits.length, waits.length ? `le plus ancien : <b>${fmtWait(waits[0].h)}</b>` : 'personne n’attend', true);
   const red = byPrio('rouge');
