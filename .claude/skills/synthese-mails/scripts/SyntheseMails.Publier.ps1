@@ -194,7 +194,8 @@ function Test-SmPublication($Acces, $Publication, [string]$MonCompte) {
                 }
             }
             'statut' {
-                $wanted = (([string]$block.texte -split '[\r\n]')[0] -split '\s+[—–-]\s+')[0].Trim().TrimEnd('.')
+                # Le statut proposé est le début de la ligne (« Résolu — … », « Résolu, d'après … », « En attente du client (…) »).
+                $wanted = (([string]$block.texte -split '[\r\n]')[0] -split '\s+[—–-]\s+|[,;:(]')[0].Trim().TrimEnd('.')
                 $name = [string]$issue.fields.status.name
                 $done = [string]$issue.fields.status.statusCategory.key -eq 'done'
                 $n = { param($s) ($s.ToLowerInvariant().Normalize([Text.NormalizationForm]::FormD) -replace '\p{Mn}', '').Trim() }
