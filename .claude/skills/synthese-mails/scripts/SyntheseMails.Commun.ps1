@@ -638,6 +638,40 @@ function Set-SmDrapeau($Suivi, [string]$Id, [bool]$Drapeau) {
     $point
 }
 
+# --- État AnsamDiag d'un ticket -------------------------------------------------
+# Lu à la demande dans le dossier du ticket (Tickets\<CLE>) : statut du ticket local, nombre
+# d'exécutions d'outils et la dernière (outil, date, constats KO / ATTENTION). Rien n'est écrit.
+function Get-SmAnsamTicket([string]$Dossier, [string]$Cle) {
+    if (-not $Dossier -or $Cle -notmatch '^[A-Za-z0-9-]+$') { return $null }
+    $dir = Join-Path $Dossier "Tickets\$Cle"
+    if (-not (Test-Path -LiteralPath $dir)) { return [ordered]@{ dossier = $false } }
+    $ticket = Read-SmJson (Join-Path $dir 'ticket.json')
+    $runs = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{8}-\d{6}_' } | Sort-Object Name -Descending)
+    $last = $null
+    if ($runs.Count) {
+        $result = Read-SmJson (Join-Path $runs[0].FullName 'resultat.json')
+        $when = [datetime]::ParseExact($runs[0].Name.Substring(0, 15), 'yyyyMMdd-HHmmss', $null)
+        $last = [ordered]@{
+            outil = $(if ($result -and $result.outil) { [string]$result.outil.id } else { $runs[0].Name.Substring(16) })
+            le = $when.ToString('o'); statut = $(if ($result) { [string]$result.statut } else { $null })
+            ko = $(if ($result -and $result.synthese) { [int]$result.synthese.KO } else { 0 })
+            attention = $(if ($result -and $result.synthese) { [int]$result.synthese.ATTENTION } else { 0 })
+        }
+    }
+    [ordered]@{
+        dossier = $true; statut = $(if ($ticket) { [string]$ticket.Statut } else { $null })
+        executions = $runs.Count; derniere = $last; notes = @($ticket.Notes | Where-Object { $_ }).Count
+        cloture = (Test-Path -LiteralPath (Join-Path $dir 'cloture.md')) -or (Test-Path -LiteralPath (Join-Path $dir 'cloture-panoramix.md'))
+    }
+}
+
+# Ajoute l'état AnsamDiag aux tâches à ticket, pour la page (non enregistré dans le registre).
+function Add-SmEtatAnsam($Suivi, [string]$Dossier) {
+    foreach ($point in @($Suivi.points | Where-Object { -not $_.estGroupe -and $_.ticket })) {
+        $point.ansam = Get-SmAnsamTicket $Dossier ([string]$point.ticket)
+    }
+}
+
 # --- Groupes de points --------------------------------------------------------
 # Un groupe (estGroupe = $true, id G-AAAAMMJJ-n) rassemble des sous-tâches (parent = id du
 # groupe). Son statut, sa priorité et son échéance se déduisent des sous-tâches ouvertes.

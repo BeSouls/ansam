@@ -457,6 +457,7 @@ try {
                 }
                 '^GET /api/suivi$' {
                     $suivi = Get-SmSuivi $WorkDir
+                    Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ majLe = $suivi.majLe; points = @($suivi.points) })
                 }
                 '^POST /api/suivi$' {
@@ -464,6 +465,7 @@ try {
                     $suivi = Get-SmSuivi $WorkDir
                     $point = Set-SmSuiviStatut $suivi ([string]$posted.id) ([string]$posted.statut) ([string]$posted.note)
                     Save-SmSuivi $suivi $WorkDir
+                    Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : enregistré."; point = $point; points = @($suivi.points) })
                 }
                 '^POST /api/etape$' {
@@ -472,6 +474,7 @@ try {
                     $suivi = Get-SmSuivi $WorkDir
                     $point = Add-SmEtape $suivi ([string]$posted.id) ([string]$posted.texte) ([string]$posted.note) ([string]$posted.ensuite) ([string]$posted.suivante)
                     Save-SmSuivi $suivi $WorkDir
+                    Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : étape enregistrée, la tâche reste ouverte."; point = $point; points = @($suivi.points) })
                 }
                 '^GET /api/publier$' {
@@ -501,6 +504,25 @@ try {
                     $entry = Set-SmPublication $WorkDir $cle ([string]$posted.fichierLe) $action
                     $message = $(switch ($action) { 'publie' { "$cle : noté publié." } 'ecarter' { "$cle : retiré de la file." } default { "$cle : remis dans la file." } })
                     Send-Json $stream 200 ([ordered]@{ message = $message; entree = $entry })
+                }
+                '^POST /api/ansam/statut$' {
+                    # Aligne le statut du ticket AnsamDiag local (Set-AnsamTicket -Statut), sur mon clic : en arrière-plan.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $cle = [string]$posted.cle
+                    $statut = [string]$posted.statut
+                    if ($cle -notmatch '^[A-Za-z0-9-]+$') { throw "Ticket invalide : $cle" }
+                    if (@('Ouvert', 'EnAttente', 'Resolu', 'Clos') -notcontains $statut) { throw "Statut AnsamDiag inconnu : $statut" }
+                    $dir = Join-Path ([string](Get-SmConfig $WorkDir).dossierAnsamDiag) "Tickets\$cle"
+                    if (-not (Test-Path -LiteralPath (Join-Path $dir 'ticket.json'))) { throw "Pas de dossier AnsamDiag pour $cle." }
+                    $nom = "ansam-$cle"
+                    $state = Get-TravailState $nom
+                    if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Déjà en cours.') }); break }
+                    Write-SmJson (Join-Path $WorkDir "travaux\$nom.json") ([ordered]@{ travail = 'ansam'; id = $cle; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Aligner-AnsamDiag.ps1'
+                    $note = (([string]$posted.raison).Normalize([Text.NormalizationForm]::FormD) -replace '\p{Mn}', '') -replace '["`$]', ''
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -Cle $cle -Statut $statut -Raison `"$note`" -WorkDir `"$WorkDir`"" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = "AnsamDiag : $cle passe en $statut (quelques secondes)." })
                 }
                 '^GET /api/annuaire$' {
                     $annuaire = Get-SmAnnuaire $WorkDir
@@ -628,7 +650,7 @@ try {
                 }
                 '^GET /api/travail$' {
                     $nom = [string]$request.Query['nom']
-                    if ($nom -notmatch '^(absence|tri|cloture-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
+                    if ($nom -notmatch '^(absence|tri|cloture-[A-Za-z0-9-]+|ansam-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
                     $state = Get-TravailState $nom
                     Send-Json $stream 200 $(if ($state) { $state } else { [ordered]@{ etat = 'aucun' } })
                 }
@@ -814,6 +836,7 @@ try {
                         default { throw "Action inconnue : $($posted.action)." }
                     }
                     Save-SmSuivi $suivi $WorkDir
+                    Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ message = $message; points = @($suivi.points) })
                 }
                 '^GET /api/lancement$' { Send-Json $stream 200 (Get-RunState) }

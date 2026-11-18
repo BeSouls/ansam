@@ -293,6 +293,9 @@
   .pubmark.ok { background: var(--green); color: #fff; } .pubmark.ko { background: var(--red); color: #fff; } .pubmark.info { background: var(--orange-soft); color: var(--orange); }
   .pubgroup-h { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); padding: .45rem .5rem .1rem; }
   .pubavant { margin-top: .5rem; } .pubavant > summary { cursor: pointer; } .pubavant .pubtext { padding-left: 0; }
+  .ansamline { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; font-size: .8125rem; color: var(--muted); margin: .35rem 0 .1rem; }
+  .ansamline.none { color: var(--orange); }
+  .ansamline .btn.link { font-size: .8125rem; color: var(--accent); padding: 0 .2rem; }
   /* Étapes : finir une étape sans fermer la tâche */
   .btn.stepdone { font-size: .8125rem; padding: .3rem .75rem; color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: var(--green-soft); }
   .stepform { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; padding: .75rem .8rem; border-radius: 12px; background: var(--surface-2); }
@@ -1817,6 +1820,7 @@ function pointCard(p, inSheet) {
   const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
   const relance = open ? relanceDays(p) : 0;
   const wait = clientWait(p);
+  const divergence = ansamCible(p);
   const moved = lastMove(p);
   const steps = [].concat(p.etapes || []).filter(Boolean), lastStep = steps[steps.length - 1];
   // Le détail (dernier mail, raison du statut, preuve Jira) reste replié : une ligne suffit pour juger.
@@ -1833,11 +1837,13 @@ function pointCard(p, inSheet) {
       ${p.jiraEncoreOuvert ? '<span class="tag late" title="Réglé ici, mais le ticket est encore ouvert dans Jira">à clôturer dans Jira</span>' : ''}
       ${open && p.aRevoir ? `<span class="tag late" title="Statut pas encore revu depuis : ${esc(p.aRevoir)}">à revérifier</span>` : ''}
       ${relance ? `<span class="tag soon" title="Dernier mouvement sur le mail, le ticket ou le statut">sans nouvelles depuis ${relance} j</span>` : ''}
+      ${divergence ? `<span class="tag check" title="${esc(divergence.raison)} : le dossier AnsamDiag dit autre chose">AnsamDiag ${esc(ANSAM_LIB[divergence.actuel] || divergence.actuel)} ≠ ${esc(divergence.raison)}</span>` : ''}
       ${wait ? `<span class="tag ${wait.level || 'jira'}" title="Message du ${new Date(wait.since).toLocaleString('fr-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, sans réponse de ta part">${esc(wait.who || 'le client')} attend depuis ${fmtWait(wait.h)}</span>` : ''}
     </div>
     ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
     ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
+    ${ansamLigne(p)}
     ${needsContact(p) ? contactStrip(p.contact, p.id) : ''}
     <details class="more"><summary>${esc(summary)}</summary>
       <div class="meta">${[p.source ? 'Dernier mail : ' + esc(p.source) : '', p.majLe ? `Statut ${who} le ${shortDate(p.majLe)}${last && last.texte ? ' – ' + esc(last.texte) : ''}` : ''].filter(Boolean).join(' · ')}</div>
@@ -1866,6 +1872,15 @@ function pointCard(p, inSheet) {
     const quick = document.createElement('span');
     quick.innerHTML = `${relance ? `<button class="btn link" type="button" data-relance="${esc(p.id)}">Préparer la relance</button>` : ''}${closable ? `<button class="btn link" type="button" data-cloture="${esc(p.id)}">Clôturer</button>` : ''}`;
     foot.appendChild(quick);
+  }
+  if (divergence) {
+    const al = document.createElement('button');
+    al.type = 'button';
+    al.className = 'btn link';
+    al.textContent = `Aligner AnsamDiag : ${ANSAM_LIB[divergence.cible]}`;
+    al.title = 'Met à jour le statut du ticket AnsamDiag local (Set-AnsamTicket), avec une note datée. Rien dans Jira.';
+    al.addEventListener('click', e => { e.stopPropagation(); alignerAnsam(p, al); });
+    foot.appendChild(al);
   }
   foot.appendChild(claudeButton(p));
   if (inSheet) {
@@ -1922,7 +1937,7 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
-  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira', client: 'Clients qui attendent ta réponse' };
+  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira', aligner: 'Statuts AnsamDiag à aligner', client: 'Clients qui attendent ta réponse' };
   $('suiviTitre').textContent = titles[f] || '';
   $('suiviReset').hidden = ['ouverts', 'regles', 'tous'].includes(f);
   const heading = (title, n) => {
@@ -1948,6 +1963,12 @@ function renderSuivi() {
       heading(title, part.length);
       part.forEach(p => box.appendChild(pointCard(p)));
     }
+    return;
+  }
+  if (f === 'aligner') {
+    const list = leaves().filter(p => ansamCible(p) && matches(p));
+    if (!list.length) { box.innerHTML = emptyState('Tout est aligné', 'AnsamDiag, Jira et Panoramix disent la même chose.'); return; }
+    list.forEach(p => box.appendChild(pointCard(p)));
     return;
   }
   if (f === 'client') {
@@ -2187,6 +2208,53 @@ function clientWait(p) {
   if (c && c.moi && jiraDate(c.le) > since) return null;
   const h = workHours(since);
   return { since, who, h, level: h >= 10 ? 'late' : h >= 4 ? 'soon' : '' };
+}
+
+// --- Une seule vérité par ticket ------------------------------------------------------
+// Jira fait foi pour le statut du ticket ; Panoramix pour ce qu'il me reste à faire ; AnsamDiag pour le
+// diagnostic. Divergence signalée seulement sur l'axe qui compte : clos ou ouvert.
+const ansamFini = s => s === 'Resolu' || s === 'Clos';
+const jiraFini = s => /r[ée]solu|clos|cl[ôo]tur|termin|ferm|r[ée]alis/i.test(s || '');
+function ansamCible(p) {
+  const a = p.ansam;
+  if (!a || !a.dossier || !a.statut) return null;
+  let fini, raison;
+  if (p.jiraStatut) { fini = jiraFini(p.jiraStatut); raison = 'Jira : ' + p.jiraStatut; }
+  else { fini = !isOpen(p); raison = fini ? 'réglé dans Panoramix' : 'ouvert dans Panoramix'; }
+  if (fini === ansamFini(a.statut)) return null;
+  const cible = fini ? (/clos|cl[ôo]tur/i.test(p.jiraStatut || '') ? 'Clos' : 'Resolu') : (p.statut === 'attente_tiers' ? 'EnAttente' : 'Ouvert');
+  return { cible, raison, actuel: a.statut };
+}
+const ANSAM_LIB = { Ouvert: 'Ouvert', EnAttente: 'En attente', Resolu: 'Résolu', Clos: 'Clos' };
+function ansamLigne(p) {
+  const a = p.ansam;
+  if (!a || !p.ticket) return '';
+  if (!a.dossier) return isOpen(p) ? `<div class="ansamline none">Pas encore de dossier AnsamDiag <button class="btn link" type="button" data-ansam-ticket="${esc(p.id)}" title="Ouvre /ticket dans Claude (Windows Terminal) : brief, hypothèses, plan de mesures">Analyser le ticket</button></div>` : '';
+  const d = a.derniere;
+  const bits = [`AnsamDiag ${esc(ANSAM_LIB[a.statut] || a.statut || '?')}`,
+    a.executions ? `${a.executions} mesure${a.executions > 1 ? 's' : ''}` : 'aucune mesure',
+    d ? `dernière : ${esc(d.outil)} ${ago(d.le)}` : ''].filter(Boolean).join(' · ');
+  const res = d ? (d.ko ? `<span class="tag late">${d.ko} KO</span>` : '') + (d.attention ? `<span class="tag soon">${d.attention} attention</span>` : '') + (!d.ko && !d.attention && d.statut ? '<span class="tag sure">OK</span>' : '') : '';
+  return `<div class="ansamline">${bits} ${res}</div>`;
+}
+async function alignerAnsam(p, btn) {
+  const c = ansamCible(p);
+  if (!c) return;
+  btn.disabled = true;
+  try {
+    toast((await api('POST', '/api/ansam/statut', { cle: p.ticket, statut: c.cible, raison: c.raison })).message);
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const s = await api('GET', '/api/travail?nom=' + encodeURIComponent('ansam-' + p.ticket));
+      if (s.etat === 'en_cours') continue;
+      if (s.etat === 'echec') throw new Error(s.message || 'Alignement impossible.');
+      points = (await api('GET', '/api/suivi')).points || points;
+      renderAll();
+      toast(s.message || 'AnsamDiag aligné.');
+      return;
+    }
+    throw new Error('Toujours en cours : regarde dans une minute.');
+  } catch (e) { btn.disabled = false; toast(e.message, null, true); }
 }
 
 // Tuiles du Suivi : un chiffre, et la ligne qui dit s'il faut s'en inquiéter.
@@ -2890,6 +2958,7 @@ function renderPrepTiles() {
   $('sum-preparer').innerHTML = tilesHtml([
     { key: 'tri', l: 'Éléments à trier', n: open.length, c: 'accent', s: old ? `<b>${old}</b> repérés il y a plus de 14 j` : 'rien ne traîne', attrs: ' data-goto="triLancer"' },
     { key: 'clo', l: 'Tickets à clôturer', n: toClose, c: 'green', s: toClose ? 'résolus dans Jira ou réglés ici' : 'aucun', title: 'Tâches dont le ticket est Résolu dans Jira, ou réglées ici alors que le ticket est encore ouvert. « Clôturer » sur la carte du Suivi prépare les textes.', attrs: ' data-goto="sum-preparer"' },
+    { key: 'ali', l: 'Statuts à aligner', n: leaves().filter(ansamCible).length, c: 'orange', s: 'AnsamDiag ≠ Jira ou Panoramix', title: 'Ticket clos dans Jira mais ouvert dans AnsamDiag (ou l’inverse) : un clic aligne le dossier local' },
     { key: 'abs', l: 'Prochaine absence', n: next ? shortDate(next.debut) : '—', c: 'orange', s: next ? `jusqu’au ${shortDate(next.fin)}` : 'aucune dans 14 j', attrs: ' data-goto="prepAbsence"' }
   ], null);
 }
@@ -2897,6 +2966,7 @@ $('sum-preparer').addEventListener('click', e => {
   const g = e.target.closest('[data-tile]');
   if (!g) return;
   if (g.dataset.tile === 'clo') { showTab('suivi'); setSuiviFilter('cloturer'); window.scrollTo(0, 0); return; }
+  if (g.dataset.tile === 'ali') { showTab('suivi'); setSuiviFilter('aligner'); window.scrollTo(0, 0); return; }
   const t = $(g.dataset.goto);
   if (t && !t.closest('[hidden]')) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
 });
@@ -2934,6 +3004,15 @@ async function preparerRelance(id) {
     pollRedaction(id, true);
   } catch (e) { toast(e.message, null, true); }
 }
+document.addEventListener('click', async e => {
+  const t = e.target.closest && e.target.closest('[data-ansam-ticket]');
+  if (!t) return;
+  e.stopPropagation();
+  t.disabled = true;
+  try { toast((await api('POST', '/api/claude', { id: t.dataset.ansamTicket, commande: 'ticket' })).message); }
+  catch (err) { toast(err.message, null, true); }
+  t.disabled = false;
+});
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-cloture], [data-relance]');
   if (!b) return;
