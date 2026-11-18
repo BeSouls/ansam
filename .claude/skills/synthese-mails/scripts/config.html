@@ -2002,7 +2002,7 @@ function renderCounts() {
   set('c-attention', count('attention') + count('tam'), lateAttention);
   // Les compteurs sont dans les tuiles du Suivi : l'en-tête ne dit plus que la fraîcheur des données.
   const e = state && state.etat || {};
-  $('sub').textContent = (e.derniereSynthese ? `Synthèse du ${shortDate(e.derniereSynthese)}` : 'Pas encore de synthèse') +
+  $('sub').textContent = (!state ? 'Chargement…' : e.derniereSynthese ? `Synthèse du ${shortDate(e.derniereSynthese)}` : 'Pas encore de synthèse') +
     (e.derniereAnalyse && e.derniereAnalyse > (e.derniereSynthese || '')
       ? ` · actualisé le ${shortDate(e.derniereAnalyse)} à ${new Date(e.derniereAnalyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '') +
     sourcesNote(e.sources);
