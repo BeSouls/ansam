@@ -155,7 +155,7 @@
   .stat .l { color: var(--muted); font-size: .8125rem; }
 
   /* Tableau de bord du suivi : chaque tuile est un compteur et un filtre */
-  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .6rem; margin-bottom: .9rem; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .6rem; margin-bottom: .9rem; }
   .kpi {
     --k: var(--accent); all: unset; box-sizing: border-box; cursor: pointer; min-width: 0; display: flex; flex-direction: column; gap: .1rem;
     padding: .7rem .85rem .65rem; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
@@ -177,9 +177,65 @@
   .kpi-bar span { display: block; height: 100%; }
   .kpi.k-faire { --k: var(--accent); } .kpi.k-echeance { --k: var(--red); } .kpi.k-attente { --k: var(--orange); }
   .kpi.k-relance { --k: var(--orange); } .kpi.k-contact { --k: var(--blue); }
-  @media (max-width: 52rem) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .kpi.k-accent { --k: var(--accent); } .kpi.k-red { --k: var(--red); } .kpi.k-orange { --k: var(--orange); } .kpi.k-green { --k: var(--green); } .kpi.k-blue { --k: var(--blue); } .kpi.k-grey { --k: var(--muted); }
+  .kpi.ok .kpi-n { color: var(--green); }
+  .kpi.static { cursor: default; } .kpi.static:hover { border-color: var(--line); } .kpi.static:active { transform: none; }
+  .kpi-v { font-size: 1rem; font-weight: 600; line-height: 1.35; margin-top: .15rem; }
+
+  /* En-tête d'onglet : titre, sélecteur de mois */
+  .panebar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: 0 0 .9rem; }
+  .panebar h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.02em; margin: 0; flex: 1; }
+  .panebar select.field { width: auto; }
+  .banner { display: flex; gap: .7rem; align-items: flex-start; padding: .7rem .9rem; margin: 0 0 .9rem; border-radius: 12px;
+    background: var(--orange-soft); border: 1px solid color-mix(in srgb, var(--orange) 35%, transparent); font-size: .875rem; }
+  .banner b { color: var(--orange); }
+  .banner ul { margin: .2rem 0 0; padding-left: 1.1rem; }
+
+  /* Étapes d'un processus : où j'en suis, d'un coup d'œil */
+  .steps { display: flex; gap: .35rem; margin: 0 0 1rem; overflow-x: auto; scrollbar-width: none; }
+  .step { all: unset; box-sizing: border-box; cursor: pointer; flex: 1 0 auto; display: flex; align-items: center; gap: .45rem; padding: .45rem .65rem;
+    border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: .8125rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .step:hover { color: var(--text); }
+  .step:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .step.now { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .stepn { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: 50%; flex: none; font-size: .75rem; font-weight: 700;
+    background: var(--surface-2); color: var(--muted); }
+  .done > .stepn, .stepn.done { background: var(--green); color: #fff; }
+  .now > .stepn, .stepn.now { background: var(--accent); color: var(--on-accent); }
+  .ko > .stepn, .stepn.ko { background: var(--red); color: #fff; }
+  .fa-etape > h2 .stepn { width: 1.6rem; height: 1.6rem; font-size: .8125rem; }
+  .fa-etape.now { border-color: var(--accent); }
+
+  /* Tableaux : cadre arrondi, ligne survolée */
+  .table-scroll { border: 1px solid var(--line); border-radius: 12px; }
+  .table-scroll th { background: var(--surface-2); }
+  .table-scroll th:first-child, .table-scroll td:first-child { padding-left: .75rem; }
+  .table-scroll tbody tr:last-child > td { border-bottom: 0; }
+  .table-scroll tbody tr:hover > td { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+  tr[aria-current="true"] > td { background: var(--accent-soft); }
+
+  /* Annuaire en fiches */
+  .an-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .6rem; }
+  .an-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .75rem .9rem; display: flex; flex-direction: column; gap: .25rem; min-width: 0; box-shadow: var(--shadow); }
+  .an-card .nom { font-weight: 600; letter-spacing: -.01em; display: flex; gap: .4rem; align-items: baseline; }
+  .an-card .nom .tag { margin-left: auto; }
+  .an-card a { overflow-wrap: anywhere; font-size: .875rem; }
+  .an-card .an-acts { display: flex; gap: .2rem; margin-top: auto; padding-top: .35rem; }
+  .an-card .an-acts .btn.link { font-size: .8125rem; padding: .15rem .3rem; color: var(--muted); }
+  .an-card .an-acts .btn.link:hover { color: var(--accent); }
+  .an-card .manque { font-size: .8125rem; color: var(--orange); }
+  .an-grid > .empty { grid-column: 1 / -1; }
+  .chiplist { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .panel, #faHaut, .kpis { scroll-margin-top: 9rem; }
+  .chiplist a.tag:hover { color: var(--accent); text-decoration: none; }
+
+  /* Préparer : un outil par carte, le bouton à droite */
+  .panel-head { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+  .panel-head h2 { margin-bottom: .25rem; }
+  .panel-head .hint { margin: 0; }
+  .sq-row textarea.field, .prep-text textarea.field { font-family: inherit; font-size: .875rem; }
   @media (max-width: 34rem) {
-    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi-n { font-size: 1.6rem; }
+    .kpi-n { font-size: 1.6rem; }
     .viewbar { flex-wrap: wrap; } .viewbar .vt { white-space: nowrap; }
     .card.task > .head { flex-wrap: wrap; } .card.task > .head > .title { flex-basis: calc(100% - 3.5rem); }
   }
@@ -546,16 +602,20 @@
   </section>
 
   <section class="pane" id="p-variabilite" hidden>
+    <div class="panebar">
+      <h2>Variabilité repérée dans les mails</h2>
+      <select class="field" id="mois" aria-label="Mois"></select>
+    </div>
+    <div class="kpis" id="sum-variabilite" role="group" aria-label="Filtrer la variabilité"></div>
     <div class="toolbar">
-      <select class="chip" id="mois" aria-label="Mois"></select>
       <button class="chip" data-f="ouverts" aria-pressed="true">À reporter</button>
       <button class="chip" data-f="tous" aria-pressed="false">Tout le mois</button>
     </div>
-    <div class="summary" id="sum-variabilite"></div>
     <div id="list-variabilite"></div>
   </section>
 
   <section class="pane" id="p-attention" hidden>
+    <div class="kpis" id="sum-attention" role="group" aria-label="Filtrer les points d’attention"></div>
     <div class="toolbar">
       <button class="chip" data-f="ouverts" aria-pressed="true">À voir</button>
       <button class="chip" data-f="tous" aria-pressed="false">Tout</button>
@@ -564,13 +624,15 @@
   </section>
 
   <section class="pane" id="p-mois" hidden>
-    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem"><label class="f" for="moMois" style="margin:0">Mois</label><select class="field" id="moMois" style="width:auto"></select></div>
+    <div class="panebar"><h2>Cycle du mois</h2><select class="field" id="moMois" aria-label="Mois"></select></div>
     <div id="moCorps"><div class="empty">Chargement…</div></div>
   </section>
 
   <section class="pane" id="p-facturation" hidden>
+    <div class="panebar"><h2>Facturation</h2><select class="field" id="faMois" aria-label="Mois facturé"></select></div>
+    <div id="faHaut"></div>
     <div id="faProjets"></div>
-    <details class="panel">
+    <details class="panel" id="faMails">
       <summary><b>Repéré dans les mails</b> <span class="count" id="c-facturation-mails">–</span></summary>
       <div class="toolbar" style="margin-top:.8rem">
         <button class="chip" data-f="ouverts" aria-pressed="true">À traiter</button>
@@ -578,7 +640,6 @@
       </div>
       <div id="list-facturation"></div>
     </details>
-    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem"><label class="f" for="faMois" style="margin:0">Mois</label><select class="field" id="faMois" style="width:auto"></select></div>
     <div id="faCorps"></div>
   </section>
 
@@ -589,17 +650,21 @@
       <div class="run" id="clEtat" hidden><span class="spinner"></span><span id="clEtatTexte"></span></div>
       <div id="clResultat"></div>
     </div>
+    <div class="panebar"><h2>Préparer</h2></div>
+    <div class="kpis" id="sum-preparer"></div>
     <div class="panel" id="prepAbsence" hidden>
-      <h2>Avant mon absence</h2>
-      <p class="hint" id="abSous"></p>
-      <button class="btn" type="button" id="abLancer">Préparer</button>
+      <div class="panel-head">
+        <div><h2>Avant mon absence</h2><p class="hint" id="abSous"></p></div>
+        <button class="btn primary" type="button" id="abLancer">Préparer</button>
+      </div>
       <div class="run" id="abEtat" hidden style="margin-top:.6rem"><span class="spinner"></span><span id="abEtatTexte"></span></div>
       <div id="abResultat"></div>
     </div>
     <div class="panel">
-      <h2>Trier les éléments en attente</h2>
-      <p class="hint">Claude propose, tu coches ce que tu valides. Sans preuve, un élément reste à traiter.</p>
-      <button class="btn" type="button" id="triLancer">Proposer un tri</button>
+      <div class="panel-head">
+        <div><h2>Trier les éléments en attente</h2><p class="hint">Claude propose, tu coches ce que tu valides. Sans preuve, un élément reste à traiter.</p></div>
+        <button class="btn primary" type="button" id="triLancer">Proposer un tri</button>
+      </div>
       <div class="run" id="triEtat" hidden style="margin-top:.6rem"><span class="spinner"></span><span id="triEtatTexte"></span></div>
       <div id="triResultat"></div>
     </div>
@@ -618,16 +683,15 @@
   </section>
 
     <section class="pane" id="p-annuaire" hidden>
-      <div class="panel">
+      <div class="panebar">
         <h2>Annuaire</h2>
-        <p class="hint">Se remplit à chaque analyse et à chaque rédaction, et complète les prises de contact à qui il manque une adresse ou un numéro. Une fiche modifiée ici n’est plus touchée par les analyses ; une fiche retirée ne revient pas.</p>
-        <input class="field" type="search" id="anSearch" placeholder="Nom, client, ticket, numéro…" aria-label="Chercher dans l’annuaire">
-        <div class="table-scroll" style="margin-top:.7rem">
-          <table class="an-table">
-            <thead><tr><th>Nom</th><th>Client</th><th>Adresse</th><th>Téléphone</th><th>Vu sur</th><th></th></tr></thead>
-            <tbody id="anBody"></tbody>
-          </table>
-        </div>
+        <span class="info" title="Se remplit à chaque analyse et à chaque rédaction, et complète les prises de contact à qui il manque une adresse ou un numéro. Une fiche modifiée ici n’est plus touchée par les analyses ; une fiche retirée ne revient pas.">i</span>
+      </div>
+      <div class="kpis" id="sum-annuaire" role="group" aria-label="Filtrer l’annuaire"></div>
+      <input class="field" type="search" id="anSearch" placeholder="Nom, client, ticket, numéro…" aria-label="Chercher dans l’annuaire" style="margin-bottom:.8rem">
+      <div class="an-grid" id="anBody"></div>
+      <details class="panel" id="anForm" style="margin-top:1rem">
+        <summary><b id="anFormTitre">Ajouter un contact</b></summary>
         <div class="row-add six">
           <div><label class="f" for="anNom">Nom</label><input class="field" type="text" id="anNom"></div>
           <div><label class="f" for="anRole">Rôle</label><input class="field" type="text" id="anRole"></div>
@@ -636,18 +700,19 @@
           <div><label class="f" for="anTel">Téléphone</label><input class="field" type="tel" id="anTel"></div>
           <div><label class="f" for="anClient">Client</label><input class="field" type="text" id="anClient"></div>
         </div>
-        <div style="margin-top:.6rem"><button class="btn" type="button" id="anAdd">Ajouter</button></div>
-      </div>
+        <div style="margin-top:.6rem"><button class="btn primary" type="button" id="anAdd">Ajouter</button></div>
+      </details>
     </section>
   <section class="pane" id="p-reglages" hidden>
+    <div class="panebar"><h2>Réglages</h2></div>
+    <div class="kpis">
+      <div class="kpi static k-accent"><span class="kpi-l">Prochaine synthèse</span><span class="kpi-v" id="next">…</span></div>
+      <div class="kpi static k-green"><span class="kpi-l">Dernière synthèse</span><span class="kpi-v" id="last">…</span></div>
+      <div class="kpi static k-blue"><span class="kpi-l">Tâches planifiées</span><span class="kpi-v" id="task">…</span></div>
+    </div>
     <div class="panel">
-      <h2>État</h2>
-      <dl class="state">
-        <div><dt>Prochaine synthèse</dt><dd id="next">…</dd></div>
-        <div><dt>Dernière synthèse</dt><dd id="last">…</dd></div>
-        <div><dt>Tâches planifiées</dt><dd id="task">…</dd></div>
-        <div><dt>Dernières synthèses</dt><dd><ul class="files" id="files"></ul></dd></div>
-      </dl>
+      <h2>Dernières synthèses</h2>
+      <div class="chiplist" id="files"></div>
     </div>
     <div class="panel">
       <h2>Envoi</h2>
@@ -899,6 +964,8 @@ document.querySelectorAll('#suiviVue .opt').forEach(o => o.addEventListener('cli
 $('suiviReset').addEventListener('click', () => setSuiviFilter('ouverts'));
 $('q').addEventListener('input', renderAll);
 $('mois').addEventListener('change', renderAll);
+bindTiles('sum-variabilite', 'variabilite', 'ouverts');
+bindTiles('sum-attention', 'attention', 'ouverts');
 
 const matches = (obj) => {
   const q = $('q').value.trim().toLowerCase();
@@ -1741,9 +1808,10 @@ function pointCard(p, inSheet) {
   const foot = card.querySelector('.foot');
   foot.appendChild(statusControl(pointStatus, p.statut, v => setPoint(p, v, p.noteMoi || '')));
   foot.appendChild(noteField(p.noteMoi, v => setPoint(p, p.statut, v, true).then(() => toast('Note enregistrée.'))));
-  if (relance || (open && p.ticket)) {
+  const closable = (open || p.jiraEncoreOuvert) && p.ticket;
+  if (relance || closable) {
     const quick = document.createElement('span');
-    quick.innerHTML = `${relance ? `<button class="btn link" type="button" data-relance="${esc(p.id)}">Préparer la relance</button>` : ''}${open && p.ticket ? `<button class="btn link" type="button" data-cloture="${esc(p.id)}">Clôturer</button>` : ''}`;
+    quick.innerHTML = `${relance ? `<button class="btn link" type="button" data-relance="${esc(p.id)}">Préparer la relance</button>` : ''}${closable ? `<button class="btn link" type="button" data-cloture="${esc(p.id)}">Clôturer</button>` : ''}`;
     foot.appendChild(quick);
   }
   foot.appendChild(claudeButton(p));
@@ -1765,7 +1833,7 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
-  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter' };
+  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', a_faire: 'À faire', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira' };
   $('suiviTitre').textContent = titles[f] || '';
   $('suiviReset').hidden = ['ouverts', 'regles', 'tous'].includes(f);
   const heading = (title, n) => {
@@ -1791,6 +1859,13 @@ function renderSuivi() {
       heading(title, part.length);
       part.forEach(p => box.appendChild(pointCard(p)));
     }
+    return;
+  }
+  if (f === 'cloturer') {
+    // Ticket résolu dans Jira, ou tâche réglée ici alors que le ticket est encore ouvert : « Clôturer » prépare les textes.
+    const list = leaves().filter(p => ((isOpen(p) && p.ticket && /r[ée]solu/i.test(p.jiraStatut || '')) || p.jiraEncoreOuvert) && matches(p));
+    if (!list.length) { box.innerHTML = emptyState('Rien à clôturer', 'Aucun ticket résolu en attente de clôture.'); return; }
+    list.forEach(p => box.appendChild(pointCard(p)));
     return;
   }
   if (f === 'attente') {
@@ -1866,7 +1941,9 @@ function elementMonth(el) {
 
 function elementCard(el) {
   const card = document.createElement('div');
-  card.className = 'card' + (el.statut === 'a_traiter' ? '' : ' done');
+  // Liseré : rouge si l'échéance est passée, orange si elle approche ; sinon neutre.
+  const due = el.statut === 'a_traiter' && (el.type === 'attention' || el.type === 'facturation') ? dueIn(el.echeance) : null;
+  card.className = 'card task ' + (due !== null && due < 0 ? 'p-rouge' : due !== null && due <= 3 ? 'p-orange' : 'p-aucune') + (el.statut === 'a_traiter' ? '' : ' done');
   const toCheck = el.certitude === 'a_verifier';
   const url = ticketUrl(el.ticket);
   const sens = el.sens === '+' ? '<span class="tag plus">+ ajout</span>' : el.sens === '−' || el.sens === '-' ? '<span class="tag minus">− retrait</span>' : el.sens ? `<span class="tag">${esc(el.sens)}</span>` : '';
@@ -1875,17 +1952,20 @@ function elementCard(el) {
     el.montant ? esc(el.montant) : '',
     el.dateEffet ? `effet ${fmtDay(el.dateEffet)}` : '',
     el.source ? esc(el.source) : '',
-    url ? `<a href="${url}" target="_blank" rel="noopener">${esc(el.ticket)}</a>` : ''
+    el.creeLe ? `repéré ${ago(el.creeLe)}` : ''
   ].filter(Boolean).join(' · ');
   card.innerHTML = `
     <div class="head">
       <span class="title">${esc(el.element)}</span>
-      ${el.type !== 'attention' && el.client ? `<span class="tag">${esc(el.client)}</span>` : ''}
+      ${el.statut === 'a_traiter' && (el.type === 'attention' || el.type === 'facturation') ? dueTag(el.echeance) : ''}
+    </div>
+    <div class="chips">
+      ${el.client ? `<span class="tag">${esc(el.client)}</span>` : ''}
+      ${url ? `<a class="tag" href="${url}" target="_blank" rel="noopener" title="Ouvrir le ticket dans Jira">${esc(el.ticket)}</a>` : ''}
       ${sens}
-      ${el.type === 'attention' || el.type === 'facturation' ? dueTag(el.echeance) : ''}
       <span class="tag ${toCheck ? 'check' : 'sure'}">${toCheck ? 'à vérifier' : 'établi'}</span>
     </div>
-    ${facts ? `<div class="meta" style="margin-top:.3rem">${facts}</div>` : ''}
+    ${facts ? `<div class="meta" style="margin-top:.35rem">${facts}</div>` : ''}
     ${toCheck && (el.indice || el.verifier) ? `<div class="clue">${el.indice ? `<b>Indice :</b> ${esc(el.indice)}` : ''}${el.indice && el.verifier ? '<br>' : ''}${el.verifier ? `<b>Vérifier :</b> ${esc(el.verifier)}` : ''}</div>` : ''}
     ${!toCheck && el.indice ? `<div class="body">${esc(el.indice)}</div>` : ''}
     ${el.dossier ? `<div class="meta">Classer : <span class="mono">${esc(el.dossier)}</span></div>` : ''}
@@ -1906,15 +1986,25 @@ function renderVariabilite() {
   sel.value = months.includes(keep) ? keep : months[0];
   const inMonth = all.filter(e => elementMonth(e) === sel.value);
   const f = filters.variabilite;
-  const visible = inMonth.filter(e => (f === 'tous' || e.statut === 'a_traiter') && matches(e));
+  const keepEl = {
+    tous: () => true, etabli: e => e.statut === 'a_traiter' && e.certitude !== 'a_verifier',
+    a_verifier: e => e.statut === 'a_traiter' && e.certitude === 'a_verifier', fait: e => e.statut === 'fait'
+  }[f] || (e => e.statut === 'a_traiter');
+  const visible = inMonth.filter(e => keepEl(e) && matches(e));
+  syncChips('variabilite', f);
 
-  const sure = inMonth.filter(e => e.certitude !== 'a_verifier' && e.statut === 'a_traiter').length;
-  const check = inMonth.filter(e => e.certitude === 'a_verifier' && e.statut === 'a_traiter').length;
+  const open = inMonth.filter(e => e.statut === 'a_traiter');
+  const sure = open.filter(e => e.certitude !== 'a_verifier').length;
+  const check = open.length - sure;
   const done = inMonth.filter(e => e.statut === 'fait').length;
-  const clients = new Set(inMonth.filter(e => e.statut === 'a_traiter').map(e => e.client)).size;
-  $('sum-variabilite').innerHTML = [
-    [sure, 'établis à reporter'], [check, 'à vérifier'], [done, 'déjà reportés'], [clients, 'clients concernés']
-  ].map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  const clients = [...new Set(open.map(e => e.client || '?'))];
+  const plus = open.filter(e => e.sens === '+').length, minus = open.filter(e => e.sens === '−' || e.sens === '-').length;
+  $('sum-variabilite').innerHTML = tilesHtml([
+    { key: 'etabli', l: 'Établis à reporter', n: sure, c: 'accent', s: sure ? [plus ? `${plus} ajout${plus > 1 ? 's' : ''}` : '', minus ? `${minus} retrait${minus > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ') || 'prêts pour le relevé' : 'rien à reporter' },
+    { key: 'a_verifier', l: 'À vérifier', n: check, c: 'orange', s: check ? 'indice à confirmer avant report' : 'aucun doute' },
+    { key: 'fait', l: 'Déjà reportés', n: done, c: 'green', ok: done > 0, s: inMonth.length ? `${done} sur ${inMonth.length} ce mois` : 'rien ce mois', bar: inMonth.length ? done / inMonth.length * 100 : null },
+    { key: 'ouverts', l: 'Clients concernés', n: clients.length, c: 'blue', s: esc(clients.slice(0, 4).join(', ')) + (clients.length > 4 ? '…' : '') || '—' }
+  ], f === 'ouverts' ? null : f);
 
   const box = $('list-variabilite');
   box.innerHTML = '';
@@ -1954,6 +2044,29 @@ function renderSimple(type, boxId, emptyOpen, emptyAll, sections) {
   }
   if (!box.children.length) box.innerHTML = emptyState(f === 'tous' ? emptyAll[0] : emptyOpen[0], f === 'tous' ? emptyAll[1] : emptyOpen[1]);
 }
+
+// Tuiles des autres onglets : { key, l (libellé), n, s (ligne d'alerte), c (couleur), alert, ok, bar (%), title, attrs }.
+function tilesHtml(list, active) {
+  return list.map(t => {
+    const zero = t.n === 0 || t.n === '0';
+    const cls = `kpi k-${t.c || 'accent'}${t.alert && !zero ? ' alert' : ''}${t.ok ? ' ok' : ''}${zero && !t.ok ? ' zero' : ''}`;
+    const bar = t.bar == null ? '' : `<span class="kpi-bar" aria-hidden="true"><span style="flex:none;width:${Math.max(0, Math.min(100, t.bar))}%;background:var(--green)"></span></span>`;
+    return `<button class="${cls}" type="button" data-tile="${esc(t.key)}" aria-pressed="${t.key === active}"${t.title ? ` title="${esc(t.title)}"` : ''}${t.attrs || ''}>` +
+      `<span class="kpi-l">${esc(t.l)}</span><span class="kpi-n">${esc(t.n)}</span><span class="kpi-s">${t.s || ''}</span>${bar}</button>`;
+  }).join('');
+}
+// Une tuile filtre la liste de son onglet ; un second clic revient à la vue par défaut.
+function bindTiles(boxId, scope, fallback) {
+  $(boxId).addEventListener('click', e => {
+    const k = e.target.closest('[data-tile]');
+    if (!k) return;
+    filters[scope] = filters[scope] === k.dataset.tile ? fallback : k.dataset.tile;
+    renderAll();
+  });
+}
+const syncChips = (pane, f) => document.querySelectorAll(`#p-${pane} .toolbar .chip[data-f]`).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.f === f)));
+const daysSince = (iso) => iso ? Math.floor((Date.now() - Date.parse(iso)) / 864e5) : null;
+const fmtMin = (m) => { m = Math.round(+m || 0); const h = Math.floor(m / 60), r = m % 60; return h ? `${h} h${r ? ' ' + String(r).padStart(2, '0') : ''}` : `${r} min`; };
 
 // Tuiles du Suivi : un chiffre, et la ligne qui dit s'il faut s'en inquiéter.
 function renderKpis() {
@@ -2030,8 +2143,45 @@ function renderAll() {
   renderVariabilite();
   renderSimple('facturation', 'list-facturation', ['Rien à traiter', 'Aucun élément de facturation en attente.'], ['Rien pour l’instant', 'Aucun élément de facturation enregistré.'],
     [[['facturation'], 'Facturation']]);
-  renderSimple('attention', 'list-attention', ['Rien à voir', 'Aucun point d’attention ouvert.'], ['Rien pour l’instant', 'Aucun point d’attention enregistré.'],
-    [[['attention'], 'Points d’attention'], [['tam'], 'Informations TAM à archiver']]);
+  renderAttention();
+}
+
+// Attention : ce qui demande un coup d'œil, en retard, à vérifier, ou qui traîne depuis plus de 14 jours.
+function renderAttention() {
+  const f = filters.attention;
+  const open = elements.filter(e => (e.type === 'attention' || e.type === 'tam') && e.statut === 'a_traiter');
+  const att = open.filter(e => e.type === 'attention'), tam = open.filter(e => e.type === 'tam');
+  const isLate = e => e.type === 'attention' && dueIn(e.echeance) !== null && dueIn(e.echeance) < 0;
+  const isOld = e => (daysSince(e.creeLe) ?? 0) > 14;
+  const late = att.filter(isLate), check = open.filter(e => e.certitude === 'a_verifier'), old = open.filter(isOld);
+  const oldest = Math.max(0, ...open.map(e => daysSince(e.creeLe) ?? 0));
+  $('sum-attention').innerHTML = tilesHtml([
+    { key: 'attention', l: 'Points à voir', n: att.length, c: 'accent', s: att.length ? `${att.filter(e => e.certitude !== 'a_verifier').length} établis` : 'rien à voir' },
+    { key: 'retard', l: 'En retard', n: late.length, c: 'red', alert: true, s: late.length ? 'échéance passée' : 'aucun' },
+    { key: 'verifier', l: 'À vérifier', n: check.length, c: 'orange', s: check.length ? 'un indice à confirmer' : 'aucun doute' },
+    { key: 'anciens', l: 'Plus de 14 jours', n: old.length, c: 'grey', s: old.length ? `le plus ancien : ${oldest} j · à trier` : 'rien ne traîne', title: 'Repérés il y a plus de 14 jours et toujours ouverts : l’onglet Préparer propose un tri' },
+    { key: 'tam', l: 'Infos à archiver', n: tam.length, c: 'blue', s: tam.length ? 'à classer chez le client' : 'rien à classer' }
+  ], f === 'ouverts' || f === 'tous' ? null : f);
+  syncChips('attention', f);
+  const pick = { attention: att, retard: late, verifier: check, anciens: old, tam }[f];
+  const box = $('list-attention');
+  box.innerHTML = '';
+  const sorted = list => list.filter(matches).sort((a, b) => String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(b.creeLe).localeCompare(String(a.creeLe)));
+  const section = (title, list) => {
+    if (!list.length) return;
+    const h = document.createElement('h2');
+    h.className = 'group';
+    h.innerHTML = `${esc(title)} <span class="count">${list.length}</span>`;
+    box.appendChild(h);
+    list.forEach(e => box.appendChild(elementCard(e)));
+  };
+  if (pick) section({ attention: 'Points d’attention', retard: 'En retard', verifier: 'À vérifier', anciens: 'Plus de 14 jours', tam: 'Informations TAM à archiver' }[f], sorted(pick));
+  else {
+    const all = f === 'tous';
+    section('Points d’attention', sorted(elements.filter(e => e.type === 'attention' && (all || e.statut === 'a_traiter'))));
+    section('Informations TAM à archiver', sorted(elements.filter(e => e.type === 'tam' && (all || e.statut === 'a_traiter'))));
+  }
+  if (!box.children.length) box.innerHTML = emptyState('Rien ici', f === 'tous' ? 'Aucun point d’attention enregistré.' : 'Aucun point d’attention ouvert ne correspond.');
 }
 
 // --- Réglages ----------------------------------------------------------------
@@ -2067,29 +2217,54 @@ async function loadAnnuaire() {
   try { annuaire = (await api('GET', '/api/annuaire')).contacts || []; renderAnnuaire(); }
   catch (e) { toast(e.message, null, true); }
 }
+let annuaireFiltre = null;
 function renderAnnuaire() {
   $('c-annuaire').textContent = annuaire.length;
+  const hasTel = c => (c.telephones || []).some(Boolean);
+  const incomplete = c => !c.email || !hasTel(c);
+  const clients = new Set(annuaire.map(c => c.client).filter(Boolean));
+  const missing = annuaire.filter(incomplete).length;
+  $('sum-annuaire').innerHTML = tilesHtml([
+    { key: 'tous', l: 'Contacts', n: annuaire.length, c: 'accent', s: `${clients.size} clients` },
+    { key: 'tel', l: 'Avec téléphone', n: annuaire.filter(hasTel).length, c: 'green', s: 'appel en un clic' },
+    { key: 'incomplets', l: 'Incomplets', n: missing, c: 'orange', s: missing ? 'adresse ou numéro manquant' : 'tout est complet', title: 'Sans adresse ou sans numéro : une prise de contact vers eux restera à compléter' }
+  ], annuaireFiltre);
   const words = $('anSearch').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const keep = { tel: hasTel, incomplets: incomplete }[annuaireFiltre] || (() => true);
   const list = annuaire
+    .filter(keep)
     .filter(c => { const text = [c.nom, c.role, c.organisation, c.client, c.email, ...(c.telephones || []), ...(c.tickets || [])].join(' ').toLowerCase(); return words.every(w => text.includes(w)); })
     .sort((a, b) => String(a.nom).localeCompare(String(b.nom), 'fr'));
   const body = $('anBody');
   body.innerHTML = '';
-  if (!list.length) { body.innerHTML = `<tr><td colspan="6" class="meta">${annuaire.length ? 'Aucun contact trouvé.' : 'L’annuaire se remplit à chaque analyse et à chaque rédaction.'}</td></tr>`; return; }
+  if (!list.length) { body.innerHTML = emptyState(annuaire.length ? 'Aucun contact trouvé' : 'Annuaire vide', annuaire.length ? 'Essaie un autre mot.' : 'L’annuaire se remplit à chaque analyse et à chaque rédaction.'); return; }
   list.forEach(c => {
-    const tr = document.createElement('tr');
-    const email = c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '';
+    const card = document.createElement('div');
+    card.className = 'an-card';
     const who = [c.role, c.organisation].filter(Boolean).map(esc).join(' · ');
-    tr.innerHTML = `<td>${esc(c.nom)}${who ? `<div class="meta">${who}</div>` : ''}</td><td>${esc(c.client || '')}</td><td>${email}</td>` +
-                   `<td><div class="an-tels">${phoneLinks((c.telephones || []).join(' / '), 'telto')}</div></td><td class="meta">${(c.tickets || []).map(esc).join(', ')}</td>` +
-                   `<td class="an-acts"><button class="btn link" type="button">Modifier</button> <button class="btn link" type="button">Retirer</button></td>`;
-    const [edit, remove] = tr.querySelectorAll('button');
+    const tickets = (c.tickets || []).filter(Boolean);
+    card.innerHTML = `<div class="nom">${esc(c.nom)}${c.client ? `<span class="tag">${esc(c.client)}</span>` : ''}</div>
+      ${who ? `<div class="meta">${who}</div>` : ''}
+      ${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '<span class="manque">adresse manquante</span>'}
+      ${hasTel(c) ? `<div class="an-tels">${phoneLinks((c.telephones || []).join(' / '), 'telto')}</div>` : '<span class="manque">numéro manquant</span>'}
+      ${tickets.length ? `<div class="chiplist">${tickets.map(t => ticketUrl(t) ? `<a class="tag" href="${ticketUrl(t)}" target="_blank" rel="noopener">${esc(t)}</a>` : `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      <div class="an-acts"><button class="btn link" type="button">Modifier</button><button class="btn link" type="button">Retirer</button></div>`;
+    const [edit, remove] = card.querySelectorAll('.an-acts button');
     edit.onclick = () => editAnnuaire(c);
     remove.onclick = () => saveAnnuaire({ id: c.id, retirer: true }, 'Contact retiré : il ne reviendra pas.');
-    body.appendChild(tr);
+    body.appendChild(card);
   });
 }
+$('sum-annuaire').addEventListener('click', e => {
+  const k = e.target.closest('[data-tile]');
+  if (!k) return;
+  annuaireFiltre = annuaireFiltre === k.dataset.tile || k.dataset.tile === 'tous' ? null : k.dataset.tile;
+  renderAnnuaire();
+});
 function editAnnuaire(c) {
+  if (c) $('anForm').open = true;
+  $('anFormTitre').textContent = c ? `Modifier ${c.nom}` : 'Ajouter un contact';
+  if (c) $('anForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
   annuaireEdit = c ? c.id : null;
   $('anNom').value = c ? c.nom || '' : '';
   $('anRole').value = c ? c.role || '' : '';
@@ -2163,12 +2338,9 @@ function renderSettings() {
     : `Synthèse à ${t.heure}` + (t.derniereExecution ? ` · dernière exécution ${fmtDate(t.derniereExecution)}` : '') + (t.pagePermanente ? ' · page permanente active' : ' · page permanente absente');
   $('install').textContent = t.installee && t.pagePermanente ? 'Réinstaller les tâches planifiées' : 'Installer les tâches planifiées';
   $('quit').hidden = !!state.service;
-  $('files').innerHTML = state.syntheses.length ? '' : '<li class="meta">Aucune</li>';
-  state.syntheses.forEach(name => {
-    const li = document.createElement('li');
-    li.innerHTML = `<a href="/synthese?d=${name}&t=${token}" target="_blank" rel="noopener">${fmtDay(name)}</a>`;
-    $('files').appendChild(li);
-  });
+  $('files').innerHTML = state.syntheses.length
+    ? state.syntheses.map(name => `<a class="tag" href="/synthese?d=${esc(name)}&t=${token}" target="_blank" rel="noopener">${fmtDay(name)}</a>`).join('')
+    : '<span class="meta">Aucune</span>';
 }
 
 function collect() {
@@ -2581,7 +2753,28 @@ function afficherTri(s) {
   };
   box.appendChild(go);
 }
+// Préparer : ce que chaque outil a à se mettre sous la dent.
+function renderPrepTiles() {
+  const open = elements.filter(e => e.statut === 'a_traiter');
+  const old = open.filter(e => (daysSince(e.creeLe) ?? 0) > 14).length;
+  const toClose = leaves().filter(p => isOpen(p) && p.ticket && /r[ée]solu/i.test(p.jiraStatut || '')).length + leaves().filter(p => p.jiraEncoreOuvert).length;
+  const next = prochaineAbsence();
+  $('sum-preparer').innerHTML = tilesHtml([
+    { key: 'tri', l: 'Éléments à trier', n: open.length, c: 'accent', s: old ? `<b>${old}</b> repérés il y a plus de 14 j` : 'rien ne traîne', attrs: ' data-goto="triLancer"' },
+    { key: 'clo', l: 'Tickets à clôturer', n: toClose, c: 'green', s: toClose ? 'résolus dans Jira ou réglés ici' : 'aucun', title: 'Tâches dont le ticket est Résolu dans Jira, ou réglées ici alors que le ticket est encore ouvert. « Clôturer » sur la carte du Suivi prépare les textes.', attrs: ' data-goto="sum-preparer"' },
+    { key: 'abs', l: 'Prochaine absence', n: next ? shortDate(next.debut) : '—', c: 'orange', s: next ? `jusqu’au ${shortDate(next.fin)}` : 'aucune dans 14 j', attrs: ' data-goto="prepAbsence"' }
+  ], null);
+}
+$('sum-preparer').addEventListener('click', e => {
+  const g = e.target.closest('[data-tile]');
+  if (!g) return;
+  if (g.dataset.tile === 'clo') { showTab('suivi'); setSuiviFilter('cloturer'); window.scrollTo(0, 0); return; }
+  const t = $(g.dataset.goto);
+  if (t && !t.closest('[hidden]')) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
 async function chargerPreparer() {
+  renderPrepTiles();
   const next = prochaineAbsence();
   $('prepAbsence').hidden = !next;
   if (next) {
@@ -2661,6 +2854,7 @@ function faPjControle(c) {
     ${trop.length ? '<h3>Dans le fichier, mais pas parties en projet</h3>' + faListe(trop.map(x => `<b>${esc(x.client)} ${esc(x.ticket)}</b> ${esc(x.date)} · ${esc(x.auteur)} · ${x.minutes} min`)) : ''}`;
 }
 function afficherProjets() {
+  renderFaHaut();
   const mois = [].concat(faPj.mois || []), attente = mois.filter(m => !m.fait), fichiers = [].concat(faPj.fichiers || []);
   const badge = $('c-projets');
   badge.hidden = !attente.length;
@@ -2689,9 +2883,44 @@ function faEtat(s, fini) {
 function faBouton(texte, action, off, principal) {
   return `<button class="btn${principal ? '' : ' link'}" type="button" data-fa="${esc(action)}"${off ? ' disabled' : ''}>${esc(texte)}</button>`;
 }
+// Une étape : numéro (coché quand elle est faite), titre, état ; « now » est l'étape où tu en es.
+let faSt = {};
 function faPanneau(n, titre, etat, corps) {
-  return `<div class="panel fa-etape"><h2>${n}. ${esc(titre)} ${etat || ''}</h2>${corps}</div>`;
+  const st = faSt[n] || '';
+  return `<div class="panel fa-etape ${st}" id="fa-step-${n}"><h2><span class="stepn ${st}">${st === 'done' ? '✓' : n}</span> ${esc(titre)} ${etat || ''}</h2>${corps}</div>`;
 }
+const FA_ETAPES = ['Fichier', 'Calcul', 'Contrôles', 'Lecture', 'Décisions', 'Report', 'Clôture'];
+// Tuiles et barre d'étapes de la facturation : le mois en un coup d'œil, un clic mène à l'étape.
+function renderFaHaut() {
+  const box = $('faHaut');
+  if (!fa) { box.innerHTML = ''; return; }
+  const r = fa.resultat, recap = r ? [].concat(r.recap || []) : [];
+  const sum = k => recap.reduce((n, c) => n + (+c[k] || 0), 0);
+  const tickets = r ? faTickets() : [];
+  const decides = tickets.filter(t => t.decision).length, aTrancher = tickets.filter(t => !t.decision && t.aTrancher > 0);
+  const attentePj = faPj ? [].concat(faPj.mois || []).filter(m => !m.fait).length : 0;
+  const mails = elements.filter(e => e.type === 'facturation' && e.statut === 'a_traiter').length;
+  const tiles = [
+    { key: 'g2', l: 'Temps du mois', n: r ? fmtMin(sum('Minutes total')) : '—', c: 'blue', s: r ? `${sum('Lignes')} lignes · ${recap.length} clients` : 'pas encore calculé', attrs: ' data-goto="fa-step-2"' },
+    { key: 'g2b', l: 'Facturable', n: r ? fmtMin(sum('Minutes facturables')) : '—', c: 'green', s: r ? `${fmtMin(sum('Minutes projet'))} en projet · ${sum('Forfaits deplacement')} dépl.` : '', attrs: ' data-goto="fa-step-2"' },
+    { key: 'g5', l: 'À trancher', n: aTrancher.length, c: 'red', alert: true, ok: !!r && !aTrancher.length, s: r ? (aTrancher.length ? `${fmtMin(aTrancher.reduce((n, t) => n + t.aTrancher, 0))} · ${decides}/${tickets.length} tickets décidés` : `${decides}/${tickets.length} tickets décidés`) : '', bar: tickets.length ? decides / tickets.length * 100 : null, attrs: ' data-goto="fa-step-5"' },
+    { key: 'pj', l: 'Fichier projet', n: attentePj, c: 'orange', alert: true, s: attentePj ? `mois en attente du fichier OPS-PJ` : 'rien en attente', attrs: ' data-goto="faProjets"' },
+    { key: 'ml', l: 'Repéré dans les mails', n: mails, c: 'accent', s: mails ? 'à prendre en compte' : 'rien à traiter', attrs: ' data-goto="faMails"' }
+  ];
+  const steps = FA_ETAPES.map((nom, i) => {
+    const st = faSt[i + 1] || '';
+    return `<button class="step ${st}" type="button" data-goto="fa-step-${i + 1}"><span class="stepn">${st === 'done' ? '✓' : i + 1}</span>${esc(nom)}</button>`;
+  }).join('');
+  box.innerHTML = `<div class="kpis">${tilesHtml(tiles, null)}</div><nav class="steps" aria-label="Étapes de la facturation">${steps}</nav>`;
+}
+$('faHaut').addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]');
+  if (!g) return;
+  const t = $(g.dataset.goto);
+  if (!t) return;
+  if (t.tagName === 'DETAILS') t.open = true;
+  t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 function faTickets() {
   const r = fa.resultat, map = new Map();
   [].concat((r && r.lignes) || []).forEach(l => {
@@ -2783,6 +3012,16 @@ function afficherFacturation() {
   const liste = [...new Set([faMois, faMoisDefaut(), ...(m.disponibles || [])])].sort().reverse();
   select.innerHTML = liste.map(x => `<option${x === faMois ? ' selected' : ''}>${x}</option>`).join('');
   const parts = [];
+  // État de chaque étape, avant d'afficher : faite, en échec, ou celle où tu en es (la première non faite).
+  {
+    const tk = r ? faTickets() : [], jaa = (m.journaux || {}).application;
+    const faits = [m.sources.length > 0, !!r, !!c, !!fa.propositions, !!r && !tk.some(t => !t.decision && t.aTrancher > 0), !!(jaa && jaa.ok), !!m.clos];
+    const echecs = [false, e.moteur, e.controles, e.analyse, false, false, false].map(s => !!(s && s.etat === 'echec'));
+    const now = faits.indexOf(false);
+    faSt = {};
+    faits.forEach((ok, i) => { faSt[i + 1] = echecs[i] ? 'ko' : ok ? 'done' : (i === now ? 'now' : ''); });
+  }
+  renderFaHaut();
   // 1. Fichier
   const cand = [].concat(m.candidats || []);
   parts.push(faPanneau(1, 'Fichier du mois', m.sources.length ? `<span class="tag sure">${esc(m.sources[0])}</span>` : '', cand.length
@@ -3156,12 +3395,23 @@ function afficherMois() {
   if (!mo) return;
   const e = mo.etapes || {}, parts = [], courant = mo.mois === moMoisCourant();
   const rappels = [].concat(mo.rappels || []);
-  if (rappels.length) parts.push(`<div class="panel"><h2>Rappels</h2><ul>${rappels.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>`);
-  parts.push(`<div class="panel fa-etape"><h2>Facturation de ${esc(moLong(mo.facturation.mois))} <span class="tag ${mo.facturation.etat === 'clos' ? 'sure' : 'check'}">${esc(mo.facturation.etat)}</span></h2>
-    <p class="hint">La facturation porte sur le mois écoulé. Elle se fait dans son onglet.</p>${moBouton('Ouvrir la facturation', 'onglet:facturation')}</div>`);
-
   const clients = [].concat(mo.clients || []);
   const manqueM365 = clients.filter(c => c.inventaires && c.inventaires.M365.requis && !c.inventaires.M365.duMois).length;
+  // Tuiles : une par étape du cycle, avec ce qui reste à faire. Un clic mène à la partie concernée.
+  const nb = clients.length, pct = n => nb ? n / nb * 100 : null;
+  const valides = clients.filter(c => moRegistre(c).indexOf('validé') >= 0).length;
+  const kiosk = clients.filter(c => c.kiosk).length, jira = clients.filter(c => c.jira).length;
+  const pvM = mo.plusValue, pvRes = pvM.resultat && pvM.resultat.semestre === moSem ? pvM.resultat : null;
+  const pvRefus = pvRes ? [].concat(pvRes.clients || []).filter(k => [].concat(k.Erreurs || []).length).length : 0;
+  const facClos = mo.facturation.etat === 'clos';
+  parts.push(`<div class="kpis">${tilesHtml([
+    { key: 'fac', l: `Facturation ${moLong(mo.facturation.mois).split(' ')[0]}`, n: facClos ? 'close' : 'ouverte', c: facClos ? 'green' : 'accent', ok: facClos, s: facClos ? 'mois clos' : esc(mo.facturation.etat), attrs: ' data-mo="onglet:facturation"' },
+    { key: 'val', l: 'Relevés validés', n: `${valides}/${nb}`, c: 'accent', ok: nb > 0 && valides === nb, s: manqueM365 ? `<b>${manqueM365}</b> inventaire${manqueM365 > 1 ? 's' : ''} M365 manquant${manqueM365 > 1 ? 's' : ''}` : 'inventaires à jour', bar: pct(valides), attrs: ' data-mo="goto:mo-variabilite"' },
+    { key: 'kio', l: 'Saisis dans Kiosk', n: `${kiosk}/${nb}`, c: 'blue', ok: nb > 0 && kiosk === nb, s: kiosk < nb ? `${nb - kiosk} à saisir` : 'tout est saisi', bar: pct(kiosk), attrs: ' data-mo="goto:mo-variabilite"' },
+    { key: 'jir', l: 'Commentés dans Jira', n: `${jira}/${nb}`, c: 'blue', ok: nb > 0 && jira === nb, s: jira < nb ? `${nb - jira} à commenter` : 'tout est commenté', bar: pct(jira), attrs: ' data-mo="goto:mo-variabilite"' },
+    { key: 'pv', l: `Plus-value ${String(moSem || '').replace('-H', ' S')}`, n: pvRes ? (pvRes.etape === 'generer' ? 'générée' : 'contrôlée') : (pvM.du ? 'due' : '—'), c: pvM.du && !pvRes ? 'red' : 'orange', alert: pvM.du && !pvRes, s: [pvM.du ? '<b>due ce mois</b>' : 'due en janvier et juillet', pvRefus ? `${pvRefus} client${pvRefus > 1 ? 's' : ''} refusé${pvRefus > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '), attrs: ' data-mo="goto:mo-plusvalue"' }
+  ], null)}</div>`);
+  if (rappels.length) parts.push(`<div class="banner"><div><b>À ne pas oublier</b><ul>${rappels.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div></div>`);
   const rows = clients.map(c => `<tr data-mo="ouvrir:${esc(c.code)}" style="cursor:pointer"${moOuvert === c.code ? ' aria-current="true"' : ''}>
       <td><b>${esc(c.code)}</b><div class="meta">${esc(c.nom || '')}${c.contrat ? ' · ' + esc(c.contrat) : ''}${c.modele === 'BWS' && c.contrat !== 'BWS' ? ' · BWS' : ''}</div></td>
       <td>${moTagEtat(c.etat)}</td>
@@ -3170,7 +3420,7 @@ function afficherMois() {
       <td>${esc(moValeur(c, '#VM'))}${moEcartTag(c, '#VM')}</td><td>${esc(moValeur(c, '#Site Actuel'))}</td>
       <td>${moRegistre(c)}</td><td>${c.kiosk ? '<span class="tag sure">✓</span>' : ''}</td><td>${c.jira ? '<span class="tag sure">✓</span>' : ''}</td></tr>
       ${moOuvert === c.code ? `<tr><td colspan="10" class="fa-etape">${moDetail(c)}</td></tr>` : ''}`).join('');
-  parts.push(`<div class="panel fa-etape"><h2>Variabilité de ${esc(moLong(mo.mois))} ${faEtat(e['variabilite-collecte'])} ${faEtat(e['variabilite-calcul'])} ${faEtat(e['releves-reporter'])}</h2>
+  parts.push(`<div class="panel fa-etape" id="mo-variabilite"><h2>Variabilité de ${esc(moLong(mo.mois))} ${faEtat(e['variabilite-collecte'])} ${faEtat(e['variabilite-calcul'])} ${faEtat(e['releves-reporter'])}</h2>
     <p class="hint">1. Collecte des inventaires M365 en fin de mois, une connexion par code d’appareil et par client dans la console AnsamDiag. 2. Calcul. 3. Pour chaque client : comptes nouveaux tranchés, valeurs manuelles confirmées, puis validation dans le registre. 4. Saisie dans Kiosk, puis commentaire dans le ticket Jira. Clique sur un client pour le détail.</p>
     <p>${courant ? moBouton(manqueM365 ? `Collecter les inventaires M365 (${manqueM365})` : 'Inventaires M365 à jour', 'etape:collecte', { principal: !!manqueM365, off: !manqueM365 }) : '<span class="meta">La collecte se fait pendant le mois relevé.</span>'}
       ${moBouton('Calculer', 'etape:calcul', { principal: !manqueM365 })} ${moBouton('Reporter dans le registre (à vérifier)', 'etape:reporter', { lien: true })}</p>
@@ -3182,7 +3432,7 @@ function afficherMois() {
     const etat = err.length ? '<span class="tag late">refusé</span>' : (k.Provisoire ? '<span class="tag check">provisoire</span>' : '<span class="tag sure">prêt</span>');
     return `<tr><td><b>${esc(k.Code)}</b><div class="meta">${esc(k.Type || '')}</div></td><td>${etat}</td><td>${err.length ? '' : esc(Number(k.Total).toFixed(2)) + ' CHF'}</td><td class="meta">${esc(err.length ? err.join(' · ') : (k.Fichier || (av.length ? av.length + ' relevé(s) à vérifier' : '')))}</td></tr>`;
   }).join('') : '';
-  parts.push(`<div class="panel fa-etape"><h2>Plus-value ${faEtat(e['plusvalue-controle'])} ${faEtat(e['plusvalue-generer'])}</h2>
+  parts.push(`<div class="panel fa-etape" id="mo-plusvalue"><h2>Plus-value ${faEtat(e['plusvalue-controle'])} ${faEtat(e['plusvalue-generer'])}</h2>
     <p class="hint">Décompte semestriel au format de Mario, à partir des 6 relevés du registre, de la base et du tarif du contrat. Calculé deux fois (script et Excel). Dû en janvier et en juillet ; ${pv.du ? '<b>ce mois</b>.' : 'possible à tout moment.'} Le fichier va dans le dossier « plus value » du client ; tu l’envoies à Finances, Mario en copie.</p>
     <p><select class="field" id="moSem" style="width:auto">${moListeSemestres().map(s => `<option value="${s}"${s === moSem ? ' selected' : ''}>${s.replace('-H', ' — semestre ')}</option>`).join('')}</select>
       ${moBouton('Contrôler', 'etape:pv-controle')} ${moBouton('Générer les fichiers', 'etape:pv-generer', { principal: true })}</p>
@@ -3196,6 +3446,7 @@ async function moAction(action, el) {
   try {
     if (verbe === 'ouvrir') { moOuvert = moOuvert === code ? null : code; afficherMois(); return; }
     if (verbe === 'onglet') { showTab(code); return; }
+    if (verbe === 'goto') { const t = $(code); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     const c = [].concat(mo.clients || []).find(x => x.code === code);
     if (verbe === 'etape') {
       const client = el.dataset.client || '';
