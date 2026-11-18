@@ -30,7 +30,10 @@ param(
     [string]$RepoDir,
     [string]$ClaudeExe,
     # Prépare même si la réunion est désactivée ou tombe un jour d'absence ou férié.
-    [switch]$Force
+    [switch]$Force,
+    # Sonnet depuis le 18.11.2026 : Opus coûtait 5,92 $ par préparation (mesure du 04 au 18.11) pour
+    # des lignes que je retouche ailleurs. 'opus' (ou '') pour revenir au modèle par défaut.
+    [string]$Modele = 'sonnet'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,7 +94,7 @@ try {
     Set-Status 'en_cours' 'Préparation par Claude Code'
     Push-Location $RepoDir
     try {
-        $output = Invoke-SmClaude $ClaudeExe $prompt @('--add-dir', $WorkDir, '--allowedTools', 'Read,Grep,Glob', '--disallowedTools', 'Bash,PowerShell,Write,Edit')
+        $output = Invoke-SmClaude $ClaudeExe $prompt (@($(if ($Modele) { '--model', $Modele })) + @('--add-dir', $WorkDir, '--allowedTools', 'Read,Grep,Glob', '--disallowedTools', 'Bash,PowerShell,Write,Edit'))
         if ($LASTEXITCODE -ne 0) { throw "Claude Code a échoué (code $LASTEXITCODE) : $($output -join ' ')" }
     } finally { Pop-Location }
 

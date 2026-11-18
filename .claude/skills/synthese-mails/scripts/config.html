@@ -50,6 +50,9 @@
   .runbtn.confirm { background: var(--orange); }
   .runbtn.secondary { background: var(--surface-2); color: var(--text); }
   .runbtn:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+  /* Données lues il y a moins de 15 min : Actualiser reste possible, mais discret */
+  .runbtn.secondary.frais { opacity: .55; }
+  .runbtn.secondary.frais:hover { opacity: 1; }
   .run { display: flex; align-items: center; gap: .55rem; font-size: .8125rem; color: var(--muted); margin: -.25rem 0 .7rem; }
   .run[hidden] { display: none; }
   .moved { margin-bottom: .9rem; }
@@ -2448,11 +2451,17 @@ function renderCounts() {
   set('c-attention', count('attention') + count('tam'), lateAttention);
   // Les compteurs sont dans les tuiles du Suivi : l'en-tête ne dit plus que la fraîcheur des données.
   const e = state && state.etat || {};
-  $('sub').textContent = (!state ? 'Chargement…' : e.derniereSynthese ? `Synthèse du ${shortDate(e.derniereSynthese)}` : 'Pas encore de synthèse') +
-    (e.derniereAnalyse && e.derniereAnalyse > (e.derniereSynthese || '')
-      ? ` · actualisé le ${shortDate(e.derniereAnalyse)} à ${new Date(e.derniereAnalyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '') +
+  // L'âge des données : on n'actualise que si elles ont vraiment vieilli.
+  const last = e.derniereAnalyse || e.derniereSynthese;
+  const min = last ? Math.round((Date.now() - Date.parse(last)) / 6e4) : null;
+  const age = min === null ? '' : min < 2 ? 'à jour à l’instant' : min < 60 ? `à jour il y a ${min} min`
+    : min < 1440 ? `à jour il y a ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `dernière lecture le ${shortDate(last)}`;
+  $('sub').textContent = (!state ? 'Chargement…' : [e.derniereSynthese ? `Synthèse du ${shortDate(e.derniereSynthese)}` : 'Pas encore de synthèse', age].filter(Boolean).join(' · ')) +
     sourcesNote(e.sources);
+  $('sub').title = last ? `Dernière lecture des mails, de Jira et d’AnsamDiag : ${fmtDate(last)}` : '';
+  $('refresh').classList.toggle('frais', min !== null && min < 15);
 }
+setInterval(() => { if (state) renderCounts(); }, 60000);
 
 // Ce qui n'a pas pu être lu, ou ce qu'il reste à revoir : les statuts ne valent que par leurs sources.
 function sourcesNote(sources) {
