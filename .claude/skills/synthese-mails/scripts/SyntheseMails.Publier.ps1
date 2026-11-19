@@ -111,10 +111,11 @@ function Get-SmPublications($Config, [string]$WorkDir, $Suivi) {
         [void]$out.Add([ordered]@{
             cle = $cle; fichier = $file.Name; fichierLe = $written
             titre = $(if ($point) { $point.titre } elseif ($titleBlock) { $titleBlock.texte } else { $cle })
-            client = $(if ($point) { $point.client }); pointId = $(if ($point) { $point.id }); pointStatut = $(if ($point) { $point.statut })
-            jiraStatut = $(if ($point) { $point.jiraStatut })
+            # PS 5.1 : sans « else { $null } », un $(if) faux s'écrit {} en JSON (date invalide dans la page).
+            client = $(if ($point) { $point.client } else { $null }); pointId = $(if ($point) { $point.id } else { $null })
+            pointStatut = $(if ($point) { $point.statut } else { $null }); jiraStatut = $(if ($point) { $point.jiraStatut } else { $null })
             avant = $parsed.avant; blocs = @($parsed.blocs)
-            publieLe = $(if ($same) { $state.publieLe }); verification = $(if ($same) { $state.verification })
+            publieLe = $(if ($same) { $state.publieLe } else { $null }); verification = $(if ($same) { $state.verification } else { $null })
         })
     }
     @($out | Sort-Object { [string]$_.fichierLe } -Descending)

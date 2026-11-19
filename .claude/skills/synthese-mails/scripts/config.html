@@ -1091,7 +1091,10 @@ function dueTag(ymd) {
 }
 // « aujourd'hui », « hier », « il y a 4 j » : l'âge d'un mouvement.
 function ago(t) {
-  const n = Math.floor((Date.parse(today) - Date.parse(new Date(t).toISOString().slice(0, 10))) / 864e5);
+  // Une date absente ou illisible ({} venu de PowerShell, par exemple) ne doit pas bloquer la page.
+  const d = new Date(typeof t === 'string' || typeof t === 'number' ? t : NaN);
+  if (isNaN(d)) return '';
+  const n = Math.floor((Date.parse(today) - Date.parse(d.toISOString().slice(0, 10))) / 864e5);
   return n <= 0 ? 'aujourd’hui' : n === 1 ? 'hier' : `il y a ${n} j`;
 }
 
