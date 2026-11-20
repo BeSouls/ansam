@@ -307,6 +307,7 @@
   .rwhy kbd, .rkeys kbd { font: 600 .75rem ui-monospace, Consolas, monospace; padding: .05rem .35rem; border-radius: 5px; border: 1px solid var(--line); background: var(--surface); }
   .rkeys { display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: .6rem; }
   .why.reo { color: var(--orange); }
+  .why.relance { color: var(--orange); }
   nav.seg button[hidden] { display: none; }
   .secbanner { all: unset; box-sizing: border-box; display: flex; width: 100%; cursor: pointer; padding: .6rem .9rem; margin: 0 0 .8rem; border-radius: 12px;
     background: var(--red-soft); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); font-size: .875rem; }
@@ -633,7 +634,7 @@
       <button class="kpi k-faire" type="button" data-kpi="a_faire" aria-pressed="false"><span class="kpi-l">À faire</span><span class="kpi-n" id="k-faire">–</span><span class="kpi-s" id="ks-faire"></span><span class="kpi-bar" id="kb-faire" aria-hidden="true"></span></button>
       <button class="kpi k-echeance" type="button" data-kpi="echeances" aria-pressed="false" title="Tâches ouvertes en retard ou à rendre aujourd'hui"><span class="kpi-l">Échéances</span><span class="kpi-n" id="k-echeance">–</span><span class="kpi-s" id="ks-echeance"></span></button>
       <button class="kpi k-attente" type="button" data-kpi="attente" aria-pressed="false" title="Ton action est faite : tu attends le client, un collègue ou un fournisseur"><span class="kpi-l">En attente</span><span class="kpi-n" id="k-attente">–</span><span class="kpi-s" id="ks-attente"></span></button>
-      <button class="kpi k-relance" type="button" data-kpi="relancer" aria-pressed="false" title="En attente depuis 5 jours, ou ticket sans mouvement Jira depuis 14 jours"><span class="kpi-l">À relancer</span><span class="kpi-n" id="k-relance">–</span><span class="kpi-s" id="ks-relance"></span></button>
+      <button class="kpi k-relance" type="button" data-kpi="relancer" aria-pressed="false" title="Tâches en attente dont la relance est due : proposée par l’analyse, ou 5 jours ouvrés sans nouvelles humaines. Elles restent en attente et ne comptent pas dans « À faire » ; les rappels automatiques de Jira n’y entrent pas."><span class="kpi-l">À relancer</span><span class="kpi-n" id="k-relance">–</span><span class="kpi-s" id="ks-relance"></span></button>
       <button class="kpi k-contact" type="button" data-kpi="contact" aria-pressed="false" title="Tâches ouvertes qui attendent un appel ou un mail de ta part"><span class="kpi-l">À contacter</span><span class="kpi-n" id="k-contact">–</span><span class="kpi-s" id="ks-contact"></span></button>
     </div>
     <div class="viewbar">
@@ -1830,9 +1831,25 @@ function proofLine(p) {
   return `<div class="meta">${parts.join(' · ')}</div>`;
 }
 
-// À relancer : en attente depuis 5 jours, ou ticket sans mouvement depuis 14 jours. Un ticket résolu
-// attend sa clôture, pas une relance. Renvoie le nombre de jours, ou 0.
+// À relancer : seulement une tâche EN ATTENTE (rien ne s'ajoute à « À faire »), quand l'analyse propose la
+// relance (p.relance) ou après 5 jours ouvrés sans nouvelles humaines depuis la mise en attente. Les rappels
+// automatiques de Jira (Automation for Jira, qui met à jour le ticket chaque jour) ne comptent pas comme des
+// nouvelles. Un ticket résolu attend sa clôture, pas une relance. Renvoie les jours ouvrés sans nouvelles, ou 0.
 const jiraDate = d => Date.parse(String(d).replace(/([+-]\d\d)(\d\d)$/, '$1:$2'));
+function workDays(t) {
+  const d = new Date(t), end = new Date();
+  if (isNaN(d)) return 0;
+  d.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let i = 0; d < end && i < 2000; i++) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) n++; }
+  return n;
+}
+// Dernière nouvelle humaine d'une attente : la mise en attente elle-même, un message reçu, un commentaire Jira.
+function lastNews(p) {
+  const c = p.jiraDernier;
+  const moves = [p.majLe, p.dernierMessage, c && !/automation/i.test(c.auteur || '') && c.le].filter(Boolean).map(jiraDate).filter(n => !isNaN(n));
+  return moves.length ? Math.max(...moves) : 0;
+}
 // Dernier mouvement connu d'une tâche : mail, commentaire ou mise à jour Jira, changement de statut.
 function lastMove(p) {
   const last = (p.historique || []).slice(-1)[0];
@@ -1840,14 +1857,17 @@ function lastMove(p) {
   return moves.length ? Math.max(...moves) : 0;
 }
 function relanceDays(p) {
-  if (!isOpen(p) || /r[ée]solu/i.test(p.jiraStatut || '')) return 0;
-  const days = t => Math.floor((Date.now() - t) / 864e5);
-  const moved = lastMove(p);
-  if (!moved) return 0;
-  const quiet = days(moved);
-  if (p.statut === 'attente_tiers' && quiet >= 5) return quiet;
-  const jira = p.jiraMisAJour ? days(jiraDate(p.jiraMisAJour)) : 0;
-  return p.ticket && jira >= 14 ? jira : 0;
+  if (p.statut !== 'attente_tiers' || /r[ée]solu/i.test(p.jiraStatut || '')) return 0;
+  const news = lastNews(p);
+  const quiet = news ? workDays(news) : 0;
+  if (p.relance && p.relance.texte) return Math.max(quiet, 1);
+  return quiet >= 5 ? quiet : 0;
+}
+// Tâche à faire sur un ticket immobile depuis 14 jours : signalée sur la carte, sans compter comme une relance.
+function staleDays(p) {
+  if (p.statut !== 'a_faire' || !p.ticket || !p.jiraMisAJour) return 0;
+  const n = Math.floor((Date.now() - jiraDate(p.jiraMisAJour)) / 864e5);
+  return n >= 14 ? n : 0;
 }
 
 function pointCard(p, inSheet) {
@@ -1859,6 +1879,7 @@ function pointCard(p, inSheet) {
   const last = (p.historique || []).slice(-1)[0];
   const who = p.majPar === 'moi' ? 'posé par moi' : 'par la synthèse';
   const relance = open ? relanceDays(p) : 0;
+  const stale = open ? staleDays(p) : 0;
   const wait = clientWait(p);
   const divergence = ansamCible(p);
   const reo = reouverture(p);
@@ -1877,11 +1898,13 @@ function pointCard(p, inSheet) {
       ${p.jiraStatut ? `<span class="tag jira" title="Statut dans Jira${p.jiraMisAJour ? ', mis à jour le ' + shortDate(p.jiraMisAJour) : ''}">Jira : ${esc(p.jiraStatut)}</span>` : ''}
       ${p.jiraEncoreOuvert ? '<span class="tag late" title="Réglé ici, mais le ticket est encore ouvert dans Jira">à clôturer dans Jira</span>' : ''}
       ${open && p.aRevoir ? `<span class="tag late" title="Statut pas encore revu depuis : ${esc(p.aRevoir)}">à revérifier</span>` : ''}
-      ${relance ? `<span class="tag soon" title="Dernier mouvement sur le mail, le ticket ou le statut">sans nouvelles depuis ${relance} j</span>` : ''}
+      ${relance ? `<span class="tag soon" title="En attente : dernière nouvelle humaine (mise en attente, message reçu, commentaire Jira) ; les rappels automatiques de Jira ne comptent pas">à relancer · ${relance} j ouvré${relance > 1 ? 's' : ''} sans nouvelles</span>` : ''}
+      ${stale ? `<span class="tag" title="Dernière mise à jour du ticket dans Jira">ticket immobile depuis ${stale} j</span>` : ''}
       ${divergence ? `<span class="tag check" title="${esc(divergence.raison)} : le dossier AnsamDiag dit autre chose">AnsamDiag ${esc(ANSAM_LIB[divergence.actuel] || divergence.actuel)} ≠ ${esc(divergence.raison)}</span>` : ''}
       ${wait ? `<span class="tag ${wait.level || 'jira'}" title="Message du ${new Date(wait.since).toLocaleString('fr-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, sans réponse de ta part">${esc(wait.who || 'le client')} attend depuis ${fmtWait(wait.h)}</span>` : ''}
     </div>
     ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
+    ${relance && p.relance && p.relance.texte ? `<div class="why relance" title="${esc(p.relance.motif || '')}">↻ Relance proposée${p.relance.le ? ` le ${shortDate(p.relance.le)}` : ''} : ${esc(p.relance.texte)}</div>` : ''}
     ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
     ${reo && !inSheet ? `<div class="why reo">↺ Rouverte le ${shortDate(reo.le)} après ton « ${reo.avant === 'traite' ? 'Terminée' : 'Sans objet'} » : ${esc(reo.texte)}</div>` : ''}
@@ -1991,7 +2014,7 @@ function renderSuivi() {
   };
   if (f === 'relancer') {
     const list = leaves().filter(p => relanceDays(p) && matches(p)).sort((a, b) => relanceDays(b) - relanceDays(a));
-    if (!list.length) { box.innerHTML = emptyState('Rien à relancer', 'Aucune tâche n’attend depuis longtemps.'); return; }
+    if (!list.length) { box.innerHTML = emptyState('Rien à relancer', 'Aucune attente sans nouvelles depuis 5 jours ouvrés.'); return; }
     list.forEach(p => box.appendChild(pointCard(p)));
     return;
   }
@@ -2435,7 +2458,7 @@ function renderKpis() {
   tile('echeance', late + dueToday, [late ? `<b>${late}</b> en retard` : '', dueToday ? `${dueToday} aujourd’hui` : '', soon ? `${soon} sous 3 j` : ''].filter(Boolean).join(' · ') || 'rien de proche', true);
   const waitRelance = waiting.filter(relanceDays).length;
   tile('attente', waiting.length, waitRelance ? `dont <b>${waitRelance}</b> à relancer` : 'tout est récent');
-  tile('relance', relance.length, relance.length ? `jusqu’à <b>${Math.max(...relance)} j</b> sans nouvelles` : 'rien qui traîne');
+  tile('relance', relance.length, relance.length ? `parmi les attentes · jusqu’à <b>${Math.max(...relance)} j ouvrés</b>` : 'rien qui traîne');
   tile('contact', contacts.length, contacts.length ? [calls ? plural(calls, 'appel', 'appels') : '', contacts.length - calls ? plural(contacts.length - calls, 'mail', 'mails') : ''].filter(Boolean).join(' · ') : 'personne');
 }
 
@@ -3162,7 +3185,7 @@ function preparerCloture(id) {
 async function preparerRelance(id) {
   const p = points.find(x => x.id === id);
   if (!p) return;
-  const consigne = `Relance cordiale : sans nouvelles depuis ${relanceDays(p)} jours.`;
+  const consigne = `Relance cordiale : sans nouvelles depuis ${relanceDays(p)} jours ouvrés${p.relance && p.relance.texte ? ` (relance proposée : ${String(p.relance.texte).replace(/\./g, ',')})` : ''}.`;
   const before = String(p.infosRedaction || '').replace(/Relance cordiale : [^.]*\./g, '').trim();
   try {
     const r = await api('POST', '/api/redaction', { id, infos: [before, consigne].filter(Boolean).join(' / ') });

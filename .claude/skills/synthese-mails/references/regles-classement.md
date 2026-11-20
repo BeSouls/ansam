@@ -189,8 +189,29 @@ contradiction dans le motif (« Jira dit En cours, AnsamDiag dit Résolu »).
 Un point `traite` par une source automatique est listé dans « Réglé depuis
 la dernière synthèse » avec son motif : on doit pouvoir le rouvrir.
 
-Un point `attente_tiers` depuis plus de 5 jours ouvrés est signalé
-« à relancer ? », sans changer de statut.
+### Attente et relance
+
+Une tâche `attente_tiers` **reste en attente tant que rien de neuf
+n'arrive** : seul un message ou un commentaire Jira **d'un tiers**,
+postérieur à la mise en attente, la fait repasser `a_faire`. Une échéance
+de relance atteinte sans réponse (« aucune réponse à l'échéance », « sans
+nouvelles depuis… ») **ne la rend pas `a_faire`** : la renvoyer
+`attente_tiers`, avec dans `relance` la relance à faire (qui, comment, sur
+quoi). La page la montre dans « À relancer », une vue des attentes : rien
+ne s'ajoute à « À faire ». Le lanceur applique de toute façon cette règle.
+
+La cadence de relance est **la mienne**, pas celle de Jira. Les
+commentaires d'**Automation for Jira** ne sont ni une nouveauté, ni une
+consigne, ni une raison de remonter la priorité : rappels publics au
+client à J+3 et J+6 d'« En attente du client », puis chaque jour un
+commentaire interne « relance téléphonique recommandée ». Ils disent
+seulement que Jira a déjà relancé le client par écrit : la relance que je
+proposerai sera donc plutôt un appel, et rien n'est à faire tant que ma
+propre échéance n'est pas atteinte. Ne jamais écrire d'action « pour
+arrêter les rappels automatiques » sur une tâche en attente.
+
+Un point `attente_tiers` sans nouvelles humaines depuis plus de 5 jours
+ouvrés est signalé « à relancer » par la page, sans changer de statut.
 
 Un document d'un tiers (facture d'installateur, bon de livraison, fiche
 technique) transmis par un client sert de **contexte au ticket** : il ne
@@ -246,7 +267,8 @@ supprimer ni les fusionner avec un autre ticket.
 | 🟠 Cette semaine | Échéance sous 5 jours ouvrés, demande client standard, validation de facture ou de variabilité |
 | 🟢 Quand possible | Pas d'échéance, information à confirmer, demande interne non bloquante |
 
-Une **relance** remonte toujours d'un cran. Sans échéance, une attente de
+Une **relance** d'une personne (pas un rappel automatique de Jira)
+remonte toujours d'un cran. Sans échéance, une attente de
 plus de 3 jours ouvrés passe au moins en 🟠. En cas d'hésitation entre deux
 niveaux, prendre le plus élevé et dire pourquoi.
 
@@ -414,8 +436,10 @@ Est du bruit **uniquement** ce qui entre dans une de ces catégories :
   de mon nom ;
 - annonces collectives sans action (départs, arrivées, vie d'entreprise) ;
 - notifications Jira **sans auteur humain externe à ANSAM et sans action
-  pour moi** : « Automation for Jira a fait une mise à jour », « Issue …
-  has not been updated in 5 days » sur une tâche interne non échue ;
+  pour moi** : « Automation for Jira a fait une mise à jour », « Automation
+  for Jira a ajouté un nouveau commentaire » (rappels de relance, voir
+  « Attente et relance »), « Issue … has not been updated in 5 days » sur
+  une tâche interne non échue ;
 - alertes d'opérateur **closes** (« de nouveau disponible »), accusés de
   lecture, invitations déjà acceptées ;
 - mes propres synthèses « Synthèse mails – … ».

@@ -116,7 +116,11 @@ message reçu sur le point, `null` sans mail), `clientAttend` (date ISO du
 message ou du commentaire public **du client** qui attend une réponse de moi
 et auquel je n'ai pas encore répondu, ni par mail ni par commentaire Jira ;
 `null` si personne n'attend ma réponse : toujours renseigné pour chaque point
-renvoyé), `clientNom` (qui attend, ou `null`), `motif` (pourquoi ce statut,
+renvoyé), `clientNom` (qui attend, ou `null`), `relance` (pour un point
+`attente_tiers` seulement : la relance à faire maintenant, en une phrase,
+quand mon échéance est atteinte sans réponse ; `null` sinon, ou quand la
+relance est partie : voir « Attente et relance » dans les règles ; un point
+en attente reste `attente_tiers` même quand la relance est due), `motif` (pourquoi ce statut,
 avec la source : « Jira En attente du client », « AnsamDiag RESOLU 28.10 »,
 « ma réponse du 27.10 », « nouveau message du client le 29.10 », « mon
 commentaire Jira du 03.11 »), `contacts` (pour l'annuaire, facultatif, à

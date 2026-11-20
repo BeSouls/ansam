@@ -515,6 +515,18 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
             $keepAction = -not ($mine -and $news -and $news -gt $mine)
             if (-not $keepAction) { $point.Remove('actionPar') }
         }
+        # Une attente ne redevient pas « à faire » faute de réponse : seul un message ou un commentaire Jira
+        # d'un tiers plus récent que la mise en attente rend la main. Sans nouveauté, la tâche reste en attente
+        # et la relance proposée par l'analyse est notée à part (relance) : la vue « À relancer » la montre,
+        # « À faire » ne grossit pas. La cadence est la mienne, pas celle des rappels automatiques de Jira.
+        $relanceSeule = $false
+        if ($point.statut -eq 'attente_tiers' -and $statut -eq 'a_faire') {
+            $since = ConvertTo-SmDateTime $point.majLe
+            $news = @((ConvertTo-SmDateTime $update.dernierMessage), (ConvertTo-SmDateTime $point.jiraDernierAutre) | Where-Object { $_ }) |
+                Sort-Object -Descending | Select-Object -First 1
+            $relanceSeule = -not ($since -and $news -and $news -gt $since)
+        }
+        if ($relanceSeule) { $keepAction = $true; $statut = 'attente_tiers' }
         # Champs descriptifs : toujours mis à jour.
         foreach ($field in 'titre', 'client', 'ticket', 'priorite', 'action', 'echeance', 'source', 'dernierMessage', 'clientAttend', 'clientNom') {
             if ($field -eq 'action' -and $keepAction) { continue }
@@ -541,6 +553,16 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
             $point.parentPar = 'synthese'
         }
 
+        # Relance due d'une tâche en attente : celle que l'analyse propose (champ relance), ou son action quand
+        # elle voulait rendre la main sans nouveauté. La date de la première proposition est gardée.
+        $relanceTexte = $(if ($relanceSeule) { [string]$update.action }
+                          elseif ($statut -eq 'attente_tiers' -and $update.PSObject.Properties.Name -contains 'relance') { [string]$update.relance }
+                          else { $null })
+        if ($statut -eq 'attente_tiers' -and $relanceTexte) {
+            $first = $(if ($point.relance -and $point.relance.le) { [string]$point.relance.le } else { (Get-Date).ToString('o') })
+            $point.relance = [ordered]@{ le = $first; texte = $relanceTexte; motif = $(if ($update.motif) { [string]$update.motif } else { $null }) }
+        } elseif ($statut -eq 'attente_tiers' -and $update.PSObject.Properties.Name -contains 'relance') { $point.Remove('relance') }
+
         if ($RevuLe) {
             $point.revuLe = $RevuLe
             $point.jiraStatutRevu = $point.jiraStatut
@@ -559,6 +581,7 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
         $point.statut = $statut
         $point.majPar = 'synthese'
         $point.majLe = (Get-Date).ToString('o')
+        if ($statut -ne 'attente_tiers') { $point.Remove('relance') }
         Add-SmHistorique $point 'synthese' $statut ([string]$update.motif)
         $changes += [ordered]@{ id = $point.id; titre = $point.titre; avant = $previous; apres = $statut; motif = $update.motif }
     }
@@ -598,6 +621,7 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
     if ($changed) {
         Add-SmHistorique $point 'moi' $Statut $Note
         $point.Remove('aRevoir')     # je viens de trancher : plus rien à signaler
+        $point.Remove('relance')
     }
     Update-SmGroupes $Suivi
     $point
@@ -625,6 +649,7 @@ function Add-SmEtape($Suivi, [string]$Id, [string]$Texte, [string]$Note, [string
     $point.majPar = 'moi'
     $point.majLe = $now
     $point.Remove('aRevoir')
+    $point.Remove('relance')     # la relance faite est une étape : l'attente repart de maintenant
     Add-SmHistorique $point 'moi' $statut ("Étape faite : $Texte" + $(if ($Note) { " – $Note" } else { '' }))
     Update-SmGroupes $Suivi
     $point
@@ -801,6 +826,7 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
             if ($point.majPar -eq 'moi') { continue }   # mon marquage prime ; jiraEncoreOuvert le signale
             if ($mapped -eq 'traite' -and $open) {
                 $point.statut = 'traite'; $point.majPar = 'synthese'; $point.majLe = $now
+                $point.Remove('relance')
                 Add-SmHistorique $point 'synthese' 'traite' "Jira « $($ticket.statut) »"
                 $report.regles++
             } elseif ($mapped -ne 'traite' -and -not $open) {
@@ -811,6 +837,7 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
             } elseif ($changed -and $open -and $mapped -ne $point.statut) {
                 # Le ticket a changé d'état (le client a répondu, je l'ai mis en attente).
                 $point.statut = $mapped; $point.majPar = 'synthese'; $point.majLe = $now
+                $point.Remove('relance')
                 Add-SmHistorique $point 'synthese' $mapped "Jira passé à « $($ticket.statut) »"
                 $report.changes++
             }
