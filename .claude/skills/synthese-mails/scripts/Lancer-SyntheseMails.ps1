@@ -323,6 +323,16 @@ try {
             Write-Warning "Réunion squad non préparée : $($_.Exception.Message)"
             $markdown += "`n`n> ⚠ Réunion squad non préparée ($($_.Exception.Message)). [La préparer dans Panoramix]($squadUrl)"
         }
+    } elseif ($config.squadActif -and $PasDeMail -and -not $Essai -and (Get-SmSquadDate $config $start) -eq $today) {
+        # Actualisation le jour de la réunion : la fiche du matin suit ce qui a bougé depuis (étapes faites,
+        # nouveaux mails). Seules les lignes préparées sont refaites ; ce que j'ai écrit dans la page reste.
+        # Les autres jours, la fiche est l'historique de la réunion : on n'y touche plus.
+        $sheet = Get-SmSquad $config $today $WorkDir
+        if ($sheet -and $sheet.prepareLe) {
+            Write-Host "$(Get-Date -Format HH:mm:ss) Étape : mise à jour de la réunion squad"
+            try { & (Join-Path $PSScriptRoot 'Preparer-Squad.ps1') -Date $today -WorkDir $WorkDir -RepoDir $RepoDir -ClaudeExe $ClaudeExe | Out-Null }
+            catch { Write-Warning "Réunion squad non mise à jour : $($_.Exception.Message)" }
+        }
     }
     $markdown += "`n`n---`n[Ouvrir Panoramix]($(Get-SmPageUrl $WorkDir)) : marquer un point traité ou en attente, reporter la variabilité, traiter la facturation."
     # Une actualisation (-PasDeMail) ne remplace pas la synthèse du jour : fichier à part, et la date de

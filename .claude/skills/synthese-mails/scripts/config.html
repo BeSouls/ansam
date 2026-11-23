@@ -2838,9 +2838,20 @@ function renderSquad() {
   const box = $('sqBox');
   box.innerHTML = '';
 
+  // Ce qui a bougé depuis la préparation : tâches que j'ai fait avancer (statut, étape) ou apparues depuis,
+  // et analyse plus récente. Seulement pour la réunion de la semaine : une fiche passée est l'historique.
+  const prep = f.prepareLe ? Date.parse(f.prepareLe) : NaN;
+  const after = d => d && Date.parse(d) > prep;
+  const moved = isNaN(prep) || s.date !== s.courante ? [] : leaves().filter(p =>
+    (p.majPar === 'moi' && after(p.majLe)) || after(p.creeLe) || [].concat(p.etapes || []).some(e => e && after(e.le)));
+  const analyse = state && state.etat && after(state.etat.derniereAnalyse) ? state.etat.derniereAnalyse : null;
+  const stale = moved.length || analyse ? `<div class="banner"><div><b>La fiche date d’avant ${moved.length ? `${moved.length} changement${moved.length > 1 ? 's' : ''} dans tes tâches` : 'la dernière lecture des mails'}</b>` +
+    (moved.length ? ` (${esc([...new Set(moved.map(p => p.client).filter(Boolean))].slice(0, 6).join(', '))})` : '') +
+    (analyse ? ` · mails relus à ${new Date(analyse).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })}` : '') +
+    ` : « Mettre à jour » refait les lignes préparées, tes modifications restent. Le jour de la réunion, chaque actualisation le fait d’elle-même.</div></div>` : '';
   const intro = document.createElement('div');
   intro.className = 'panel';
-  intro.innerHTML = `<h2>Réunion du ${fmtDay(s.date)}</h2>` +
+  intro.innerHTML = `<h2>Réunion du ${fmtDay(s.date)}</h2>` + stale +
     (s.empechement ? `<p class="hint">Pas de réunion prévue pour toi ce jour-là : ${esc(s.empechement)}.</p>` : '') +
     (f.prepareLe ? `<p class="meta" style="margin:0 0 .6rem">Préparé le ${shortDate(f.prepareLe)} à ${new Date(f.prepareLe).toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })} · lignes marquées « préparé » : à relire</p>`
       : `<p class="hint">Pas encore préparée : « Préparer » relit ton agenda, tes mails, le suivi et la fiche précédente (2 à 4 minutes).</p>`) +
@@ -4080,6 +4091,8 @@ async function load() {
     state = await api('GET', '/api/etat');
     renderSettings();
     renderCounts();
+    // Ouverte directement (#squad), la fiche s'est dessinée avant les tâches : son bandeau « à mettre à jour » en dépend.
+    if (squad && !document.activeElement?.closest?.('#sqBox')) renderSquad();
   } catch (e) {
     $('sub').textContent = 'Erreur de chargement';
     toast(e.message, null, true);
