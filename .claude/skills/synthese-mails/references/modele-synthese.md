@@ -110,7 +110,9 @@ jamais renvoyer les groupes eux-mêmes, leur état se calcule),
 contact » dans les règles :
 `{"mode": "mail" | "appel", "nom", "role", "email", "telephone", "objet", "message", "points": []}`),
 `priorite` (`rouge`, `orange`, `vert`), `action` (ce qu'on attend de moi, ou
-ce que j'attends), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
+ce que j'attends), `actionAjustee` (`true` seulement quand l'action est mon
+texte, `actionPar` = `moi`, dont on a retiré une partie faite ou suivie
+dans sa propre tâche, voir « Une tâche, des étapes » ; sinon absent), `echeance` (`AAAA-MM-JJ` ou `null`), `source` (dossier
 et date du mail le plus récent), `dernierMessage` (date ISO du dernier
 message reçu sur le point, `null` sans mail), `clientAttend` (date ISO du
 message ou du commentaire public **du client** qui attend une réponse de moi

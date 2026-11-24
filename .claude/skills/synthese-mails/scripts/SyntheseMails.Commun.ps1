@@ -514,6 +514,12 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
             $news = @((ConvertTo-SmDateTime $update.dernierMessage), (ConvertTo-SmDateTime $point.jiraDernierAutre) | Where-Object { $_ }) | Sort-Object -Descending | Select-Object -First 1
             $keepAction = -not ($mine -and $news -and $news -gt $mine)
             if (-not $keepAction) { $point.Remove('actionPar') }
+            # Ajustement de mon texte par l'analyse (actionAjustee) : seulement pour en retirer ce qui est fait
+            # ou suivi dans sa propre tâche ; le texte reste le mien (actionPar). Un texte plus long n'est pas un retrait.
+            elseif ($update.actionAjustee -and ([string]$update.action).Trim() -and ([string]$update.action).Length -le ([string]$point.action).Length + 40) {
+                $point.action = ([string]$update.action).Trim()
+                $point.actionAjusteeLe = (Get-Date).ToString('o')
+            }
         }
         # Une attente ne redevient pas « à faire » faute de réponse : seul un message ou un commentaire Jira
         # d'un tiers plus récent que la mise en attente rend la main. Sans nouveauté, la tâche reste en attente

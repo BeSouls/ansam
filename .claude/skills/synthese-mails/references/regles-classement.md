@@ -121,7 +121,23 @@ l'ajoute à `etapes` (date, texte, note) et garde la tâche ouverte :
   une action concrète, ou passe `attente_tiers` si le dernier échange le dit.
 - `actionPar` = `moi` : j'ai écrit l'étape suivante moi-même. La reprendre
   telle quelle, sauf message ou commentaire d'un tiers plus récent qui la
-  rend caduque.
+  rend caduque. **Exception, pour qu'elle reste vraie** : quand une partie
+  est faite (étape faite, mon mail ou mon commentaire, ticket clos, source
+  citée dans le motif) ou suivie dans **sa propre tâche** du registre,
+  renvoyer mon texte **sans cette partie**, mot pour mot pour le reste, avec
+  `actionAjustee: true`. Une partie suivie ailleurs devient « (suivi dans
+  ASD-31341) ». Rien n'est ajouté ni reformulé ; le lanceur refuse un texte
+  plus long.
+- **Un sujet, une tâche.** Ce qui a sa propre tâche (un ticket Jira, un
+  projet, une commande) ne se répète pas dans l'action d'une autre tâche :
+  on y renvoie par sa clé. Ainsi, ce que je marque fait à un endroit ne
+  reste pas « à faire » ailleurs.
+- **Ce que je note comme étape vaut pour tout le client.** Une séance, un
+  appel ou un mail noté comme étape sur une tâche (« séance de suivi du
+  23.11 avec le client… ») répond aussi aux tâches voisines du même client
+  qu'il couvre : `clientAttend` = `null` pour la personne rencontrée ou
+  contactée après son message, et l'action de ces tâches part de ce qui y a
+  été décidé (note de l'étape).
 - Une étape faite n'est **jamais** une raison de passer le point `traite`.
   `traite` veut dire que toute la tâche est finie : ticket Terminé dans Jira,
   ou mon marquage « Terminée ».

@@ -126,6 +126,7 @@
   .tag { font-size: .75rem; font-weight: 600; padding: .05rem .5rem; border-radius: 6px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
   .tag.late { background: var(--red-soft); color: var(--red); }
   .tag.soon { background: var(--orange-soft); color: var(--orange); }
+  .tag.ok { color: var(--green); }
   .tag.check { background: var(--orange-soft); color: var(--orange); }
   .tag.sure { background: var(--green-soft); color: var(--green); }
   .tag.plus { background: var(--green-soft); color: var(--green); }
@@ -637,6 +638,7 @@
       <button class="kpi k-faire" type="button" data-kpi="faire" aria-pressed="false" title="Les autres tâches à faire : ni en retard, ni dues aujourd'hui, ni client qui attend."><span class="kpi-l">À faire ensuite</span><span class="kpi-n" id="k-faire">–</span><span class="kpi-s" id="ks-faire"></span><span class="kpi-bar" id="kb-faire" aria-hidden="true"></span></button>
       <button class="kpi k-relance" type="button" data-kpi="relancer" aria-pressed="false" title="Tâches en attente dont la relance est due : proposée par l’analyse, ou 5 jours ouvrés sans nouvelles humaines. Les rappels automatiques de Jira n’y entrent pas."><span class="kpi-l">À relancer</span><span class="kpi-n" id="k-relance">–</span><span class="kpi-s" id="ks-relance"></span></button>
       <button class="kpi k-attente" type="button" data-kpi="attente" aria-pressed="false" title="Ton action est faite et rien n'est encore à relancer : tu attends le client, un collègue ou un fournisseur."><span class="kpi-l">En attente</span><span class="kpi-n" id="k-attente">–</span><span class="kpi-s" id="ks-attente"></span></button>
+      <button class="kpi k-green kpi-fait" type="button" data-kpi="fait" aria-pressed="false" title="Ce qui a avancé aujourd'hui : tâches terminées (par toi ou d'après Jira) et étapes faites. Hors des tâches ouvertes : ce chiffre ne s'ajoute pas aux quatre autres."><span class="kpi-l">Fait aujourd’hui</span><span class="kpi-n" id="k-fait">–</span><span class="kpi-s" id="ks-fait"></span></button>
     </div>
     <div class="lenses" role="group" aria-label="Autres vues, à travers toutes les tâches ouvertes">
       <span class="hint" id="kTotal"></span>
@@ -1272,6 +1274,8 @@ function selectButton(p) {
   return b;
 }
 
+// Étapes faites sur les tâches encore ouvertes : le travail avancé qui ne ferme pas (encore) une tâche.
+const stepsDone = kids => kids.filter(isOpen).reduce((n, k) => n + [].concat(k.etapes || []).filter(Boolean).length, 0);
 function groupCard(g) {
   const kids = childrenOf(g);
   const done = kids.filter(k => !isOpen(k)).length;
@@ -1287,7 +1291,7 @@ function groupCard(g) {
     <div class="head">
       <span class="dot ${esc(g.priorite)}"></span>
       <span class="title">${esc(g.titre)}</span>
-      <span class="tag">${done}/${kids.length} faites</span>
+      <span class="tag" title="Tâches terminées sur le total ; les étapes faites ne ferment pas une tâche">${done}/${kids.length} terminées${stepsDone(kids) ? ` · ${stepsDone(kids)} étape${stepsDone(kids) > 1 ? 's' : ''} faite${stepsDone(kids) > 1 ? 's' : ''}` : ''}</span>
       ${isOpen(g) ? dueTag(g.echeance) : ''}
     </div>
     <div class="prog" aria-hidden="true"><span style="width:${kids.length ? Math.round(done / kids.length * 100) : 0}%"></span></div>
@@ -1640,7 +1644,9 @@ function renderSheet() {
   const open = kids.filter(isOpen).length;
   const title = $('sheetTitle');
   if (document.activeElement !== title) title.value = g.titre;
-  $('sheetSub').textContent = `${kids.length - open}/${kids.length} faites · ${open} ouverte${open > 1 ? 's' : ''}` + (g.clients && g.clients.length ? ' · ' + g.clients.join(', ') : '');
+  const nSteps = stepsDone(kids);
+  $('sheetSub').textContent = `${kids.length - open}/${kids.length} terminées · ${open} ouverte${open > 1 ? 's' : ''}` +
+    (nSteps ? ` · ${nSteps} étape${nSteps > 1 ? 's' : ''} faite${nSteps > 1 ? 's' : ''} sur les tâches ouvertes` : '') + (g.clients && g.clients.length ? ' · ' + g.clients.join(', ') : '');
   $('sheetProg').style.width = (kids.length ? Math.round((kids.length - open) / kids.length * 100) : 0) + '%';
   $('sheetDone').hidden = !open;
   const list = $('sheetList');
@@ -1879,6 +1885,16 @@ function staleDays(p) {
   return n >= 14 ? n : 0;
 }
 
+// Un sujet, une tâche : les tickets cités dans l'action qui ont leur propre tâche sont montrés avec son état,
+// pour voir d'un coup d'œil ce qui est suivi (et marqué fait) ailleurs.
+function linkedTasks(p) {
+  const keys = [...new Set(String(p.action || '').match(/\b[A-Z][A-Z0-9]+-\d+(?:-\d+)?\b/g) || [])].filter(k => k !== p.ticket && k !== p.id);
+  const lab = { a_faire: 'à faire', attente_tiers: 'en attente', traite: 'terminée', ignore: 'sans objet' };
+  const found = keys.map(k => leaves().find(o => o !== p && (o.ticket === k || o.id === k))).filter(Boolean);
+  if (!found.length) return '';
+  return `<div class="meta">Suivi à part : ${found.map(o => `<span class="tag ${isOpen(o) ? '' : 'ok'}" title="${esc(o.titre)}">${esc(o.ticket || o.id)} · ${lab[o.statut] || o.statut}</span>`).join(' ')}</div>`;
+}
+
 function pointCard(p, inSheet) {
   const card = document.createElement('div');
   const open = isOpen(p);
@@ -1913,6 +1929,7 @@ function pointCard(p, inSheet) {
       ${wait ? `<span class="tag ${wait.level || 'jira'}" title="Message du ${new Date(wait.since).toLocaleString('fr-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, sans réponse de ta part">${esc(wait.who || 'le client')} attend depuis ${fmtWait(wait.h)}</span>` : ''}
     </div>
     ${p.action ? `<div class="body">${p.statut === 'a_faire' && (p.etapes || []).length ? '<span class="steplabel">Étape suivante</span> ' : ''}${esc(p.action)}</div>` : ''}
+    ${linkedTasks(p)}
     ${relance && p.relance && p.relance.texte ? `<div class="why relance" title="${esc(p.relance.motif || '')}">↻ Relance proposée${p.relance.le ? ` le ${shortDate(p.relance.le)}` : ''} : ${esc(p.relance.texte)}</div>` : ''}
     ${open && lastStep ? `<div class="laststep" title="${esc(lastStep.note || '')}">✓ Fait le ${shortDate(lastStep.le)} : ${esc(lastStep.texte)}${steps.length > 1 ? ` <span class="meta">(${steps.length} étapes faites)</span>` : ''}</div>` : ''}
     ${open && p.aRevoir ? `<div class="why">Nouveau : ${esc(p.aRevoir)}</div>` : ''}
@@ -2012,7 +2029,7 @@ function renderSuivi() {
   box.innerHTML = '';
   if (!points.length) { box.innerHTML = emptyState('Aucun point pour l’instant', 'Le registre se remplit à chaque synthèse.'); return; }
   const f = filters.suivi;
-  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', jour: 'Aujourd’hui', faire: 'À faire ensuite', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira', aligner: 'Statuts AnsamDiag à aligner', client: 'Clients qui attendent ta réponse' };
+  const titles = { ouverts: 'Tâches ouvertes', regles: 'Tâches réglées', tous: 'Toutes les tâches', fait: 'Fait aujourd’hui', jour: 'Aujourd’hui', faire: 'À faire ensuite', echeances: 'Échéances', attente: 'En attente d’un tiers', relancer: 'À relancer', contact: 'À contacter', cloturer: 'À clôturer dans Jira', aligner: 'Statuts AnsamDiag à aligner', client: 'Clients qui attendent ta réponse' };
   $('suiviTitre').textContent = titles[f] || '';
   $('suiviReset').hidden = ['ouverts', 'regles', 'tous'].includes(f);
   const heading = (title, n) => {
@@ -2021,6 +2038,14 @@ function renderSuivi() {
     h.innerHTML = `${esc(title)} <span class="count">${n}</span>`;
     box.appendChild(h);
   };
+  if (f === 'fait') {
+    const d = faitDuJour();
+    const term = d.terminees.filter(matches), av = d.avancees.filter(matches);
+    if (!term.length && !av.length) { box.innerHTML = emptyState('Rien encore aujourd’hui', 'Les tâches terminées et les étapes faites du jour apparaissent ici.'); return; }
+    if (term.length) { heading('Terminées aujourd’hui', term.length); term.forEach(p => box.appendChild(pointCard(p))); }
+    if (av.length) { heading('Avancées aujourd’hui (étape faite)', av.length); av.forEach(p => box.appendChild(pointCard(p))); }
+    return;
+  }
   if (f === 'relancer') {
     const list = leaves().filter(p => relanceDays(p) && matches(p)).sort((a, b) => relanceDays(b) - relanceDays(a));
     if (!list.length) { box.innerHTML = emptyState('Rien à relancer', 'Aucune attente sans nouvelles depuis 5 jours ouvrés.'); return; }
@@ -2312,6 +2337,11 @@ function clientWait(p) {
   const steps = [].concat(p.etapes || []).filter(Boolean), last = steps[steps.length - 1];
   if (last && Date.parse(last.le) > since) return null;
   if (c && c.moi && jiraDate(c.le) > since) return null;
+  // Une étape notée sur une tâche voisine (même groupe) après ce message, qui nomme la personne ou cite ce ticket,
+  // lui a répondu (séance, appel) : l'analyse fait le même lien entre tâches du même client.
+  const surname = String(who).replace(/\(.*$/, '').trim().split(/\s+/).pop() || '';
+  const names = t => (surname.length > 2 && new RegExp('\\b' + surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(t)) || (p.ticket && t.includes(p.ticket));
+  if (p.parent && childrenOf({ id: p.parent }).some(k => k !== p && [].concat(k.etapes || []).some(e => e && Date.parse(e.le) > since && names(`${e.texte || ''} ${e.note || ''}`)))) return null;
   const h = workHours(since);
   return { since, who, h, level: h >= 10 ? 'late' : h >= 4 ? 'soon' : '' };
 }
@@ -2471,6 +2501,18 @@ function caseDe(p) {
   return (n !== null && n <= 0) || clientWait(p) || p.drapeau ? 'jour' : 'faire';
 }
 
+// Fait aujourd'hui : tâches passées « Terminée » ou « Sans objet » aujourd'hui (par moi, ou d'après Jira), et
+// tâches encore ouvertes sur lesquelles j'ai fait une étape aujourd'hui. Une tâche n'y figure qu'une fois.
+function faitDuJour() {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const isToday = d => d && Date.parse(d) >= day.getTime();
+  const all = leaves();
+  const terminees = all.filter(p => !isOpen(p) && isToday(p.majLe));
+  const stepsToday = p => [].concat(p.etapes || []).filter(e => e && isToday(e.le)).length;
+  const avancees = all.filter(p => isOpen(p) && stepsToday(p));
+  return { terminees, avancees, etapes: all.reduce((n, p) => n + stepsToday(p), 0) };
+}
+
 // Tuiles du Suivi : un chiffre, et la ligne qui dit de quoi il est fait.
 function renderKpis() {
   const open = leaves().filter(isOpen);
@@ -2508,6 +2550,9 @@ function renderKpis() {
   const oldest = waiting.map(lastNews).filter(Boolean).sort((a, b) => a - b)[0];
   tile('attente', waiting.length, waiting.length ? `rien à faire de ton côté${oldest ? ` · la plus ancienne : ${workDays(oldest)} j ouvrés` : ''}` : 'personne à attendre');
   $('kTotal').textContent = `${plural(open.length, 'tâche ouverte', 'tâches ouvertes')} = ${jour.length} + ${todo.length} + ${relancer.length} + ${waiting.length} · Vues :`;
+  const f = faitDuJour();
+  tile('fait', f.terminees.length + f.avancees.length, [f.terminees.length ? `<b>${plural(f.terminees.length, 'terminée', 'terminées')}</b>` : '',
+    f.etapes ? plural(f.etapes, 'étape faite', 'étapes faites') : ''].filter(Boolean).join(' · ') || 'rien encore aujourd’hui');
 }
 
 function renderCounts() {
