@@ -184,6 +184,15 @@
   .nt .nt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .6rem 0; }
   .nt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem .8rem; margin: .4rem 0; }
   .nt .why { color: var(--orange); }
+  .k-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: .8rem; margin-top: .9rem; }
+  .k-card h3 { margin: 0 0 .5rem; font-size: 1rem; display: flex; justify-content: space-between; gap: .5rem; }
+  .k-row { padding: .45rem 0; border-top: 1px solid var(--line); font-size: .875rem; }
+  .k-row:first-of-type { border-top: 0; }
+  .k-acts { display: flex; flex-wrap: wrap; gap: .2rem .7rem; margin-top: .25rem; font-size: .8125rem; }
+  .k-acts .btn.link { padding: 0; }
+  .k-tri { padding: .5rem 0; border-top: 1px solid var(--line); font-size: .875rem; }
+  .rappel ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+  .rappel li { margin: .15rem 0; }
   .lenses .btn.link[aria-pressed="true"] { text-decoration: underline; font-weight: 600; }
   .kpi-bar { display: flex; gap: 2px; height: 4px; margin-top: auto; border-radius: 2px; overflow: hidden; background: var(--surface-2); }
   .kpi-bar span { display: block; height: 100%; }
@@ -623,6 +632,7 @@
       <button role="tab" data-tab="attention" aria-selected="false">Attention <span class="count" id="c-attention">–</span></button>
       <button role="tab" data-tab="preparer" aria-selected="false">Préparer</button>
       <button role="tab" data-tab="squad" aria-selected="false">Squad</button>
+      <button role="tab" data-tab="clients" aria-selected="false" title="Carnet TAM : ce que tu gardes en tête par client">Clients <span class="count" id="c-clients" hidden></span></button>
       <button role="tab" data-tab="annuaire" aria-selected="false">Annuaire <span class="count" id="c-annuaire">–</span></button>
       <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
     </nav>
@@ -637,6 +647,7 @@
       <ul id="movedList"></ul>
     </div>
     <div id="secBanner"></div>
+    <div id="kRappel"></div>
     <div class="kpis" role="group" aria-label="Filtrer le suivi">
       <button class="kpi k-red" type="button" data-kpi="jour" aria-pressed="false" title="À traiter en premier : tâches à faire en retard ou dues aujourd'hui, celles où un client attend ta réponse, et celles que tu as marquées d'un drapeau. Chaque tâche ouverte est dans une seule tuile."><span class="kpi-l">Aujourd’hui</span><span class="kpi-n" id="k-jour">–</span><span class="kpi-s" id="ks-jour"></span></button>
       <button class="kpi k-faire" type="button" data-kpi="faire" aria-pressed="false" title="Les autres tâches à faire : ni en retard, ni dues aujourd'hui, ni client qui attend."><span class="kpi-l">À faire ensuite</span><span class="kpi-n" id="k-faire">–</span><span class="kpi-s" id="ks-faire"></span><span class="kpi-bar" id="kb-faire" aria-hidden="true"></span></button>
@@ -786,6 +797,35 @@
     <div id="sqBox"><div class="empty">Chargement…</div></div>
   </section>
 
+    <section class="pane" id="p-clients" hidden>
+      <div class="panebar">
+        <h2>Clients</h2>
+        <span class="info" title="Ton carnet de TAM : ce que tu gardes en tête par client, daté ou non. Ce ne sont pas des tâches : un point daté est rappelé dans le Suivi 7 jours avant, avec « En faire une tâche » si une action s’impose. « Archiver » le range dans l’historique du client (CLIENTS\CODE\infos-tam.md).">i</span>
+      </div>
+      <div class="panel nt">
+        <h2>Garder en tête</h2>
+        <div class="nt-grid">
+          <label class="f">Client<input class="field" id="kClient" list="kClients" placeholder="code client" autocomplete="off"></label>
+          <label class="f">Date (facultatif)<input class="field" type="date" id="kDate"></label>
+        </div>
+        <label class="f">Point<textarea class="field" id="kTexte" rows="2" placeholder="Ex. : L. Franceschini (ASACS) part à la retraite le 31.05.2027 : prévoir le transfert de ses accès"></textarea></label>
+        <datalist id="kClients"></datalist>
+        <div class="why" id="kDoublon" hidden></div>
+        <p class="meta" id="kMotif"></p>
+        <div class="nt-bar">
+          <button class="btn primary" type="button" id="kAjouter">Ajouter</button>
+          <button class="btn link" type="button" id="kReformuler" title="Colle un message ou écris librement dans « Point » : Claude remplit le client, le texte et la date, tu relis puis tu ajoutes">Laisser Claude remplir</button>
+          <span class="run" id="kRun" hidden><span class="spinner"></span><span id="kRunTexte">Reformulation</span></span>
+        </div>
+      </div>
+      <div id="kProchaines"></div>
+      <div class="k-grid" id="kBody"></div>
+      <details class="panel" id="kTri" style="margin-top:1rem">
+        <summary>À trier : faits repérés par l’analyse <span class="count" id="kTriN">0</span></summary>
+        <p class="hint">« Garder en tête » les verse au carnet ; « Archiver » les range dans l’historique du client ; « Écarter » s’ils ne servent à rien.</p>
+        <div id="kTriBody"></div>
+      </details>
+    </section>
     <section class="pane" id="p-annuaire" hidden>
       <div class="panebar">
         <h2>Annuaire</h2>
@@ -1058,6 +1098,7 @@ function showTab(name) {
   if (name === 'variabilite') name = 'mois';   // les indices des mails sont dans l'onglet Mois
   tab = name;
   if (name === 'annuaire') loadAnnuaire();
+  if (name === 'clients') chargerCarnet();
   if (name === 'preparer') chargerPreparer();
   if (name === 'facturation') chargerFacturation();
   if (name === 'mois') chargerMois();
@@ -3156,6 +3197,139 @@ async function suivreTravail(nom, etat, texte, fini) {
   if (s.etat === 'echec') toast(s.message || 'Échec de la préparation.', null, true);
   fini(s);
 }
+// --- Carnet TAM (onglet Clients) : ce que je garde en tête par client, daté ou non ------------------------
+let carnet = [], carnetTri = [];
+const kJours = d => { const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((Date.parse(d + 'T00:00:00') - t.getTime()) / 864e5); };
+const kDateTag = d => { if (!d) return ''; const n = kJours(d); return `<span class="tag ${n < 0 ? 'late' : n <= 7 ? 'soon' : ''}" title="${n < 0 ? 'passée de ' + -n + ' j' : n === 0 ? 'aujourd’hui' : 'dans ' + n + ' j'}">${fmtDay(d)}</span>`; };
+const kActifs = () => carnet.filter(p => p.statut === 'actif');
+// Rappel du Suivi : points datés passés ou dans les 7 jours.
+const kProches = () => kActifs().filter(p => p.date && kJours(p.date) <= 7).sort((a, b) => a.date.localeCompare(b.date));
+
+async function chargerCarnet(silencieux) {
+  try {
+    const r = await api('GET', '/api/carnet');
+    carnet = r.points || []; carnetTri = r.aTrier || [];
+    if (!silencieux || tab === 'clients') renderCarnet();
+    renderRappel();
+  } catch (e) { if (!silencieux) toast(e.message, null, true); }
+}
+async function carnetAction(corps, okMessage) {
+  const r = await api('POST', '/api/carnet', corps);
+  carnet = r.points || carnet; carnetTri = r.aTrier || carnetTri;
+  if (corps.action === 'garder') { const el = elements.find(e => e.id === corps.id); if (el) el.statut = 'fait'; }
+  renderCarnet(); renderRappel(); renderCounts();
+  toast(okMessage || r.message);
+  return r;
+}
+
+function renderRappel() {
+  const box = $('kRappel');
+  if (!box) return;
+  const list = kProches();
+  const badge = $('c-clients');
+  badge.textContent = list.length; badge.hidden = !list.length;
+  badge.classList.toggle('hot', list.some(p => kJours(p.date) < 0));
+  box.innerHTML = list.length ? `<div class="banner rappel"><div><b>À garder en tête cette semaine</b> · <button class="btn link" type="button" data-k-onglet>ouvrir le carnet</button><ul>${list.slice(0, 5).map(p =>
+    `<li>${kDateTag(p.date)} <b>${esc(p.client)}</b> · ${esc(String(p.texte).slice(0, 140))}${String(p.texte).length > 140 ? '…' : ''} ${p.tacheId ? `<span class="tag ok">tâche créée</span>` : `<button class="btn link" type="button" data-k-tache="${esc(p.id)}">En faire une tâche</button>`}</li>`).join('')}${list.length > 5 ? `<li>et ${list.length - 5} autre(s) dans le carnet</li>` : ''}</ul></div></div>` : '';
+}
+
+function renderCarnet() {
+  const actifs = kActifs();
+  const codes = [...new Set([...points.map(p => p.client), ...carnet.map(p => p.client), ...carnetTri.map(e => e.client)].filter(c => c && /^[A-Za-z0-9.-]{2,30}$/.test(c)))].sort();
+  $('kClients').innerHTML = codes.map(c => `<option value="${esc(c)}">`).join('');
+  // Dates à venir, tous clients.
+  const dated = actifs.filter(p => p.date).sort((a, b) => a.date.localeCompare(b.date));
+  $('kProchaines').innerHTML = dated.length ? `<div class="panel"><h2>Dates à garder en tête</h2>${dated.map(p => `<div class="k-row">${kDateTag(p.date)} <b>${esc(p.client)}</b> · ${esc(p.texte)}</div>`).join('')}</div>` : '';
+  // Une carte par client : ses points, les datés d'abord.
+  const byClient = new Map();
+  actifs.forEach(p => { if (!byClient.has(p.client)) byClient.set(p.client, []); byClient.get(p.client).push(p); });
+  const order = [...byClient.keys()].sort((a, b) => {
+    const da = byClient.get(a).map(p => p.date).filter(Boolean).sort()[0] || '9', db = byClient.get(b).map(p => p.date).filter(Boolean).sort()[0] || '9';
+    return da.localeCompare(db) || a.localeCompare(b);
+  });
+  $('kBody').innerHTML = order.length ? order.map(c => {
+    const list = byClient.get(c).sort((a, b) => String(a.date || '9').localeCompare(String(b.date || '9')) || String(b.creeLe).localeCompare(String(a.creeLe)));
+    return `<div class="panel k-card"><h3><span>${esc(c)}</span><span class="count">${list.length}</span></h3>${list.map(kLigne).join('')}</div>`;
+  }).join('') : emptyState('Carnet vide', 'Ajoute ce que tu veux garder en tête, ou trie les faits repérés par l’analyse ci-dessous.');
+  // À trier : faits TAM de l'analyse.
+  $('kTriN').textContent = carnetTri.length;
+  $('kTriBody').innerHTML = carnetTri.length ? carnetTri.slice().sort((a, b) => String(a.client).localeCompare(String(b.client))).map(e =>
+    `<div class="k-tri"><b>${esc(e.client || '?')}</b>${e.echeance ? ' ' + kDateTag(String(e.echeance).slice(0, 10)) : ''} · ${esc(e.element)}${e.indice ? ` <span class="meta">— ${esc(e.indice)}</span>` : ''}
+      <div class="k-acts"><button class="btn link" type="button" data-k-garder="${esc(e.id)}">Garder en tête</button><button class="btn link" type="button" data-k-classer="${esc(e.id)}">Archiver chez le client</button><button class="btn link" type="button" data-k-ecarter="${esc(e.id)}">Écarter</button></div></div>`).join('')
+    : '<p class="hint">Rien à trier.</p>';
+}
+function kLigne(p) {
+  return `<div class="k-row" data-k-id="${esc(p.id)}">${p.date ? kDateTag(p.date) + ' ' : ''}${esc(p.texte)}
+    <div class="meta">${[p.source ? esc(p.source) : '', p.origine === 'synthese' ? 'repéré par l’analyse' : '', `ajouté le ${shortDate(p.creeLe)}`].filter(Boolean).join(' · ')}</div>
+    <div class="k-acts">${p.tacheId ? '<span class="tag ok">tâche créée</span>' : `<button class="btn link" type="button" data-k-tache="${esc(p.id)}">En faire une tâche</button>`}<button class="btn link" type="button" data-k-modif="${esc(p.id)}">Modifier</button><button class="btn link" type="button" data-k-archiver="${esc(p.id)}" title="Plus d’actualité : rangé dans l’historique du client (infos-tam.md)">Archiver</button></div></div>`;
+}
+function kModifier(p) {
+  const row = document.querySelector(`[data-k-id="${CSS.escape(p.id)}"]`);
+  if (!row) return;
+  row.innerHTML = `<div class="nt-grid"><input class="field" data-f="client" value="${esc(p.client)}" list="kClients"><input class="field" type="date" data-f="date" value="${esc(p.date || '')}"></div>
+    <textarea class="field" data-f="texte" rows="3" style="width:100%;box-sizing:border-box">${esc(p.texte)}</textarea>
+    <div class="k-acts"><button class="btn primary" type="button" data-f="ok">Enregistrer</button><button class="btn link" type="button" data-f="annuler">Annuler</button><button class="btn link" type="button" data-f="suppr" title="Saisie erronée : supprimé sans trace">Supprimer</button></div>`;
+  const val = k => row.querySelector(`[data-f="${k}"]`).value.trim();
+  row.querySelector('[data-f="ok"]').onclick = () => carnetAction({ action: 'modifier', id: p.id, client: val('client'), texte: val('texte'), date: val('date') }).catch(e => toast(e.message, null, true));
+  row.querySelector('[data-f="annuler"]').onclick = renderCarnet;
+  row.querySelector('[data-f="suppr"]').onclick = () => carnetAction({ action: 'supprimer', id: p.id }).catch(e => toast(e.message, null, true));
+}
+async function kEnTache(p) {
+  // Une tâche du Suivi, à partir du point : échéance = la date du point, c'est mon texte (actionPar moi).
+  try {
+    const n = p.date ? kJours(p.date) : null;
+    const r = await api('POST', '/api/nouvelle-tache/creer', { titre: `${p.client} : ${String(p.texte).slice(0, 90)}`, client: p.client, action: p.texte, echeance: p.date || '',
+      priorite: n !== null && n <= 0 ? 'rouge' : 'orange', statut: 'a_faire', source: 'Carnet TAM', texteOrigine: p.texte });
+    points = r.points || points;
+    await carnetAction({ action: 'modifier', id: p.id, tacheId: r.point.id }, `Tâche créée : « ${r.point.titre} ».`);
+    renderAll();
+  } catch (e) { toast(e.message, null, true); }
+}
+async function kAjouter() {
+  const corps = { action: 'ajouter', client: $('kClient').value.trim(), texte: $('kTexte').value.trim(), date: $('kDate').value, source: kSource || '' };
+  if (!corps.client || !corps.texte) { toast('Il faut un client et un point.', null, true); return; }
+  try {
+    await carnetAction(corps);
+    $('kClient').value = ''; $('kTexte').value = ''; $('kDate').value = ''; $('kMotif').textContent = ''; $('kDoublon').hidden = true; kSource = '';
+  } catch (e) { toast(e.message, null, true); }
+}
+let kSource = '';
+async function kReformuler() {
+  const texte = $('kTexte').value.trim();
+  if (!texte) { toast('Écris ou colle d’abord le point dans « Point ».', null, true); return; }
+  try {
+    await api('POST', '/api/carnet/proposer', { texte });
+    $('kRun').hidden = false; $('kRunTexte').textContent = 'Démarrage';
+    travailTimers.set('carnet', setTimeout(() => suivreTravail('carnet', 'kRun', 'kRunTexte', s => {
+      const p = s.etat === 'ok' && s.proposition;
+      if (!p) return;
+      if (p.client) $('kClient').value = p.client;
+      $('kTexte').value = p.texte || texte;
+      $('kDate').value = p.date || '';
+      kSource = p.source || '';
+      $('kMotif').textContent = [p.source, p.motif].filter(Boolean).join(' · ');
+      $('kDoublon').hidden = !p.doublon;
+      $('kDoublon').textContent = p.doublon ? `Déjà dans le carnet (${p.doublon.client}) : « ${p.doublon.texte} ». Ajoute seulement si c’est autre chose.` : '';
+    }), 2000));
+  } catch (e) { toast(e.message, null, true); }
+}
+$('kAjouter').addEventListener('click', kAjouter);
+$('kReformuler').addEventListener('click', kReformuler);
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-k-tache], [data-k-modif], [data-k-archiver], [data-k-garder], [data-k-classer], [data-k-ecarter], [data-k-onglet]');
+  if (!b) return;
+  e.stopPropagation();
+  const d = b.dataset, find = id => carnet.find(p => p.id === id);
+  const fail = err => toast(err.message, null, true);
+  if ('kOnglet' in d) { showTab('clients'); window.scrollTo(0, 0); }
+  else if (d.kTache) { b.disabled = true; kEnTache(find(d.kTache)); }
+  else if (d.kModif) kModifier(find(d.kModif));
+  else if (d.kArchiver) carnetAction({ action: 'archiver', id: d.kArchiver }).catch(fail);
+  else if (d.kGarder) carnetAction({ action: 'garder', id: d.kGarder }).catch(fail);
+  else if (d.kClasser) api('POST', '/api/archives/classer', { id: d.kClasser }).then(r => { toast(r.message); const el = elements.find(x => x.id === d.kClasser); if (el) el.statut = 'fait'; return chargerCarnet(); }).catch(fail);
+  else if (d.kEcarter) { const el = elements.find(x => x.id === d.kEcarter); if (el) setElement(el, 'ignore', '').then(() => chargerCarnet()); }
+});
+
 // --- Nouvelle tâche (Teams, oral) : texte libre -> proposition de Claude -> je relis -> je crée ---------------
 let ntProposition = null;
 function ntOuvrir() {
@@ -4230,6 +4404,7 @@ async function load() {
     const a = await api('GET', '/api/archives');
     elements = a.elements || [];
     renderAll();
+    await chargerCarnet(true);   // rappel « À garder en tête » du Suivi et badge de l'onglet Clients
     await loadAnnuaire();
     chargerProjets();
     await chargerPublier(true);

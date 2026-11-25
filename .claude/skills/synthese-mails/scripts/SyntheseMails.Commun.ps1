@@ -1399,7 +1399,16 @@ function Set-SmArchiveStatut($Archives, [string]$Id, [string]$Statut, [string]$N
 function Add-SmInfoClient($Archives, [string]$Id, [string]$DossierClients) {
     $item = $Archives.elements | Where-Object { $_.id -eq $Id } | Select-Object -First 1
     if (-not $item) { throw "Élément « $Id » introuvable." }
-    $code = ([string]$item.client).Trim().ToUpperInvariant()
+    $when = $(if ($item.dateEffet) { ([string]$item.dateEffet).Substring(0, 10) } else { (Get-Date).ToString('yyyy-MM-dd') })
+    $texte = ([string]$item.element).Trim() + $(if ($item.indice) { " — $(([string]$item.indice) -replace '\s+', ' ')" } else { '' })
+    $relative = Add-SmInfoTamLigne $DossierClients ([string]$item.client) $when $texte ([string]$item.source)
+    [void](Set-SmArchiveStatut $Archives $Id 'fait' "Classé dans $relative le $((Get-Date).ToString('dd.MM.yyyy'))")
+    [ordered]@{ element = $item; fichier = $relative }
+}
+
+# Une ligne datée dans CLIENTS\<CODE>\infos-tam.md (ANSAM\infos-tam.md pour l'interne). Renvoie le chemin relatif.
+function Add-SmInfoTamLigne([string]$DossierClients, [string]$Client, [string]$Quand, [string]$Texte, [string]$Source) {
+    $code = $Client.Trim().ToUpperInvariant()
     if ($code -notmatch '^[A-Z0-9]{2,12}$') { throw "Client inconnu pour cet élément : le classer à la main." }
     if (-not $DossierClients -or -not (Test-Path -LiteralPath $DossierClients)) { throw 'Dossier des clients introuvable (Réglages).' }
     $dir = $(if ($code -eq 'ANSAM') { Join-Path (Split-Path $DossierClients) 'ANSAM' } else { Join-Path $DossierClients $code })
@@ -1412,14 +1421,92 @@ function Add-SmInfoClient($Archives, [string]$Id, [string]$DossierClients) {
     if (-not (Test-Path -LiteralPath $file)) {
         [IO.File]::WriteAllText($file, "# Informations TAM : $code`r`n`r`nFaits durables repérés par Panoramix et classés par le TAM, du plus ancien au plus récent.`r`n`r`n", $utf8)
     }
-    $when = $(if ($item.dateEffet) { ([string]$item.dateEffet).Substring(0, 10) } else { (Get-Date).ToString('yyyy-MM-dd') })
-    $line = "- **$when** : $(([string]$item.element).Trim())" +
-            $(if ($item.indice) { " — $(([string]$item.indice) -replace '\s+', ' ')" } else { '' }) +
-            $(if ($item.source) { " _(source : $(([string]$item.source) -replace '\s+', ' '))_" } else { '' }) + "`r`n"
+    $line = "- **$Quand** : $($Texte.Trim())" +
+            $(if ($Source) { " _(source : $($Source -replace '\s+', ' '))_" } else { '' }) + "`r`n"
     [IO.File]::AppendAllText($file, $line, $utf8)
-    $relative = $(if ($code -eq 'ANSAM') { 'ANSAM\infos-tam.md' } else { "CLIENTS\$code\infos-tam.md" })
-    [void](Set-SmArchiveStatut $Archives $Id 'fait' "Classé dans $relative le $((Get-Date).ToString('dd.MM.yyyy'))")
-    [ordered]@{ element = $item; fichier = $relative }
+    $(if ($code -eq 'ANSAM') { 'ANSAM\infos-tam.md' } else { "CLIENTS\$code\infos-tam.md" })
+}
+
+# --- Carnet TAM : ce que je garde en tête par client -------------------------------
+# carnet.json : des points courts, datés ou non, que je tiens à jour (statut actif) ; un point archivé
+# rejoint l'historique du client (infos-tam.md). Alimenté par moi et par les faits TAM de l'analyse
+# que je choisis de garder en tête. Les points datés approchant (7 jours) sont rappelés dans le Suivi.
+function Get-SmCarnet([string]$WorkDir = $SmWorkDir) {
+    $saved = Read-SmJson (Join-Path $WorkDir 'carnet.json')
+    $points = New-Object System.Collections.ArrayList
+    foreach ($p in @($(if ($saved) { $saved.points }))) {
+        if (-not $p) { continue }
+        $copy = [ordered]@{}
+        foreach ($property in $p.PSObject.Properties) { $copy[$property.Name] = $property.Value }
+        [void]$points.Add($copy)
+    }
+    [ordered]@{ majLe = $(if ($saved) { $saved.majLe } else { $null }); points = $points }
+}
+
+function Save-SmCarnet($Carnet, [string]$WorkDir = $SmWorkDir) {
+    $Carnet.majLe = (Get-Date).ToString('o')
+    Write-SmJson (Join-Path $WorkDir 'carnet.json') ([ordered]@{ majLe = $Carnet.majLe; points = @($Carnet.points) })
+}
+
+function ConvertTo-SmCarnetChamps($Champs) {
+    $client = ([string]$Champs.client).Trim().ToUpperInvariant()
+    $texte = ([string]$Champs.texte).Trim()
+    if (-not $texte) { throw 'Le point est vide.' }
+    if ($texte.Length -gt 1500) { $texte = $texte.Substring(0, 1500) }
+    [ordered]@{
+        client = $(if ($client -match '^[A-Z0-9.-]{2,30}$') { $client } else { throw 'Client manquant : un point du carnet appartient à un client (ANSAM pour l''interne).' })
+        texte  = $texte
+        date   = $(if ([string]$Champs.date -match '^\d{4}-\d{2}-\d{2}$') { [string]$Champs.date } else { $null })
+        source = $(if (([string]$Champs.source).Trim()) { ([string]$Champs.source).Trim() } else { $null })
+    }
+}
+
+function Add-SmCarnet($Carnet, $Champs, [string]$Origine = 'moi', [string]$ElementId) {
+    $c = ConvertTo-SmCarnetChamps $Champs
+    $today = (Get-Date).ToString('yyyyMMdd')
+    $n = @($Carnet.points | Where-Object { $_.id -like "K-$today-*" }).Count
+    do { $n++; $id = "K-$today-$n" } while ($Carnet.points | Where-Object { $_.id -eq $id })
+    $now = (Get-Date).ToString('o')
+    $point = [ordered]@{ id = $id; client = $c.client; texte = $c.texte; date = $c.date; source = $c.source; statut = 'actif'
+                         origine = $Origine; elementId = $(if ($ElementId) { $ElementId } else { $null }); tacheId = $null; creeLe = $now; majLe = $now }
+    [void]$Carnet.points.Add($point)
+    $point
+}
+
+# modifier (client, texte, date, tacheId) ; archiver : vers infos-tam.md du client, puis statut archive ; supprimer : saisie erronée.
+function Set-SmCarnet($Carnet, [string]$Id, [string]$Action, $Champs, [string]$DossierClients) {
+    $point = $Carnet.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $point) { throw "Point « $Id » introuvable." }
+    switch ($Action) {
+        'modifier' {
+            if ($Champs.PSObject.Properties.Name -contains 'tacheId') { $point.tacheId = $(if ([string]$Champs.tacheId) { [string]$Champs.tacheId } else { $null }) }
+            if ($Champs.PSObject.Properties.Name -contains 'texte') {
+                $c = ConvertTo-SmCarnetChamps $Champs
+                $point.client = $c.client; $point.texte = $c.texte; $point.date = $c.date
+            }
+        }
+        'archiver' {
+            $quand = $(if ($point.date) { [string]$point.date } else { (Get-Date).ToString('yyyy-MM-dd') })
+            $point.fichier = Add-SmInfoTamLigne $DossierClients ([string]$point.client) $quand ([string]$point.texte) ([string]$point.source)
+            $point.statut = 'archive'
+        }
+        'rouvrir' { $point.statut = 'actif' }
+        'supprimer' { $Carnet.points.Remove($point); return $null }
+        default { throw "Action inconnue : $Action" }
+    }
+    $point.majLe = (Get-Date).ToString('o')
+    $point
+}
+
+# Un fait TAM repéré par l'analyse, que je garde en tête : il passe au carnet et quitte la liste à trier.
+function Add-SmCarnetDepuisElement($Carnet, $Archives, [string]$Id, $Champs) {
+    $item = $Archives.elements | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if (-not $item) { throw "Élément « $Id » introuvable." }
+    $texte = $(if ($Champs -and ([string]$Champs.texte).Trim()) { [string]$Champs.texte } else { ([string]$item.element).Trim() + $(if ($item.indice) { " — $(([string]$item.indice) -replace '\s+', ' ')" } else { '' }) })
+    $date = $(if ($Champs -and [string]$Champs.date) { [string]$Champs.date } elseif ($item.echeance) { ([string]$item.echeance).Substring(0, 10) } else { $null })
+    $point = Add-SmCarnet $Carnet ([pscustomobject]@{ client = $(if ($Champs -and $Champs.client) { $Champs.client } else { $item.client }); texte = $texte; date = $date; source = $item.source }) 'synthese' $Id
+    [void](Set-SmArchiveStatut $Archives $Id 'fait' "Gardé en tête (carnet $($point.id)) le $((Get-Date).ToString('dd.MM.yyyy'))")
+    $point
 }
 
 # --- Actualisation en cours de journée ------------------------------------------

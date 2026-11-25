@@ -477,19 +477,45 @@ try {
                     Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : étape enregistrée, la tâche reste ouverte."; point = $point; points = @($suivi.points) })
                 }
-                '^POST /api/nouvelle-tache/proposer$' {
-                    # Ma demande en texte libre -> proposition de tâche par Claude Code, en arrière-plan (lecture seule).
+                '^POST /api/(nouvelle-tache|carnet)/proposer$' {
+                    # Texte libre -> proposition de tâche ou de point du carnet par Claude Code, en arrière-plan (lecture seule).
+                    $genre = $(if ($request.Path -like '*/carnet/*') { 'carnet' } else { 'tache' })
                     $texte = ([string]($request.Body | ConvertFrom-Json).texte).Trim()
-                    if (-not $texte) { throw 'Écris d''abord la tâche avec tes mots.' }
+                    if (-not $texte) { throw 'Écris d''abord avec tes mots.' }
                     if ($texte.Length -gt 8000) { throw 'Texte trop long : 8000 caractères au plus.' }
-                    $state = Get-TravailState 'tache'
+                    $state = Get-TravailState $genre
                     if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une proposition est déjà en cours.') }); break }
-                    [IO.File]::WriteAllText((Join-Path $WorkDir 'travaux\tache-entree.txt'), $texte, (New-Object Text.UTF8Encoding($false)))
-                    Write-SmJson (Join-Path $WorkDir 'travaux\tache.json') ([ordered]@{ travail = 'tache'; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    [IO.File]::WriteAllText((Join-Path $WorkDir "travaux\$genre-entree.txt"), $texte, (New-Object Text.UTF8Encoding($false)))
+                    Write-SmJson (Join-Path $WorkDir "travaux\$genre.json") ([ordered]@{ travail = $genre; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
                     $script = Join-Path $PSScriptRoot 'Proposer-Tache.ps1'
                     Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
-                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -WorkDir `"$WorkDir`"" | Out-Null
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -WorkDir `"$WorkDir`" -Genre $genre" | Out-Null
                     Send-Json $stream 200 ([ordered]@{ message = 'Reformulation lancée, une minute environ.' })
+                }
+                '^GET /api/carnet$' {
+                    # Le carnet, et les faits TAM repérés par l'analyse qui restent à trier.
+                    $tri = @((Get-SmArchives $WorkDir).elements | Where-Object { $_.type -eq 'tam' -and $_.statut -eq 'a_traiter' })
+                    Send-Json $stream 200 ([ordered]@{ points = @((Get-SmCarnet $WorkDir).points); aTrier = $tri })
+                }
+                '^POST /api/carnet$' {
+                    # ajouter / modifier / archiver / rouvrir / supprimer, et garder (un fait TAM de l'analyse) : sur mon clic.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $carnet = Get-SmCarnet $WorkDir
+                    $action = [string]$posted.action
+                    $message = ''
+                    if ($action -eq 'ajouter') { $point = Add-SmCarnet $carnet $posted; $message = 'Ajouté au carnet.' }
+                    elseif ($action -eq 'garder') {
+                        $archives = Get-SmArchives $WorkDir
+                        $point = Add-SmCarnetDepuisElement $carnet $archives ([string]$posted.id) $posted.champs
+                        Save-SmArchives $archives $WorkDir
+                        $message = 'Gardé en tête.'
+                    } else {
+                        $point = Set-SmCarnet $carnet ([string]$posted.id) $action $posted ([string](Get-SmConfig $WorkDir).dossierClients)
+                        $message = $(switch ($action) { 'archiver' { "Archivé dans $($point.fichier)." } 'supprimer' { 'Supprimé.' } default { 'Enregistré.' } })
+                    }
+                    Save-SmCarnet $carnet $WorkDir
+                    $tri = @((Get-SmArchives $WorkDir).elements | Where-Object { $_.type -eq 'tam' -and $_.statut -eq 'a_traiter' })
+                    Send-Json $stream 200 ([ordered]@{ message = $message; point = $point; points = @($carnet.points); aTrier = $tri })
                 }
                 '^POST /api/nouvelle-tache/creer$' {
                     # Création seulement sur mon clic, avec la proposition telle que je l'ai relue et corrigée.
@@ -673,7 +699,7 @@ try {
                 }
                 '^GET /api/travail$' {
                     $nom = [string]$request.Query['nom']
-                    if ($nom -notmatch '^(absence|tri|tache|cloture-[A-Za-z0-9-]+|ansam-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
+                    if ($nom -notmatch '^(absence|tri|tache|carnet|cloture-[A-Za-z0-9-]+|ansam-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
                     $state = Get-TravailState $nom
                     Send-Json $stream 200 $(if ($state) { $state } else { [ordered]@{ etat = 'aucun' } })
                 }
