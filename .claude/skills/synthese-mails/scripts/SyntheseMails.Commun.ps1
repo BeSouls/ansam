@@ -661,6 +661,40 @@ function Add-SmEtape($Suivi, [string]$Id, [string]$Texte, [string]$Note, [string
     $point
 }
 
+# Tâche créée par moi depuis la page (message Teams, demande orale…), après relecture de la proposition de
+# Proposer-Tache.ps1. Statut et étape suivante sont les miens (majPar, actionPar = moi) : la synthèse les garde
+# tant qu'aucun message d'un tiers ne les rend caducs. Le texte d'origine reste pour l'analyse (texteOrigine).
+function New-SmTacheManuelle($Suivi, $Champs) {
+    $titre = ([string]$Champs.titre).Trim()
+    if (-not $titre) { throw 'Titre manquant.' }
+    $statut = $(if ([string]$Champs.statut -eq 'attente_tiers') { 'attente_tiers' } else { 'a_faire' })
+    $priorite = $(if (@('rouge', 'orange', 'vert') -contains [string]$Champs.priorite) { [string]$Champs.priorite } else { 'orange' })
+    $echeance = $(if ([string]$Champs.echeance -match '^\d{4}-\d{2}-\d{2}$') { [string]$Champs.echeance } else { $null })
+    $ticket = $(if ([string]$Champs.ticket -match '^[A-Z][A-Z0-9]+-\d+$') { [string]$Champs.ticket } else { $null })
+    $today = (Get-Date).ToString('yyyyMMdd')
+    $counter = @($Suivi.points | Where-Object { $_.id -like "P-$today-*" }).Count
+    do { $counter++; $id = "P-$today-$counter" } while ($Suivi.points | Where-Object { $_.id -eq $id })
+    $now = (Get-Date).ToString('o')
+    $source = $(if (([string]$Champs.source).Trim()) { ([string]$Champs.source).Trim() } else { 'Saisie manuelle' })
+    $origine = ([string]$Champs.texteOrigine).Trim()
+    if ($origine.Length -gt 3000) { $origine = $origine.Substring(0, 3000) }
+    $contact = $null
+    if ($Champs.contact -and @('mail', 'appel') -contains [string]$Champs.contact.mode -and ([string]$Champs.contact.nom).Trim()) {
+        $contact = [ordered]@{ mode = [string]$Champs.contact.mode }
+        foreach ($k in 'nom', 'role', 'email', 'telephone', 'objet', 'message') { $v = ([string]$Champs.contact.$k).Trim(); $contact[$k] = $(if ($v) { $v } else { $null }) }
+        $contact.points = @($Champs.contact.points | Where-Object { $_ } | ForEach-Object { [string]$_ })
+    }
+    $point = [ordered]@{
+        id = $id; titre = $titre; client = $(if (([string]$Champs.client).Trim()) { ([string]$Champs.client).Trim() } else { $null }); ticket = $ticket
+        statut = $statut; priorite = $priorite; echeance = $echeance; action = ([string]$Champs.action).Trim(); actionPar = 'moi'; actionLe = $now
+        contact = $contact; source = $source; dernierMessage = $null; origine = 'manuel'; texteOrigine = $(if ($origine) { $origine } else { $null })
+        creeLe = $now; majPar = 'moi'; majLe = $now; noteMoi = ''
+        historique = @([ordered]@{ le = $now; par = 'moi'; statut = $statut; texte = "Créée depuis la page ($source)" })
+    }
+    [void]$Suivi.points.Add($point)
+    $point
+}
+
 # Drapeau de priorité posé par moi (point ou groupe) : la page le remonte en tête ; la synthèse n'y touche pas.
 function Set-SmDrapeau($Suivi, [string]$Id, [bool]$Drapeau) {
     $point = $Suivi.points | Where-Object { $_.id -eq $Id } | Select-Object -First 1

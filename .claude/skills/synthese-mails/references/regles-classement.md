@@ -128,6 +128,11 @@ l'ajoute à `etapes` (date, texte, note) et garde la tâche ouverte :
   `actionAjustee: true`. Une partie suivie ailleurs devient « (suivi dans
   ASD-31341) ». Rien n'est ajouté ni reformulé ; le lanceur refuse un texte
   plus long.
+- **Une tâche que j'ai créée moi-même** (`origine` = `manuel`) vient d'une
+  demande reçue hors mail (Teams, de vive voix) : `texteOrigine` la décrit.
+  Ne jamais la passer `traite` faute de mail ou de ticket ; un mail ou un
+  ticket qui arrive ensuite sur le même sujet la complète, sans créer de
+  seconde tâche.
 - **Un sujet, une tâche.** Ce qui a sa propre tâche (un ticket Jira, un
   projet, une commande) ne se répète pas dans l'action d'une autre tâche :
   on y renvoie par sa clé. Ainsi, ce que je marque fait à un endroit ne

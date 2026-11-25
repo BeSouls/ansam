@@ -477,6 +477,29 @@ try {
                     Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
                     Send-Json $stream 200 ([ordered]@{ message = "« $($point.titre) » : étape enregistrée, la tâche reste ouverte."; point = $point; points = @($suivi.points) })
                 }
+                '^POST /api/nouvelle-tache/proposer$' {
+                    # Ma demande en texte libre -> proposition de tâche par Claude Code, en arrière-plan (lecture seule).
+                    $texte = ([string]($request.Body | ConvertFrom-Json).texte).Trim()
+                    if (-not $texte) { throw 'Écris d''abord la tâche avec tes mots.' }
+                    if ($texte.Length -gt 8000) { throw 'Texte trop long : 8000 caractères au plus.' }
+                    $state = Get-TravailState 'tache'
+                    if ($state -and $state.etat -eq 'en_cours') { Send-Json $stream 400 ([ordered]@{ erreurs = @('Une proposition est déjà en cours.') }); break }
+                    [IO.File]::WriteAllText((Join-Path $WorkDir 'travaux\tache-entree.txt'), $texte, (New-Object Text.UTF8Encoding($false)))
+                    Write-SmJson (Join-Path $WorkDir 'travaux\tache.json') ([ordered]@{ travail = 'tache'; etat = 'en_cours'; message = 'Démarrage'; le = (Get-Date).ToString('o'); pid = $null })
+                    $script = Join-Path $PSScriptRoot 'Proposer-Tache.ps1'
+                    Start-Process -FilePath "$env:WINDIR\System32\conhost.exe" -WindowStyle Hidden `
+                        -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`" -WorkDir `"$WorkDir`"" | Out-Null
+                    Send-Json $stream 200 ([ordered]@{ message = 'Reformulation lancée, une minute environ.' })
+                }
+                '^POST /api/nouvelle-tache/creer$' {
+                    # Création seulement sur mon clic, avec la proposition telle que je l'ai relue et corrigée.
+                    $posted = $request.Body | ConvertFrom-Json
+                    $suivi = Get-SmSuivi $WorkDir
+                    $point = New-SmTacheManuelle $suivi $posted
+                    Save-SmSuivi $suivi $WorkDir
+                    Add-SmEtatAnsam $suivi ([string](Get-SmConfig $WorkDir).dossierAnsamDiag)
+                    Send-Json $stream 200 ([ordered]@{ message = "Tâche créée : « $($point.titre) »."; point = $point; points = @($suivi.points) })
+                }
                 '^GET /api/publier$' {
                     # File « À publier » : clôtures prêtes, et ce que Jira en montre (dernière vérification).
                     $list = Get-SmPublications (Get-SmConfig $WorkDir) $WorkDir (Get-SmSuivi $WorkDir)
@@ -650,7 +673,7 @@ try {
                 }
                 '^GET /api/travail$' {
                     $nom = [string]$request.Query['nom']
-                    if ($nom -notmatch '^(absence|tri|cloture-[A-Za-z0-9-]+|ansam-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
+                    if ($nom -notmatch '^(absence|tri|tache|cloture-[A-Za-z0-9-]+|ansam-[A-Za-z0-9-]+)$') { throw "Travail inconnu : $nom" }
                     $state = Get-TravailState $nom
                     Send-Json $stream 200 $(if ($state) { $state } else { [ordered]@{ etat = 'aucun' } })
                 }

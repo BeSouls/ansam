@@ -180,6 +180,10 @@
   #p-suivi .kpis { grid-template-columns: repeat(auto-fit, minmax(8.4rem, 1fr)); margin-bottom: .35rem; }
   .lenses { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .8rem; margin: 0 0 .8rem; font-size: .8125rem; }
   .lenses .hint { margin: 0; }
+  .nt textarea, .nt .field { width: 100%; box-sizing: border-box; }
+  .nt .nt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .6rem 0; }
+  .nt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem .8rem; margin: .4rem 0; }
+  .nt .why { color: var(--orange); }
   .lenses .btn.link[aria-pressed="true"] { text-decoration: underline; font-weight: 600; }
   .kpi-bar { display: flex; gap: 2px; height: 4px; margin-top: auto; border-radius: 2px; overflow: hidden; background: var(--surface-2); }
   .kpi-bar span { display: block; height: 100%; }
@@ -650,11 +654,41 @@
       <span class="vt" id="suiviTitre">Tâches ouvertes</span>
       <span class="info" title="Un statut que tu poses tient jusqu'à ce qu'un nouveau message arrive sur le point. « En attente » : ton action est faite, tu attends le client, un collègue ou un fournisseur.">i</span>
       <button class="reset" type="button" id="suiviReset" hidden>Tout afficher</button>
+      <button class="btn" type="button" id="ntBtn" title="Une tâche reçue par Teams ou de vive voix : écris-la avec tes mots, Claude la met au propre, tu relis et tu crées">+ Tâche</button>
       <button class="btn revuebtn" type="button" id="revueBtn" title="Une tâche à la fois, au clavier : les statuts proposés par la synthèse depuis ta dernière revue">Revue <span class="count" id="c-revue">0</span></button>
       <div class="status" role="group" aria-label="Statut" id="suiviVue">
         <button class="opt" type="button" data-f="ouverts" aria-pressed="true">Ouverts</button>
         <button class="opt" type="button" data-f="regles" aria-pressed="false">Réglés</button>
         <button class="opt" type="button" data-f="tous" aria-pressed="false">Tous</button>
+      </div>
+    </div>
+    <div class="panel nt" id="ntPanel" hidden>
+      <h2>Nouvelle tâche</h2>
+      <p class="hint">Colle le message Teams ou écris avec tes mots : qui demande, quoi, pour quand. Claude reformule et cherche le client, le ticket, le contact et une tâche qui couvrirait déjà le sujet. Rien n’est créé avant ton clic.</p>
+      <textarea class="field" id="ntTexte" rows="5" placeholder="Ex. : Teams de David Segura ce matin, ASACS veut un 2e écran pour l’accueil avant vendredi, voir avec Factory pour l’offre"></textarea>
+      <div class="nt-bar">
+        <button class="btn primary" type="button" id="ntPropose">Reformuler</button>
+        <button class="btn link" type="button" id="ntAnnule">Annuler</button>
+        <span class="run" id="ntRun" hidden><span class="spinner"></span><span id="ntRunTexte">Reformulation</span></span>
+      </div>
+      <div id="ntForm" hidden>
+        <div class="why" id="ntDoublon" hidden></div>
+        <div class="nt-grid">
+          <label class="f">Titre<input class="field" id="ntTitre"></label>
+          <label class="f">Client<input class="field" id="ntClient" placeholder="code client"></label>
+          <label class="f">Ticket<input class="field" id="ntTicket" placeholder="ASD-12345"></label>
+          <label class="f">Statut<select class="field" id="ntStatut"><option value="a_faire">À faire</option><option value="attente_tiers">En attente</option></select></label>
+          <label class="f">Priorité<select class="field" id="ntPrio"><option value="rouge">Urgente</option><option value="orange">Cette semaine</option><option value="vert">Quand possible</option></select></label>
+          <label class="f">Échéance<input class="field" type="date" id="ntEcheance"></label>
+        </div>
+        <label class="f">Action<textarea class="field" id="ntAction" rows="3"></textarea></label>
+        <p class="meta" id="ntContact"></p>
+        <p class="meta" id="ntQuestions"></p>
+        <p class="meta" id="ntMotif"></p>
+        <div class="nt-bar">
+          <button class="btn primary" type="button" id="ntCree">Créer la tâche</button>
+          <button class="btn link" type="button" id="ntRefaire">Reformuler à nouveau</button>
+        </div>
       </div>
     </div>
     <div id="list-suivi"></div>
@@ -3122,6 +3156,73 @@ async function suivreTravail(nom, etat, texte, fini) {
   if (s.etat === 'echec') toast(s.message || 'Échec de la préparation.', null, true);
   fini(s);
 }
+// --- Nouvelle tâche (Teams, oral) : texte libre -> proposition de Claude -> je relis -> je crée ---------------
+let ntProposition = null;
+function ntOuvrir() {
+  $('ntPanel').hidden = false;
+  $('ntTexte').focus();
+}
+function ntFermer() {
+  $('ntPanel').hidden = true;
+  $('ntForm').hidden = true;
+  $('ntTexte').value = '';
+  ntProposition = null;
+}
+function ntAfficher(p) {
+  ntProposition = p;
+  $('ntForm').hidden = false;
+  $('ntTitre').value = p.titre || '';
+  $('ntClient').value = p.client || '';
+  $('ntTicket').value = p.ticket || '';
+  $('ntStatut').value = p.statut || 'a_faire';
+  $('ntPrio').value = p.priorite || 'orange';
+  $('ntEcheance').value = p.echeance || '';
+  $('ntAction').value = p.action || '';
+  const c = p.contact;
+  $('ntContact').textContent = c && c.nom ? `Prise de contact : ${c.mode === 'appel' ? 'appeler' : 'écrire à'} ${c.nom}${c.role ? ', ' + c.role : ''}${c.email ? ' · ' + c.email : ''}${c.telephone ? ' · ' + c.telephone : ''}` : '';
+  $('ntQuestions').textContent = (p.questions || []).length ? 'À préciser : ' + p.questions.join(' · ') : '';
+  $('ntMotif').textContent = p.motif ? 'D’où ça vient : ' + p.motif : '';
+  const d = p.doublon;
+  $('ntDoublon').hidden = !d;
+  $('ntDoublon').innerHTML = d ? `Ce sujet semble déjà suivi dans <button class="btn link" type="button" data-nt-voir="${esc(d.id)}">${esc(d.titre)}</button> : crée seulement si c’est une autre demande.` : '';
+}
+async function ntProposer() {
+  const texte = $('ntTexte').value.trim();
+  if (!texte) { toast('Écris d’abord la tâche avec tes mots.', null, true); return; }
+  $('ntForm').hidden = true;
+  lancerNt(texte);
+}
+async function lancerNt(texte) {
+  try {
+    await api('POST', '/api/nouvelle-tache/proposer', { texte });
+    $('ntRun').hidden = false;
+    $('ntRunTexte').textContent = 'Démarrage';
+    travailTimers.set('tache', setTimeout(() => suivreTravail('tache', 'ntRun', 'ntRunTexte', s => { if (s.etat === 'ok' && s.proposition) ntAfficher(s.proposition); }), 2000));
+  } catch (e) { toast(e.message, null, true); }
+}
+async function ntCreer() {
+  if (!ntProposition) return;
+  const champs = { ...ntProposition, titre: $('ntTitre').value.trim(), client: $('ntClient').value.trim(), ticket: $('ntTicket').value.trim().toUpperCase(),
+    statut: $('ntStatut').value, priorite: $('ntPrio').value, echeance: $('ntEcheance').value, action: $('ntAction').value.trim() };
+  if (!champs.titre || !champs.action) { toast('Il faut au moins un titre et une action.', null, true); return; }
+  $('ntCree').disabled = true;
+  try {
+    const r = await api('POST', '/api/nouvelle-tache/creer', champs);
+    points = r.points || points;
+    ntFermer();
+    renderAll();
+    toast(r.message);
+    if (r.point) setTimeout(() => goToPoint(r.point.id), 50);
+  } catch (e) { toast(e.message, null, true); }
+  $('ntCree').disabled = false;
+}
+$('ntBtn').addEventListener('click', () => $('ntPanel').hidden ? ntOuvrir() : ntFermer());
+$('ntAnnule').addEventListener('click', ntFermer);
+$('ntPropose').addEventListener('click', ntProposer);
+$('ntRefaire').addEventListener('click', ntProposer);
+$('ntCree').addEventListener('click', ntCreer);
+$('ntPanel').addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-nt-voir]'); if (b) goToPoint(b.dataset.ntVoir); });
+
 async function lancerTravail(travail, id, nom, etat, texte, fini) {
   try {
     await api('POST', '/api/travail', id ? { travail, id } : { travail });
