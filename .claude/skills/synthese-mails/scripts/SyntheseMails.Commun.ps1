@@ -474,6 +474,22 @@ function ConvertTo-SmDateTime($Value) {
     $null
 }
 
+# Date réelle de fin d'une tâche (termineLe), posée quand elle passe Terminée / Sans objet et retirée si elle rouvre :
+# mon clic, sinon le dernier événement connu (clôture Jira, dernier message ou commentaire), jamais plus tard que
+# maintenant. La synthèse du matin enregistre souvent ce qui s'est terminé la veille : « Fait aujourd'hui » s'y fie.
+function Set-SmTermineLe($Point, [string]$Par, $Evenements) {
+    if ($Point.statut -ne 'traite' -and $Point.statut -ne 'ignore') { $Point.Remove('termineLe'); return }
+    $now = Get-Date
+    $when = $now
+    if ($Par -ne 'moi') {
+        # Jira écrit le fuseau sans deux-points (+0100) : on le remet avant de lire la date.
+        $last = @(@($Evenements) | Where-Object { $_ } | ForEach-Object { ConvertTo-SmDateTime (([string]$_) -replace '([+-]\d\d)(\d\d)$', '$1:$2') } |
+            Where-Object { $_ -and $_ -le $now }) | Sort-Object -Descending | Select-Object -First 1
+        if ($last) { $when = $last }
+    }
+    $Point.termineLe = $when.ToString('o')
+}
+
 function Add-SmHistorique($Point, [string]$Par, [string]$Statut, [string]$Texte) {
     $Point.historique = @(@($Point.historique) + [ordered]@{ le = (Get-Date).ToString('o'); par = $Par; statut = $Statut; texte = $Texte } |
         Select-Object -Last 20)
@@ -588,6 +604,7 @@ function Merge-SmSuivi($Suivi, $Updates, [string]$RevuLe) {
         $point.majPar = 'synthese'
         $point.majLe = (Get-Date).ToString('o')
         if ($statut -ne 'attente_tiers') { $point.Remove('relance') }
+        Set-SmTermineLe $point 'synthese' @($update.dernierMessage, $point.jiraMisAJour, $(if ($point.jiraDernier) { $point.jiraDernier.le }))
         Add-SmHistorique $point 'synthese' $statut ([string]$update.motif)
         $changes += [ordered]@{ id = $point.id; titre = $point.titre; avant = $previous; apres = $statut; motif = $update.motif }
     }
@@ -628,6 +645,7 @@ function Set-SmSuiviStatut($Suivi, [string]$Id, [string]$Statut, [string]$Note) 
         Add-SmHistorique $point 'moi' $Statut $Note
         $point.Remove('aRevoir')     # je viens de trancher : plus rien à signaler
         $point.Remove('relance')
+        Set-SmTermineLe $point 'moi' $null
     }
     Update-SmGroupes $Suivi
     $point
@@ -656,6 +674,7 @@ function Add-SmEtape($Suivi, [string]$Id, [string]$Texte, [string]$Note, [string
     $point.majLe = $now
     $point.Remove('aRevoir')
     $point.Remove('relance')     # la relance faite est une étape : l'attente repart de maintenant
+    $point.Remove('termineLe')
     Add-SmHistorique $point 'moi' $statut ("Étape faite : $Texte" + $(if ($Note) { " – $Note" } else { '' }))
     Update-SmGroupes $Suivi
     $point
@@ -843,6 +862,7 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
             # Une seule fois, au passage : une tâche rouverte par la synthèse sur un ticket clos (nouvelle demande) le reste.
             if ($changed -and $mapped -eq 'traite') {
                 $point.statut = 'traite'; $point.majPar = 'synthese'; $point.majLe = $now
+                Set-SmTermineLe $point 'synthese' @($ticket.misAJour)
                 Add-SmHistorique $point 'synthese' 'traite' "Jira « $($ticket.statut) »"
                 $report.regles++
             }
@@ -867,10 +887,12 @@ function Sync-SmJira($Suivi, $Jira, $Context) {
             if ($mapped -eq 'traite' -and $open) {
                 $point.statut = 'traite'; $point.majPar = 'synthese'; $point.majLe = $now
                 $point.Remove('relance')
+                Set-SmTermineLe $point 'synthese' @($ticket.misAJour)
                 Add-SmHistorique $point 'synthese' 'traite' "Jira « $($ticket.statut) »"
                 $report.regles++
             } elseif ($mapped -ne 'traite' -and -not $open) {
                 $point.statut = 'a_faire'; $point.majPar = 'synthese'; $point.majLe = $now; $point.jiraEncoreOuvert = $false
+                $point.Remove('termineLe')
                 $point.action = "Réglé d'après les mails, mais encore « $($ticket.statut) » dans Jira : clôturer le ticket ou le reprendre."
                 Add-SmHistorique $point 'synthese' 'a_faire' "Encore « $($ticket.statut) » dans Jira"
                 $report.rouverts++

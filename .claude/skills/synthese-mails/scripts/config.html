@@ -2578,11 +2578,21 @@ function caseDe(p) {
 
 // Fait aujourd'hui : tâches passées « Terminée » ou « Sans objet » aujourd'hui (par moi, ou d'après Jira), et
 // tâches encore ouvertes sur lesquelles j'ai fait une étape aujourd'hui. Une tâche n'y figure qu'une fois.
+// Quand la tâche s'est vraiment terminée : termineLe (posé par le serveur), sinon mon marquage, sinon le dernier
+// événement connu (clôture Jira, dernier message ou commentaire) avant l'enregistrement par la synthèse. Une clôture
+// Jira de la veille, enregistrée par la synthèse du matin, compte donc pour la veille.
+function termineLe(p) {
+  if (p.termineLe) return p.termineLe;
+  if (p.majPar === 'moi' || !p.majLe) return p.majLe;
+  const rec = jiraDate(p.majLe);
+  const ev = [p.jiraMisAJour, p.dernierMessage, p.jiraDernier && p.jiraDernier.le].filter(Boolean).map(jiraDate).filter(n => !isNaN(n) && n <= rec);
+  return ev.length ? new Date(Math.max(...ev)).toISOString() : p.majLe;
+}
 function faitDuJour() {
   const day = new Date(); day.setHours(0, 0, 0, 0);
   const isToday = d => d && Date.parse(d) >= day.getTime();
   const all = leaves();
-  const terminees = all.filter(p => !isOpen(p) && isToday(p.majLe));
+  const terminees = all.filter(p => !isOpen(p) && isToday(termineLe(p)));
   const stepsToday = p => [].concat(p.etapes || []).filter(e => e && isToday(e.le)).length;
   const avancees = all.filter(p => isOpen(p) && stepsToday(p));
   return { terminees, avancees, etapes: all.reduce((n, p) => n + stepsToday(p), 0) };
