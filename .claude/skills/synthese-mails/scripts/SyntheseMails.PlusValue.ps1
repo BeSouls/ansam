@@ -20,7 +20,14 @@
         6 mois, sinon le décompte est refusé ;
       - une ligne non suivie vaut 0 (base 0, relevés 0) ;
       - un relevé « a_verifier » n'empêche pas le décompte mais le rend provisoire ;
-      - un contrat BWS ou de type inconnu n'entre pas dans ce modèle : refusé.
+      - un contrat BWS ou de type inconnu n'entre pas dans ce modèle : refusé ;
+      - si le contrat actuel est hors du modèle (ASW, BWS…), un contrat du modèle archivé
+        dans Facturation\contrats-archives\<CODE>-*.json et couvrant une partie du semestre
+        est utilisé à sa place (cas SWPI : SOM jusqu'au 31.10.2026, puis ASW) ;
+      - les mois hors de Contrat.DebutEffectif / Contrat.FinEffective (champs explicites,
+        posés seulement quand un contrat commence ou finit en cours de semestre) sont
+        neutres : valeur = base, écart nul, aucun relevé exigé. Le modèle Excel garde ses
+        6 colonnes.
 #>
 
 $SmPvLignes = @(
@@ -45,6 +52,32 @@ function Get-SmPvMois([string]$Semestre) {
 function Read-SmPvJson([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     [IO.File]::ReadAllText($Path, [Text.Encoding]::UTF8) | ConvertFrom-Json
+}
+
+# Date AAAA-MM-JJ (ou AAAA-MM) -> AAAA-MM ; toute autre valeur (vide, « reconduction… ») -> $null.
+function Get-SmPvMoisDate($Valeur) {
+    $s = [string]$Valeur
+    if ($s -match '^(\d{4}-\d{2})(-\d{2})?') { $Matches[1] } else { $null }
+}
+
+# Contrat à appliquer au semestre : le contrat actuel s'il est du modèle (Silver, Gold,
+# Platinum) ; sinon le plus récent contrat archivé du modèle qui couvre au moins un mois.
+function Get-SmPvContrat([string]$Data, [string]$Code, [string[]]$Mois) {
+    $courant = Read-SmPvJson (Join-Path $Data "Facturation\contrats\$Code.json")
+    if (-not $courant -or $SmPvColonneTarif.ContainsKey(([string]$courant.Contrat.Modele).ToUpper())) {
+        return [ordered]@{ Contrat = $courant; Archive = $null }
+    }
+    $dir = Join-Path $Data 'Facturation\contrats-archives'
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter "$Code-*.json" -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+        $c = Read-SmPvJson $f.FullName
+        if (-not $c -or -not $SmPvColonneTarif.ContainsKey(([string]$c.Contrat.Modele).ToUpper())) { continue }
+        $d = Get-SmPvMoisDate $(if ($c.Contrat.DebutEffectif) { $c.Contrat.DebutEffectif } else { $c.Contrat.Debut })
+        $fi = Get-SmPvMoisDate $(if ($c.Contrat.FinEffective) { $c.Contrat.FinEffective } else { $c.Contrat.Fin })
+        if (@($Mois | Where-Object { (-not $d -or $_ -ge $d) -and (-not $fi -or $_ -le $fi) }).Count) {
+            return [ordered]@{ Contrat = $c; Archive = $f.Name }
+        }
+    }
+    [ordered]@{ Contrat = $courant; Archive = $null }
 }
 
 function Get-SmPvModeleChemin([string]$Data) {
@@ -82,9 +115,21 @@ function Get-SmPvDecompte {
     $Code = $Code.ToUpper()
     $mois = Get-SmPvMois $Semestre
     $r = [ordered]@{ Code = $Code; Semestre = $Semestre; Mois = $mois; Reference = $null; Nom = $null; Type = $null
-                     Lignes = @(); Total = $null; Erreurs = @(); Avertissements = @(); Provisoire = $false }
-    $contrat = Read-SmPvJson (Join-Path $Data "Facturation\contrats\$Code.json")
+                     Lignes = @(); Total = $null; Erreurs = @(); Avertissements = @(); Provisoire = $false
+                     ContratArchive = $null; MoisHorsContrat = @() }
+    $choix = Get-SmPvContrat $Data $Code $mois
+    $contrat = $choix.Contrat
     if (-not $contrat) { $r.Erreurs += "Fiche de contrat absente : Facturation\contrats\$Code.json"; return $r }
+    if ($choix.Archive) {
+        $r.ContratArchive = $choix.Archive
+        $r.Avertissements += "Contrat archivé utilisé : Facturation\contrats-archives\$($choix.Archive) (le contrat actuel est hors du modèle)"
+    }
+    $dEff = Get-SmPvMoisDate $contrat.Contrat.DebutEffectif
+    $fEff = Get-SmPvMoisDate $contrat.Contrat.FinEffective
+    $r.MoisHorsContrat = @($mois | Where-Object { ($dEff -and $_ -lt $dEff) -or ($fEff -and $_ -gt $fEff) })
+    $requis = @($mois | Where-Object { $r.MoisHorsContrat -notcontains $_ })
+    if (-not $requis.Count) { $r.Erreurs += "Aucun mois du semestre $Semestre n'est couvert par le contrat"; return $r }
+    if ($r.MoisHorsContrat.Count) { $r.Avertissements += "Mois hors contrat, neutres (valeur = base) : $($r.MoisHorsContrat -join ', ')" }
     $r.Nom = [string]$contrat.Nom
     $ref = [string]$contrat.Contrat.Reference
     if ($ref -match '^([A-Z0-9]+-\d{6}-\d+)') { $r.Reference = $Matches[1] } else { $r.Erreurs += "Référence de contrat illisible : '$ref'" }
@@ -102,6 +147,7 @@ function Get-SmPvDecompte {
         $vBase = if ($p -and $null -ne $p.Value) { [double]$p.Value } else { $null }
         $vals = @(); $sources = @(); $presents = 0
         foreach ($m in $mois) {
+            if ($r.MoisHorsContrat -contains $m) { $vals += $(if ($null -ne $vBase) { $vBase } else { 0.0 }); continue }
             $rm = $releves.Releves.PSObject.Properties[$m]
             $x = if ($rm) { $rm.Value.PSObject.Properties[$l.Cle] } else { $null }
             if ($x) {
@@ -118,7 +164,7 @@ function Get-SmPvDecompte {
         }
         $suivie = ($presents -gt 0) -or ($vBase -gt 0)
         if ($suivie -and $null -eq $vBase) { $r.Erreurs += "$($l.Libelle) : relevés présents mais base du contrat absente ($($l.Base))"; continue }
-        if ($suivie -and $presents -lt 6) {
+        if ($suivie -and $presents -lt $requis.Count) {
             $manque = @(for ($i = 0; $i -lt 6; $i++) { if ($null -eq $vals[$i]) { $mois[$i] } })
             $r.Erreurs += "$($l.Libelle) : relevé manquant pour $($manque -join ', ')"; continue
         }

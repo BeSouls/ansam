@@ -20,21 +20,16 @@ function Test-Egal($Nom, $Attendu, $Obtenu) {
     if ("$Attendu" -eq "$Obtenu") { "  ok    $Nom = $Obtenu" } else { "  ECHEC $Nom : attendu $Attendu, obtenu $Obtenu"; $script:echecs++ }
 }
 
-# SWPI est passé en ASW le 16.11.2026 : son 1er semestre se recalcule sur l'ancien contrat SOM,
-# archivé dans Facturation\contrats-archives, recopié dans un dossier de données temporaire.
-$dataSwpi = Join-Path $sortie 'donnees-swpi-som'
-New-Item -ItemType Directory -Force -Path (Join-Path $dataSwpi 'Facturation\contrats'), (Join-Path $dataSwpi 'variabilite\releves') | Out-Null
-Copy-Item (Join-Path $data 'Facturation\contrats-archives\SWPI-202411-7754.json') (Join-Path $dataSwpi 'Facturation\contrats\SWPI.json')
-Copy-Item (Join-Path $data 'variabilite\releves\SWPI.json') (Join-Path $dataSwpi 'variabilite\releves\SWPI.json')
-
+# SWPI est passé en ASW au 01.11.2026 : son contrat actuel est hors du modèle, le générateur
+# prend l'ancien contrat SOM archivé (Facturation\contrats-archives, FinEffective 2026-10-31).
 $references = @(
     @{ Code = 'STJAC'; Total = 1369;    Fichier = 'Plus value -STJAC-202411-7752-H1-2026.xlsx'; Lignes = @{ Users = 589; VM = 780; Site = 0 } }
-    @{ Code = 'SWPI';  Total = -93;     Fichier = 'Plus value -SWPI-202411-7754-H1-2026.xlsx';  Lignes = @{ Users = -93; Site = 0 }; Data = $dataSwpi }
+    @{ Code = 'SWPI';  Total = -93;     Fichier = 'Plus value -SWPI-202411-7754-H1-2026.xlsx';  Lignes = @{ Users = -93; Site = 0 } }
     @{ Code = 'PREST'; Total = -219.78; Fichier = 'Plus value -PREST-202106-2176-H1-2026.xlsx'; Lignes = @{ VM = 0; UsersSansSupport = -219.78; ServeurPhysique = 0; Site = 0 } }
 )
 foreach ($ref in $references) {
     "$($ref.Code) 2026-H1"
-    $d = Get-SmPvDecompte -Code $ref.Code -Semestre '2026-H1' -Data $(if ($ref.Data) { $ref.Data } else { $data }) -Tarifs $tarifs
+    $d = Get-SmPvDecompte -Code $ref.Code -Semestre '2026-H1' -Data $data -Tarifs $tarifs
     Test-Egal 'erreurs' '' ($d.Erreurs -join ' | ')
     Test-Egal 'total calculé' $ref.Total $d.Total
     foreach ($k in $ref.Lignes.Keys) { Test-Egal "montant $k" $ref.Lignes[$k] (($d.Lignes | Where-Object { $_.Cle -eq $k }).Montant) }
@@ -46,13 +41,39 @@ foreach ($ref in $references) {
     }
 }
 
+'SWPI 2026-H2 (contrat SOM jusqu''au 31.10.2026, relevés fictifs juillet-octobre)'
+$dataH2 = Join-Path $sortie 'donnees-swpi-h2'
+New-Item -ItemType Directory -Force -Path (Join-Path $dataH2 'Facturation\contrats'), (Join-Path $dataH2 'Facturation\contrats-archives'), (Join-Path $dataH2 'variabilite\releves') | Out-Null
+Copy-Item (Join-Path $data 'Facturation\contrats\SWPI.json') (Join-Path $dataH2 'Facturation\contrats\SWPI.json')
+Copy-Item (Join-Path $data 'Facturation\contrats-archives\SWPI-202411-7754.json') (Join-Path $dataH2 'Facturation\contrats-archives\SWPI-202411-7754.json')
+$fictifs = [ordered]@{}
+foreach ($m in @{ '2026-07' = 15; '2026-08' = 15; '2026-09' = 15; '2026-10' = 16 }.GetEnumerator()) {
+    $fictifs[$m.Key] = [ordered]@{ Users = [ordered]@{ Valeur = $m.Value; Source = 'test'; DateReleve = "$($m.Key)-28"; Statut = 'valide' }
+                                   Site  = [ordered]@{ Valeur = 1; Source = 'test'; DateReleve = "$($m.Key)-28"; Statut = 'valide' } }
+}
+# novembre : un relevé existe (sous ASW) mais doit être ignoré
+$fictifs['2026-11'] = [ordered]@{ Users = [ordered]@{ Valeur = 99; Source = 'test'; DateReleve = '2026-11-28'; Statut = 'valide' } }
+[IO.File]::WriteAllText((Join-Path $dataH2 'variabilite\releves\SWPI.json'), (([ordered]@{ Code = 'SWPI'; Releves = $fictifs }) | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+$s2 = Get-SmPvDecompte -Code 'SWPI' -Semestre '2026-H2' -Data $dataH2 -Tarifs $tarifs
+$attendu = [math]::Round(1 * [double]$tarifs['Users']['GOLD'], 2)
+Test-Egal 'erreurs' '' ($s2.Erreurs -join ' | ')
+Test-Egal 'contrat archivé utilisé' 'SWPI-202411-7754.json' $s2.ContratArchive
+Test-Egal 'mois neutres' '2026-11,2026-12' ($s2.MoisHorsContrat -join ',')
+Test-Egal 'montant Users (1 utilisateur-mois)' $attendu (($s2.Lignes | Where-Object { $_.Cle -eq 'Users' }).Montant)
+Test-Egal 'total calculé' $attendu $s2.Total
+if (-not $s2.Erreurs.Count) {
+    $f = Join-Path $sortie (Get-SmPvNomFichier $s2)
+    Test-Egal 'nom du fichier' 'Plus value -SWPI-202411-7754-H2-2026.xlsx' (Split-Path $f -Leaf)
+    Test-Egal 'total Excel' $attendu (New-SmPvFichier -Decompte $s2 -Modele $modele -Destination $f)
+}
+
 'Refus attendus'
 $z = Get-SmPvDecompte -Code 'ZENIT' -Semestre '2026-H1' -Data $data -Tarifs $tarifs
 Test-Egal 'ZENIT refusé (base absente)' $true ([bool]($z.Erreurs -match 'Base du contrat inconnue'))
 $g = Get-SmPvDecompte -Code 'GIPPA' -Semestre '2026-H1' -Data $data -Tarifs $tarifs
 Test-Egal 'GIPPA refusé (BWS)' $true ([bool]($g.Erreurs -match 'hors du modèle'))
-$w = Get-SmPvDecompte -Code 'SWPI' -Semestre '2026-H1' -Data $data -Tarifs $tarifs
-Test-Egal 'SWPI refusé (contrat actuel ASW)' $true ([bool]($w.Erreurs -match 'hors du modèle'))
+$w = Get-SmPvDecompte -Code 'SWPI' -Semestre '2027-H1' -Data $data -Tarifs $tarifs
+Test-Egal 'SWPI 2027-H1 refusé (ASW, aucun contrat archivé ne couvre le semestre)' $true ([bool]($w.Erreurs -match 'hors du modèle'))
 $h2 = Get-SmPvDecompte -Code 'STJAC' -Semestre '2026-H2' -Data $data -Tarifs $tarifs
 Test-Egal 'STJAC 2026-H2 refusé (relevés manquants)' $true ([bool]($h2.Erreurs -match 'relevé manquant'))
 
