@@ -20,14 +20,21 @@ function Test-Egal($Nom, $Attendu, $Obtenu) {
     if ("$Attendu" -eq "$Obtenu") { "  ok    $Nom = $Obtenu" } else { "  ECHEC $Nom : attendu $Attendu, obtenu $Obtenu"; $script:echecs++ }
 }
 
+# SWPI est passé en ASW le 16.11.2026 : son 1er semestre se recalcule sur l'ancien contrat SOM,
+# archivé dans Facturation\contrats-archives, recopié dans un dossier de données temporaire.
+$dataSwpi = Join-Path $sortie 'donnees-swpi-som'
+New-Item -ItemType Directory -Force -Path (Join-Path $dataSwpi 'Facturation\contrats'), (Join-Path $dataSwpi 'variabilite\releves') | Out-Null
+Copy-Item (Join-Path $data 'Facturation\contrats-archives\SWPI-202411-7754.json') (Join-Path $dataSwpi 'Facturation\contrats\SWPI.json')
+Copy-Item (Join-Path $data 'variabilite\releves\SWPI.json') (Join-Path $dataSwpi 'variabilite\releves\SWPI.json')
+
 $references = @(
     @{ Code = 'STJAC'; Total = 1369;    Fichier = 'Plus value -STJAC-202411-7752-H1-2026.xlsx'; Lignes = @{ Users = 589; VM = 780; Site = 0 } }
-    @{ Code = 'SWPI';  Total = -93;     Fichier = 'Plus value -SWPI-202411-7754-H1-2026.xlsx';  Lignes = @{ Users = -93; Site = 0 } }
+    @{ Code = 'SWPI';  Total = -93;     Fichier = 'Plus value -SWPI-202411-7754-H1-2026.xlsx';  Lignes = @{ Users = -93; Site = 0 }; Data = $dataSwpi }
     @{ Code = 'PREST'; Total = -219.78; Fichier = 'Plus value -PREST-202106-2176-H1-2026.xlsx'; Lignes = @{ VM = 0; UsersSansSupport = -219.78; ServeurPhysique = 0; Site = 0 } }
 )
 foreach ($ref in $references) {
     "$($ref.Code) 2026-H1"
-    $d = Get-SmPvDecompte -Code $ref.Code -Semestre '2026-H1' -Data $data -Tarifs $tarifs
+    $d = Get-SmPvDecompte -Code $ref.Code -Semestre '2026-H1' -Data $(if ($ref.Data) { $ref.Data } else { $data }) -Tarifs $tarifs
     Test-Egal 'erreurs' '' ($d.Erreurs -join ' | ')
     Test-Egal 'total calculé' $ref.Total $d.Total
     foreach ($k in $ref.Lignes.Keys) { Test-Egal "montant $k" $ref.Lignes[$k] (($d.Lignes | Where-Object { $_.Cle -eq $k }).Montant) }
@@ -44,6 +51,8 @@ $z = Get-SmPvDecompte -Code 'ZENIT' -Semestre '2026-H1' -Data $data -Tarifs $tar
 Test-Egal 'ZENIT refusé (base absente)' $true ([bool]($z.Erreurs -match 'Base du contrat inconnue'))
 $g = Get-SmPvDecompte -Code 'GIPPA' -Semestre '2026-H1' -Data $data -Tarifs $tarifs
 Test-Egal 'GIPPA refusé (BWS)' $true ([bool]($g.Erreurs -match 'hors du modèle'))
+$w = Get-SmPvDecompte -Code 'SWPI' -Semestre '2026-H1' -Data $data -Tarifs $tarifs
+Test-Egal 'SWPI refusé (contrat actuel ASW)' $true ([bool]($w.Erreurs -match 'hors du modèle'))
 $h2 = Get-SmPvDecompte -Code 'STJAC' -Semestre '2026-H2' -Data $data -Tarifs $tarifs
 Test-Egal 'STJAC 2026-H2 refusé (relevés manquants)' $true ([bool]($h2.Erreurs -match 'relevé manquant'))
 
